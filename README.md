@@ -7,15 +7,15 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 - Po spuštění **rovnou otevře** výchozí stránku
   `https://test.psst.tudc.cz/HSI.Psst.Data` (bez úvodního menu).
-- **Karty** nahoře v liště (místo názvu stránky); vpravo **domeček**, **+**
-  a **⋮**. Zavření karty křížkem (max. 8). Každá karta má vlastní WebView.
-- Nabídka **⋮**: zadat adresu, přenačíst, historie, **odhlásit**, certifikáty,
-  nastavení odkazů.
-- Objeví se jako volba v systémovém dialogu "Otevřít pomocí" u http/https odkazů
-  (včetně `psst.tudc.cz` a `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
-- **Jedno přihlášení pro *.psst.tudc.cz**: po prvním zadání se další stránky
-  přihlásí **automaticky** (bez dialogu) — platí heslo i cookies ve všech
-  kartách. Znovu se ptá až po **Odhlásit**.
+- **Karty** nahoře v liště; vpravo **+** (modré), **domeček**, **⋮**.
+  Zavření karty křížkem (max. 8).
+- Nabídka **⋮**: zadat adresu, přenačíst, historie, certifikáty, nastavení
+  odkazů; úplně dole červené **Odhlásit**.
+- Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
+  `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
+- **Jedno přihlášení pro *.psst.tudc.cz**: celostránkový formulář; další stránky
+  se přihlásí automaticky. **Odhlásit** platí pro všechny karty a vrátí na
+  obrazovku „Byl jste odhlášen“.
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
 - **Historie** posledních 24 hodin (jen lokálně v appce).
 
