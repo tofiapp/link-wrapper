@@ -25,6 +25,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
@@ -46,6 +48,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -86,6 +89,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private lateinit var loginOverlay: View
     private lateinit var loginTitle: View
+    private lateinit var loginFormColumn: View
     private lateinit var vpnOnlyPanel: View
     private lateinit var loginFormScroll: View
     private lateinit var loggedOutBanner: View
@@ -108,6 +112,7 @@ class WebViewActivity : AppCompatActivity() {
 
     // Aby po chybě nevyskočilo víc dialogů za sebou.
     private var dialogShown = false
+    private var urlDialog: AlertDialog? = null
     private var authDialogShowing = false
     private var awaitingHttpAuth = false
     private var loginVisible = false
@@ -532,11 +537,12 @@ class WebViewActivity : AppCompatActivity() {
         urlInput.setSelection(urlInput.text?.length ?: 0)
 
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(if (openAsNewTab) "Nová karta" else "Otevřít adresu")
+            .setTitle(if (openAsNewTab) "Nová karta" else "Otevřít URL adresu")
             .setView(view)
-            .setPositiveButton(if (openAsNewTab) "Otevřít v kartě" else "Otevřít", null)
+            .setPositiveButton(if (openAsNewTab) "Otevřít URL v kartě" else "Otevřít URL", null)
             .setNegativeButton("Zrušit", null)
             .create()
+        urlDialog = dialog
 
         fun tryOpen() {
             val normalized = normalizeUrl(urlInput.text?.toString().orEmpty())
@@ -545,6 +551,7 @@ class WebViewActivity : AppCompatActivity() {
                 return
             }
             urlLayout.error = null
+            hideKeyboard(urlInput)
             dialog.dismiss()
             dialogShown = false
             if (openAsNewTab) openInNewTab(normalized) else loadInActiveTab(normalized)
@@ -560,6 +567,16 @@ class WebViewActivity : AppCompatActivity() {
         dialog.setOnShowListener {
             dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener { tryOpen() }
         }
+        dialog.setOnDismissListener {
+            hideKeyboard(urlInput)
+            urlDialog = null
+            dialogShown = false
+            window.decorView.post { hideKeyboard() }
+        }
+        dialog.window?.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
+        )
         dialog.show()
     }
 
@@ -773,6 +790,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun bindLoginUi() {
         loginOverlay = findViewById(R.id.loginOverlay)
         loginTitle = findViewById(R.id.loginTitle)
+        loginFormColumn = findViewById(R.id.loginFormColumn)
         vpnOnlyPanel = findViewById(R.id.vpnOnlyPanel)
         loginFormScroll = findViewById(R.id.loginFormScroll)
         loggedOutBanner = findViewById(R.id.loggedOutBanner)
@@ -854,6 +872,7 @@ class WebViewActivity : AppCompatActivity() {
         if (!::vpnOnlyPanel.isInitialized) return
         val vpnOnly = loginGate == LoginGate.VPN
         vpnOnlyPanel.visibility = if (vpnOnly) View.VISIBLE else View.GONE
+        loginFormColumn.visibility = if (vpnOnly) View.GONE else View.VISIBLE
         loginFormScroll.visibility = if (vpnOnly) View.GONE else View.VISIBLE
         loginTitle.visibility = if (vpnOnly) View.GONE else View.VISIBLE
         loggedOutBanner.visibility =
@@ -873,7 +892,11 @@ class WebViewActivity : AppCompatActivity() {
         val root = findViewById<View>(R.id.root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            setImePadding(v, imeBottom)
+            if (urlDialog?.isShowing == true) {
+                setImePadding(v, 0)
+            } else {
+                setImePadding(v, imeBottom)
+            }
             WindowInsetsCompat.Builder(insets)
                 .setInsets(WindowInsetsCompat.Type.ime(), androidx.core.graphics.Insets.NONE)
                 .build()
@@ -885,6 +908,10 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun applyVisibleFrameImePadding(root: View) {
+        if (urlDialog?.isShowing == true) {
+            setImePadding(root, 0)
+            return
+        }
         val fromInsets = ViewCompat.getRootWindowInsets(root)
             ?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
         if (fromInsets > 0) {
@@ -908,6 +935,7 @@ class WebViewActivity : AppCompatActivity() {
         hideKeyboard()
         loginOverlay.visibility = View.GONE
         if (::vpnOnlyPanel.isInitialized) vpnOnlyPanel.visibility = View.GONE
+        if (::loginFormColumn.isInitialized) loginFormColumn.visibility = View.GONE
         if (::loginFormScroll.isInitialized) loginFormScroll.visibility = View.GONE
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
@@ -918,22 +946,42 @@ class WebViewActivity : AppCompatActivity() {
         // pendingResumeUrl nech — může se hodit po VPN
     }
 
-    private fun hideKeyboard() {
+    private fun hideKeyboard(from: View? = null) {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val dialogWindow = urlDialog?.window
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.hide(android.view.WindowInsets.Type.ime())
+            dialogWindow?.insetsController?.hide(android.view.WindowInsets.Type.ime())
         }
         WindowInsetsControllerCompat(window, window.decorView)
             .hide(WindowInsetsCompat.Type.ime())
-        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        val focus = currentFocus ?: if (::loginOverlay.isInitialized) loginOverlay else window.decorView
-        imm.hideSoftInputFromWindow(focus.windowToken, 0)
+        dialogWindow?.let { w ->
+            WindowInsetsControllerCompat(w, w.decorView)
+                .hide(WindowInsetsCompat.Type.ime())
+        }
+
+        val tokens = listOfNotNull(
+            from?.windowToken,
+            dialogWindow?.decorView?.windowToken,
+            currentFocus?.windowToken,
+            if (::loginOverlay.isInitialized) loginOverlay.windowToken else null,
+            window.decorView.windowToken
+        ).distinct()
+        tokens.forEach { token ->
+            imm.hideSoftInputFromWindow(token, 0)
+        }
+
         if (::usernameInput.isInitialized) usernameInput.clearFocus()
         if (::passwordInput.isInitialized) passwordInput.clearFocus()
+        from?.clearFocus()
         activeWebView?.clearFocus()
-        if (::webContainer.isInitialized) {
+        if (loginVisible) {
+            if (::loginOverlay.isInitialized) loginOverlay.requestFocus()
+        } else if (::webContainer.isInitialized) {
             webContainer.isFocusableInTouchMode = true
             webContainer.requestFocus()
         }
+        findViewById<View>(R.id.root)?.let { setImePadding(it, 0) }
     }
 
     private fun isImeVisible(): Boolean {
@@ -945,19 +993,31 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.action == MotionEvent.ACTION_DOWN && isImeVisible()) {
-            val focused = currentFocus
-            if (focused is android.widget.EditText) {
-                val loc = IntArray(2)
-                focused.getLocationOnScreen(loc)
-                val x = ev.rawX
-                val y = ev.rawY
-                val inside = x >= loc[0] && x <= loc[0] + focused.width &&
-                    y >= loc[1] && y <= loc[1] + focused.height
-                if (!inside) hideKeyboard()
-            }
+        if (ev.action == MotionEvent.ACTION_DOWN && isImeVisible() && urlDialog?.isShowing != true) {
+            val root = urlDialog?.window?.decorView ?: window.decorView
+            if (!isTouchOnEditText(root, ev)) hideKeyboard()
         }
         return super.dispatchTouchEvent(ev)
+    }
+
+    private fun isTouchOnEditText(view: View, ev: MotionEvent): Boolean {
+        if (view is android.widget.EditText && view.isShown) {
+            val loc = IntArray(2)
+            view.getLocationOnScreen(loc)
+            val x = ev.rawX
+            val y = ev.rawY
+            if (x >= loc[0] && x <= loc[0] + view.width &&
+                y >= loc[1] && y <= loc[1] + view.height
+            ) {
+                return true
+            }
+        }
+        if (view is ViewGroup) {
+            for (i in 0 until view.childCount) {
+                if (isTouchOnEditText(view.getChildAt(i), ev)) return true
+            }
+        }
+        return false
     }
 
     private fun submitLogin() {
