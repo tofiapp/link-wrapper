@@ -7,38 +7,45 @@
         android:id="@+id/action_new_tab"
         android:title="Nová karta"
         android:icon="@drawable/ic_add"
-        app:iconTint="@color/accent"
         app:showAsAction="always" />
 
     <item
         android:id="@+id/action_home"
         android:title="Domovská stránka"
         android:icon="@drawable/ic_home"
-        app:iconTint="@color/accent"
         app:showAsAction="always" />
 
-    <item
-        android:id="@+id/action_open_url"
-        android:title="Zadat adresu"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_reload"
-        android:title="Přenačíst"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_history"
-        android:title="Historie"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_logout"
-        android:title="Odhlásit"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_cert_info"
-        android:title="Ověřování certifikátů"
-        app:showAsAction="never" />
-    <item
-        android:id="@+id/action_link_settings"
-        android:title="Nastavení odkazů"
-        app:showAsAction="never" />
+    <group android:id="@+id/group_main">
+        <item
+            android:id="@+id/action_open_url"
+            android:title="Zadat adresu"
+            app:showAsAction="never" />
+        <item
+            android:id="@+id/action_reload"
+            android:title="Přenačíst"
+            app:showAsAction="never" />
+        <item
+            android:id="@+id/action_history"
+            android:title="Historie"
+            app:showAsAction="never" />
+        <item
+            android:id="@+id/action_cert_info"
+            android:title="Ověřování certifikátů"
+            app:showAsAction="never" />
+        <item
+            android:id="@+id/action_link_settings"
+            android:title="Nastavení odkazů"
+            app:showAsAction="never" />
+    </group>
+
+    <!-- Oddělené úplně dole, zvýrazněné v kódu červeně -->
+    <group
+        android:id="@+id/group_logout"
+        android:orderInCategory="200">
+        <item
+            android:id="@+id/action_logout"
+            android:title="Odhlásit"
+            android:icon="@drawable/ic_logout"
+            app:showAsAction="never" />
+    </group>
 </menu>

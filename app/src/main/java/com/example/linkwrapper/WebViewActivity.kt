@@ -13,6 +13,8 @@ import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
@@ -40,6 +42,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
@@ -70,6 +73,15 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var tabStrip: LinearLayout
     private lateinit var tabScroll: HorizontalScrollView
 
+    private lateinit var loginOverlay: View
+    private lateinit var loggedOutBanner: View
+    private lateinit var loginSubtitle: TextView
+    private lateinit var usernameLayout: TextInputLayout
+    private lateinit var usernameInput: TextInputEditText
+    private lateinit var passwordInput: TextInputEditText
+    private lateinit var rememberCheck: MaterialCheckBox
+    private lateinit var loginButton: MaterialButton
+
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId: Long = -1L
     private var nextTabId = 1L
@@ -84,11 +96,17 @@ class WebViewActivity : AppCompatActivity() {
     private var dialogShown = false
     private var authDialogShowing = false
     private var awaitingHttpAuth = false
+    private var loginVisible = false
+
+    /** Čekající HTTP auth z WebView (null = přihlášení po odhlášení). */
+    private var pendingAuthHandler: HttpAuthHandler? = null
+    private var pendingAuthHost: String? = null
+    private var pendingResumeUrl: String? = null
 
     /**
      * Počet HTTP auth challenge za sebou pro daný klíč.
      * Uložené heslo posíláme automaticky (bez dialogu); když jich je moc
-     * (špatné heslo), teprve pak ukážeme dialog.
+     * (špatné heslo), teprve pak ukážeme přihlášení.
      */
     private val authChallengeCounts = mutableMapOf<String, Int>()
 
@@ -121,6 +139,7 @@ class WebViewActivity : AppCompatActivity() {
         webContainer = findViewById(R.id.webContainer)
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
+        bindLoginUi()
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -134,6 +153,11 @@ class WebViewActivity : AppCompatActivity() {
         dialogShown = false
         awaitingHttpAuth = false
         val url = resolveUrlFromIntent(intent) ?: return
+        if (loginVisible) {
+            // Po odhlášení nejdřív dokončit přihlášení, pak otevřít odkaz.
+            pendingResumeUrl = url
+            return
+        }
         // Externí odkaz / sdílení / historie → nová karta.
         openInNewTab(url)
     }
@@ -316,7 +340,13 @@ class WebViewActivity : AppCompatActivity() {
                     authChallengeCounts.remove(key)
                 }
 
-                showHttpAuthDialog(handler, host, realm)
+                showLoginScreen(
+                    host = host,
+                    handler = handler,
+                    loggedOut = false,
+                    resumeUrl = null,
+                    subtitle = "Server $host vyžaduje přihlášení."
+                )
             }
 
             override fun onReceivedHttpError(
@@ -528,85 +558,105 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    // ── HTTP auth ───────────────────────────────────────────────────────
+    // ── Přihlášení (celá obrazovka) ─────────────────────────────────────
 
-    private fun showHttpAuthDialog(
-        handler: HttpAuthHandler,
+    private fun bindLoginUi() {
+        loginOverlay = findViewById(R.id.loginOverlay)
+        loggedOutBanner = findViewById(R.id.loggedOutBanner)
+        loginSubtitle = findViewById(R.id.loginSubtitle)
+        usernameLayout = findViewById(R.id.usernameLayout)
+        usernameInput = findViewById(R.id.usernameInput)
+        passwordInput = findViewById(R.id.passwordInput)
+        rememberCheck = findViewById(R.id.rememberCheck)
+        loginButton = findViewById(R.id.loginButton)
+
+        loginButton.setOnClickListener { submitLogin() }
+        passwordInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                submitLogin()
+                true
+            } else false
+        }
+    }
+
+    /**
+     * Celá obrazovka místo malého dialogu.
+     * [handler] != null → odpověď na HTTP 401; null → přihlášení po Odhlásit.
+     */
+    private fun showLoginScreen(
         host: String,
-        realm: String?
+        handler: HttpAuthHandler?,
+        loggedOut: Boolean,
+        resumeUrl: String?,
+        subtitle: String
     ) {
-        if (authDialogShowing || isFinishing) {
-            handler.cancel()
+        if (isFinishing) {
+            handler?.cancel()
             return
         }
+
+        // Už běží přihlášení — přepni na nový handler (starý zruš).
+        if (loginVisible && pendingAuthHandler != null && handler != null) {
+            pendingAuthHandler?.cancel()
+        }
+
+        pendingAuthHandler = handler
+        pendingAuthHost = host
+        pendingResumeUrl = resumeUrl
         authDialogShowing = true
+        loginVisible = true
         progressBar.visibility = View.GONE
 
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_http_auth, null)
-        val realmView = view.findViewById<TextView>(R.id.authRealm)
-        val usernameInput = view.findViewById<TextInputEditText>(R.id.usernameInput)
-        val passwordInput = view.findViewById<TextInputEditText>(R.id.passwordInput)
-        val rememberCheck = view.findViewById<MaterialCheckBox>(R.id.rememberCheck)
+        loggedOutBanner.visibility = if (loggedOut) View.VISIBLE else View.GONE
+        loginSubtitle.text = subtitle
+        rememberCheck.isChecked = true
+        usernameLayout.error = null
+        usernameInput.setText("")
+        passwordInput.setText("")
 
-        val shared = HttpCredentials.isPsstHost(host)
-        val realmLabel = realm?.takeIf { it.isNotBlank() }
-        realmView.text = buildString {
-            append("Server ")
-            append(host)
-            append(" vyžaduje přihlášení.")
-            if (shared) {
-                append("\n\nÚdaje budou platit pro všechny stránky *.psst.tudc.cz ")
-                append("ve všech kartách, dokud se neodhlásíte.")
-            }
-            if (realmLabel != null) {
-                append("\nOblast: ")
-                append(realmLabel)
-            }
+        loginOverlay.visibility = View.VISIBLE
+        loginOverlay.bringToFront()
+        usernameInput.requestFocus()
+    }
+
+    private fun hideLoginScreen() {
+        loginOverlay.visibility = View.GONE
+        loggedOutBanner.visibility = View.GONE
+        authDialogShowing = false
+        loginVisible = false
+        pendingAuthHandler = null
+        pendingAuthHost = null
+        pendingResumeUrl = null
+    }
+
+    private fun submitLogin() {
+        val user = usernameInput.text?.toString()?.trim().orEmpty()
+        val pass = passwordInput.text?.toString().orEmpty()
+        if (user.isEmpty()) {
+            usernameLayout.error = "Zadejte jméno"
+            return
         }
+        usernameLayout.error = null
 
-        HttpCredentials.get(this, host)?.let {
-            usernameInput.setText(it.username)
-            passwordInput.setText(it.password)
-            rememberCheck.isChecked = true
+        val host = pendingAuthHost ?: "psst.tudc.cz"
+        if (rememberCheck.isChecked || HttpCredentials.isPsstHost(host)) {
+            HttpCredentials.save(this, host, user, pass)
+        } else {
+            HttpCredentials.clear(this, host)
         }
-        // U PSST je zapamatování výchozí a dává největší smysl.
-        if (shared) rememberCheck.isChecked = true
+        authChallengeCounts[HttpCredentials.authKey(host)] = 0
 
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle("Přihlášení")
-            .setView(view)
-            .setPositiveButton("Přihlásit", null)
-            .setNegativeButton("Zrušit") { _, _ ->
-                handler.cancel()
-                authDialogShowing = false
-                awaitingHttpAuth = false
-            }
-            .setCancelable(false)
-            .create()
+        val handler = pendingAuthHandler
+        val resumeUrl = pendingResumeUrl ?: DEFAULT_URL
+        hideLoginScreen()
 
-        dialog.setOnShowListener {
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE)
-                .setOnClickListener {
-                    val user = usernameInput.text?.toString()?.trim().orEmpty()
-                    val pass = passwordInput.text?.toString().orEmpty()
-                    if (user.isEmpty()) {
-                        usernameInput.error = "Zadejte jméno"
-                        return@setOnClickListener
-                    }
-                    if (rememberCheck.isChecked || shared) {
-                        HttpCredentials.save(this, host, user, pass)
-                    } else {
-                        HttpCredentials.clear(this, host)
-                    }
-                    authChallengeCounts[HttpCredentials.authKey(host)] = 0
-                    authDialogShowing = false
-                    awaitingHttpAuth = true
-                    dialog.dismiss()
-                    handler.proceed(user, pass)
-                }
+        if (handler != null) {
+            awaitingHttpAuth = true
+            handler.proceed(user, pass)
+        } else {
+            // Po odhlášení — nová čistá karta s domovskou stránkou.
+            openInNewTab(resumeUrl)
         }
-
-        dialog.show()
     }
 
     private fun showUnauthorizedWarning(url: Uri?) {
@@ -719,17 +769,12 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
-    /**
-     * Odhlášení: smaže uložené heslo (sdílené pro PSST), cookies a session data,
-     * pak přenačte všechny karty — další přístup znovu vyžádá přihlášení.
-     */
     private fun confirmLogout() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Odhlásit")
             .setMessage(
-                "Smaže uložené jméno a heslo pro *.psst.tudc.cz, cookies " +
-                    "i HTTP přihlášení ve všech kartách. Při dalším načtení " +
-                    "bude potřeba se znovu přihlásit."
+                "Odhlásí vás ze všech karet a stránek *.psst.tudc.cz. " +
+                    "Smaže uložené heslo, cookies i session."
             )
             .setPositiveButton("Odhlásit") { _, _ ->
                 performLogout()
@@ -739,11 +784,14 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Skutečné odhlášení: uložené heslo + cookies + HTTP auth cache ve WebView.
-     * Samotné reload nestačí — WebView si heslo drží v paměti a pošle ho znovu.
-     * Proto karty zničíme a otevřeme znovu až po vyčištění cookies.
+     * Odhlášení pro celou aplikaci: heslo + cookies + HTTP auth cache + všechny karty.
+     * Uživatel skončí na celostránkovém přihlášení s textem „Byl jste odhlášen“.
      */
     private fun performLogout() {
+        // Zruš případné čekající HTTP auth.
+        pendingAuthHandler?.cancel()
+        pendingAuthHandler = null
+
         HttpCredentials.clearAll(this)
         authChallengeCounts.clear()
         authFailedViews.clear()
@@ -764,24 +812,24 @@ class WebViewActivity : AppCompatActivity() {
             // starší WebView — ignorovat
         }
 
-        val urlsToRestore = tabs.map { it.url }.ifEmpty { listOf(DEFAULT_URL) }
-
-        // Nejdřív zastavit a zničit WebView (smaže i paměťové HTTP auth).
+        // Zničit všechny karty hned — heslo nesmí zůstat v paměti WebView.
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         activeTabId = -1L
         refreshTabStrip()
 
+        // Hned ukaž přihlášení s „Byl jste odhlášen“ — cookies dočistíme na pozadí.
+        showLoginScreen(
+            host = "psst.tudc.cz",
+            handler = null,
+            loggedOut = true,
+            resumeUrl = DEFAULT_URL,
+            subtitle = "Pro pokračování se znovu přihlaste."
+        )
+
         val cookieManager = CookieManager.getInstance()
         cookieManager.removeSessionCookies(null)
-        cookieManager.removeAllCookies { _ ->
-            cookieManager.flush()
-            runOnUiThread {
-                // Jedna čistá karta na domovskou / poslední adresu — bez uloženého hesla.
-                openInNewTab(urlsToRestore.firstOrNull() ?: DEFAULT_URL)
-                Toast.makeText(this, "Odhlášeno", Toast.LENGTH_SHORT).show()
-            }
-        }
+        cookieManager.removeAllCookies { _ -> cookieManager.flush() }
     }
 
     private fun showCertInfo() {
@@ -829,10 +877,20 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_webview, menu)
-        // Zvýraznit + a domeček kontrastní barvou (iconTint v XML někde nepřepíše theme).
         val accent = ContextCompat.getColor(this, R.color.accent)
-        listOf(R.id.action_new_tab, R.id.action_home).forEach { id ->
-            menu?.findItem(id)?.icon?.mutate()?.setTint(accent)
+        val inkSoft = ContextCompat.getColor(this, R.color.ink_soft)
+        val alert = ContextCompat.getColor(this, R.color.alert)
+
+        // Jen + je modré; domeček zůstane neutrální.
+        menu?.findItem(R.id.action_new_tab)?.icon?.mutate()?.setTint(accent)
+        menu?.findItem(R.id.action_home)?.icon?.mutate()?.setTint(inkSoft)
+
+        // Odhlásit dole, červené jako typické „sign out“.
+        menu?.findItem(R.id.action_logout)?.let { item ->
+            val title = SpannableString("Odhlásit")
+            title.setSpan(ForegroundColorSpan(alert), 0, title.length, 0)
+            item.title = title
+            item.icon?.mutate()?.setTint(alert)
         }
         return true
     }
@@ -878,6 +936,15 @@ class WebViewActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (loginVisible) {
+            // Po odhlášení zůstat na přihlášení; při HTTP auth zrušit požadavek.
+            if (pendingAuthHandler != null) {
+                pendingAuthHandler?.cancel()
+                hideLoginScreen()
+                awaitingHttpAuth = false
+            }
+            return
+        }
         val wv = activeWebView
         if (wv != null && wv.canGoBack()) {
             wv.goBack()
