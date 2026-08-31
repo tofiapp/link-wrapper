@@ -6,7 +6,8 @@
     <color name="surface">#FF14181D</color>
     <color name="surface_raised">#FF1C2127</color>
     <color name="line">#FF2C333B</color>
-    <color name="accent">#FF7FB4EA</color>
-    <color name="accent_wash">#FF1B2836</color>
+    <!-- Světlejší varianta rgb(31, 101, 159) pro tmavý režim -->
+    <color name="accent">#FF6BA3D4</color>
+    <color name="accent_wash">#FF1A2C3D</color>
     <color name="alert">#FFF2B8B5</color>
 </resources>

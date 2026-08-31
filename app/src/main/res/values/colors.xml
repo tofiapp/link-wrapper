@@ -7,8 +7,9 @@
     <color name="surface_raised">#FFFFFFFF</color>
     <color name="surface_sunken">#FFF4F6F8</color>
     <color name="line">#FFE4E7EB</color>
-    <color name="accent">#FF1B5FA8</color>
-    <color name="accent_wash">#FFEAF1F9</color>
+    <!-- rgb(31, 101, 159) -->
+    <color name="accent">#FF1F659F</color>
+    <color name="accent_wash">#FFE8F1F8</color>
     <color name="alert">#FFB3261E</color>
     <color name="alert_wash">#FFFCEEEC</color>
     <color name="ok">#FF1E7A4B</color>
