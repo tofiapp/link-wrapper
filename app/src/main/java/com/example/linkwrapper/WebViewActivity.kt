@@ -7,11 +7,15 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
@@ -75,6 +79,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private lateinit var loginOverlay: View
     private lateinit var loggedOutBanner: View
+    private lateinit var vpnBanner: View
     private lateinit var usernameLayout: TextInputLayout
     private lateinit var usernameInput: TextInputEditText
     private lateinit var passwordInput: TextInputEditText
@@ -97,10 +102,25 @@ class WebViewActivity : AppCompatActivity() {
     private var awaitingHttpAuth = false
     private var loginVisible = false
 
-    /** Čekající HTTP auth z WebView (null = přihlášení po odhlášení). */
+    /** Proč je zobrazená přihlašovací obrazovka. */
+    private enum class LoginGate { NONE, VPN, LOGOUT, AUTH }
+    private var loginGate = LoginGate.NONE
+
+    /** Čekající HTTP auth z WebView (null = přihlášení po odhlášení / VPN). */
     private var pendingAuthHandler: HttpAuthHandler? = null
     private var pendingAuthHost: String? = null
     private var pendingResumeUrl: String? = null
+
+    /** URL ke spuštění po připojení VPN (studený start bez VPN). */
+    private var pendingStartUrl: String? = null
+
+    /** Snapshot karet při výpadku VPN — pro obnovení, kdyby WebView zmizela. */
+    private var savedTabUrls: List<String> = emptyList()
+    private var savedActiveTabIndex: Int = 0
+
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val vpnCheckRunnable = Runnable { applyVpnState(isVpnActive()) }
 
     /**
      * Počet HTTP auth challenge za sebou pro daný klíč.
@@ -143,7 +163,32 @@ class WebViewActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
 
         val startUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
-        openInNewTab(startUrl)
+        pendingStartUrl = startUrl
+        if (isVpnActive()) {
+            openInNewTab(startUrl)
+        } else {
+            // Bez VPN — přihlašovací obrazovka s červenou notifikací.
+            showLoginScreen(
+                host = "psst.tudc.cz",
+                handler = null,
+                loggedOut = false,
+                resumeUrl = startUrl,
+                vpnMissing = true,
+                gate = LoginGate.VPN
+            )
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        registerVpnMonitor()
+        scheduleVpnCheck()
+    }
+
+    override fun onStop() {
+        unregisterVpnMonitor()
+        mainHandler.removeCallbacks(vpnCheckRunnable)
+        super.onStop()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -153,8 +198,9 @@ class WebViewActivity : AppCompatActivity() {
         awaitingHttpAuth = false
         val url = resolveUrlFromIntent(intent) ?: return
         if (loginVisible) {
-            // Po odhlášení nejdřív dokončit přihlášení, pak otevřít odkaz.
+            // Po odhlášení / VPN nejdřív dokončit bránu, pak otevřít odkaz.
             pendingResumeUrl = url
+            pendingStartUrl = url
             return
         }
         // Externí odkaz / sdílení / historie → nová karta.
@@ -162,6 +208,8 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        unregisterVpnMonitor()
+        mainHandler.removeCallbacks(vpnCheckRunnable)
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         super.onDestroy()
@@ -352,7 +400,8 @@ class WebViewActivity : AppCompatActivity() {
                     host = host,
                     handler = handler,
                     loggedOut = false,
-                    resumeUrl = null
+                    resumeUrl = null,
+                    gate = LoginGate.AUTH
                 )
             }
 
@@ -565,11 +614,153 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun registerVpnMonitor() {
+        if (networkCallback != null) return
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = scheduleVpnCheck()
+            override fun onLost(network: Network) = scheduleVpnCheck()
+            override fun onCapabilitiesChanged(
+                network: Network,
+                networkCapabilities: NetworkCapabilities
+            ) = scheduleVpnCheck()
+        }
+        networkCallback = callback
+        try {
+            // Sleduj všechny změny sítě — VPN se projevuje na activeNetwork.
+            cm.registerDefaultNetworkCallback(callback)
+        } catch (_: Exception) {
+            try {
+                cm.registerNetworkCallback(
+                    NetworkRequest.Builder().build(),
+                    callback
+                )
+            } catch (_: Exception) {
+                networkCallback = null
+            }
+        }
+    }
+
+    private fun unregisterVpnMonitor() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            cm.unregisterNetworkCallback(callback)
+        } catch (_: Exception) {
+            // už odregistrováno
+        }
+    }
+
+    private fun scheduleVpnCheck() {
+        mainHandler.removeCallbacks(vpnCheckRunnable)
+        // Krátký debounce — při přepínání VPN bývá několik událostí za sebou.
+        mainHandler.postDelayed(vpnCheckRunnable, 350)
+    }
+
+    private fun applyVpnState(vpnOn: Boolean) {
+        if (isFinishing) return
+        if (!vpnOn) {
+            enterVpnGate()
+        } else {
+            exitVpnGate()
+        }
+    }
+
+    /**
+     * VPN vypnutá: ukaž přihlašovací obrazovku s červenou notifikací.
+     * Otevřené karty necháme pod overlay (stav se neztratí).
+     */
+    private fun enterVpnGate() {
+        when (loginGate) {
+            LoginGate.LOGOUT, LoginGate.AUTH -> {
+                // Už jsme na přihlášení — jen červený banner VPN.
+                vpnBanner.visibility = View.VISIBLE
+                updateLoginFormForVpn(false)
+                return
+            }
+            LoginGate.VPN -> {
+                vpnBanner.visibility = View.VISIBLE
+                updateLoginFormForVpn(false)
+                return
+            }
+            LoginGate.NONE -> Unit
+        }
+
+        // Zapamatuj otevřené karty (pro případ, že by se WebView zničila).
+        if (tabs.isNotEmpty()) {
+            savedTabUrls = tabs.map { it.url }
+            savedActiveTabIndex = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
+        }
+
+        showLoginScreen(
+            host = "psst.tudc.cz",
+            handler = null,
+            loggedOut = false,
+            resumeUrl = pendingStartUrl ?: activeTab?.url ?: DEFAULT_URL,
+            vpnMissing = true,
+            gate = LoginGate.VPN,
+            clearFields = false
+        )
+    }
+
+    /**
+     * VPN znovu běží: vrať uživatele tam, kde byl (karty zůstaly v paměti).
+     * Po odhlášení VPN sama přihlášení nepřeskakuje.
+     */
+    private fun exitVpnGate() {
+        vpnBanner.visibility = View.GONE
+        updateLoginFormForVpn(true)
+
+        when (loginGate) {
+            LoginGate.LOGOUT, LoginGate.AUTH -> return
+            LoginGate.NONE -> return
+            LoginGate.VPN -> Unit
+        }
+
+        hideLoginScreen()
+        loginGate = LoginGate.NONE
+
+        if (tabs.isEmpty()) {
+            restoreSavedTabsOrStart()
+        } else {
+            // Karty pořád běží pod overlay — jen je znovu ukaž / případně reload.
+            refreshTabStrip()
+            activeWebView?.let { wv ->
+                // Po výpadku sítě někdy pomůže jemné obnovení aktivní karty.
+                if (wv.url.isNullOrBlank()) {
+                    val url = savedTabUrls.getOrNull(savedActiveTabIndex)
+                        ?: pendingStartUrl
+                        ?: DEFAULT_URL
+                    wv.loadUrl(url)
+                }
+            }
+        }
+    }
+
+    private fun restoreSavedTabsOrStart() {
+        val urls = savedTabUrls
+        if (urls.isNotEmpty()) {
+            urls.forEach { openInNewTab(it) }
+            val idx = savedActiveTabIndex.coerceIn(0, tabs.lastIndex)
+            selectTab(tabs[idx].id)
+        } else {
+            openInNewTab(pendingStartUrl ?: pendingResumeUrl ?: DEFAULT_URL)
+        }
+    }
+
+    private fun updateLoginFormForVpn(vpnOn: Boolean) {
+        if (!::loginButton.isInitialized) return
+        loginButton.isEnabled = vpnOn || loginGate == LoginGate.LOGOUT || loginGate == LoginGate.AUTH
+        loginButton.alpha = if (loginButton.isEnabled) 1f else 0.45f
+    }
+
     // ── Přihlášení (celá obrazovka) ─────────────────────────────────────
 
     private fun bindLoginUi() {
         loginOverlay = findViewById(R.id.loginOverlay)
         loggedOutBanner = findViewById(R.id.loggedOutBanner)
+        vpnBanner = findViewById(R.id.vpnBanner)
         usernameLayout = findViewById(R.id.usernameLayout)
         usernameInput = findViewById(R.id.usernameInput)
         passwordInput = findViewById(R.id.passwordInput)
@@ -587,13 +778,16 @@ class WebViewActivity : AppCompatActivity() {
 
     /**
      * Celá obrazovka „PSST Data“.
-     * [handler] != null → odpověď na HTTP 401; null → přihlášení po Odhlásit.
+     * [handler] != null → odpověď na HTTP 401; null → přihlášení po Odhlásit / VPN.
      */
     private fun showLoginScreen(
         host: String,
         handler: HttpAuthHandler?,
         loggedOut: Boolean,
-        resumeUrl: String?
+        resumeUrl: String?,
+        vpnMissing: Boolean = !isVpnActive(),
+        gate: LoginGate? = null,
+        clearFields: Boolean = true
     ) {
         if (isFinishing) {
             handler?.cancel()
@@ -607,33 +801,59 @@ class WebViewActivity : AppCompatActivity() {
 
         pendingAuthHandler = handler
         pendingAuthHost = host
-        pendingResumeUrl = resumeUrl
+        if (resumeUrl != null) pendingResumeUrl = resumeUrl
         authDialogShowing = true
         loginVisible = true
         progressBar.visibility = View.GONE
 
+        loginGate = gate ?: when {
+            loggedOut -> LoginGate.LOGOUT
+            handler != null -> LoginGate.AUTH
+            vpnMissing -> LoginGate.VPN
+            else -> LoginGate.AUTH
+        }
+
         loggedOutBanner.visibility = if (loggedOut) View.VISIBLE else View.GONE
+        vpnBanner.visibility = if (vpnMissing) View.VISIBLE else View.GONE
         rememberCheck.isChecked = true
         usernameLayout.error = null
-        usernameInput.setText("")
-        passwordInput.setText("")
+        if (clearFields) {
+            usernameInput.setText("")
+            passwordInput.setText("")
+        }
+
+        updateLoginFormForVpn(isVpnActive())
 
         loginOverlay.visibility = View.VISIBLE
         loginOverlay.bringToFront()
-        usernameInput.requestFocus()
+        if (loginButton.isEnabled) usernameInput.requestFocus()
     }
 
     private fun hideLoginScreen() {
         loginOverlay.visibility = View.GONE
         loggedOutBanner.visibility = View.GONE
+        vpnBanner.visibility = View.GONE
         authDialogShowing = false
         loginVisible = false
+        if (loginGate != LoginGate.VPN) {
+            // VPN bránu si pamatuje exitVpnGate; tady čistíme AUTH/LOGOUT.
+        }
         pendingAuthHandler = null
         pendingAuthHost = null
-        pendingResumeUrl = null
+        // pendingResumeUrl nech — může se hodit po VPN
     }
 
     private fun submitLogin() {
+        if (!isVpnActive()) {
+            vpnBanner.visibility = View.VISIBLE
+            Toast.makeText(
+                this,
+                "Nejdřív připojte VPN (Cisco AnyConnect)",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
         val user = usernameInput.text?.toString()?.trim().orEmpty()
         val pass = passwordInput.text?.toString().orEmpty()
         if (user.isEmpty()) {
@@ -651,15 +871,18 @@ class WebViewActivity : AppCompatActivity() {
         authChallengeCounts[HttpCredentials.authKey(host)] = 0
 
         val handler = pendingAuthHandler
-        val resumeUrl = pendingResumeUrl ?: DEFAULT_URL
+        val resumeUrl = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
+        val wasLogout = loginGate == LoginGate.LOGOUT
+        loginGate = LoginGate.NONE
         hideLoginScreen()
 
         if (handler != null) {
             awaitingHttpAuth = true
             handler.proceed(user, pass)
-        } else {
-            // Po odhlášení — nová čistá karta s domovskou stránkou.
-            openInNewTab(resumeUrl)
+        } else if (wasLogout || tabs.isEmpty()) {
+            // Po odhlášení / startu — nová čistá karta.
+            if (tabs.isEmpty()) openInNewTab(resumeUrl)
+            else loadInActiveTab(resumeUrl)
         }
     }
 
@@ -820,6 +1043,8 @@ class WebViewActivity : AppCompatActivity() {
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         activeTabId = -1L
+        savedTabUrls = emptyList()
+        savedActiveTabIndex = 0
         refreshTabStrip()
 
         // Hned ukaž přihlášení s „Byl jste odhlášen“ — cookies dočistíme na pozadí.
@@ -827,7 +1052,9 @@ class WebViewActivity : AppCompatActivity() {
             host = "psst.tudc.cz",
             handler = null,
             loggedOut = true,
-            resumeUrl = DEFAULT_URL
+            resumeUrl = DEFAULT_URL,
+            vpnMissing = !isVpnActive(),
+            gate = LoginGate.LOGOUT
         )
 
         val cookieManager = CookieManager.getInstance()
@@ -940,9 +1167,10 @@ class WebViewActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         if (loginVisible) {
-            // Po odhlášení zůstat na přihlášení; při HTTP auth zrušit požadavek.
-            if (pendingAuthHandler != null) {
+            // VPN / odhlášení: zůstat na obrazovce. HTTP auth: zrušit požadavek.
+            if (pendingAuthHandler != null && loginGate == LoginGate.AUTH) {
                 pendingAuthHandler?.cancel()
+                loginGate = LoginGate.NONE
                 hideLoginScreen()
                 awaitingHttpAuth = false
             }
