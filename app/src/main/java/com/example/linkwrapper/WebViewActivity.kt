@@ -2,26 +2,32 @@ package com.example.linkwrapper
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.DialogInterface
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.webkit.HttpAuthHandler
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.checkbox.MaterialCheckBox
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.textfield.TextInputEditText
 
 class WebViewActivity : AppCompatActivity() {
 
@@ -34,6 +40,15 @@ class WebViewActivity : AppCompatActivity() {
 
     // Aby po chybě nevyskočilo víc dialogů za sebou.
     private var dialogShown = false
+    private var authDialogShowing = false
+
+    /** WebView právě řeší HTTP auth challenge (Basic/Digest/NTLM). */
+    private var awaitingHttpAuth = false
+
+    /** Host, pro který jsme právě zkusili uložené heslo — při dalším 401 už dialog. */
+    private var autoAuthTriedHost: String? = null
+
+    private var currentHost: String? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -71,6 +86,53 @@ class WebViewActivity : AppCompatActivity() {
             }
 
             /**
+             * HTTP Basic / Digest / (někdy) NTLM — server chce jméno a heslo.
+             * Na PC to často pošle Windows samo; tady musí uživatel zadat údaje.
+             */
+            override fun onReceivedHttpAuthRequest(
+                view: WebView?,
+                handler: HttpAuthHandler?,
+                host: String?,
+                realm: String?
+            ) {
+                awaitingHttpAuth = true
+                if (handler == null || host.isNullOrEmpty()) {
+                    handler?.cancel()
+                    awaitingHttpAuth = false
+                    return
+                }
+
+                // Jednou zkus uložené heslo; když server znovu požádá, ukaž dialog.
+                val saved = HttpCredentials.get(this@WebViewActivity, host)
+                if (saved != null && autoAuthTriedHost != host) {
+                    autoAuthTriedHost = host
+                    handler.proceed(saved.username, saved.password)
+                    return
+                }
+
+                showHttpAuthDialog(handler, host, realm)
+            }
+
+            /**
+             * 401 bez volání onReceivedHttpAuthRequest — typicky Windows Integrated
+             * Auth (Negotiate/Kerberos), které Android WebView neumí jako PC.
+             */
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?
+            ) {
+                if (request?.isForMainFrame != true) return
+                if (errorResponse?.statusCode != 401) return
+                // Auth callback může dorazit ve stejném „kole“ — počkej na UI thread.
+                val failedUrl = request.url
+                view?.post {
+                    if (awaitingHttpAuth || authDialogShowing || dialogShown) return@post
+                    showUnauthorizedWarning(failedUrl)
+                }
+            }
+
+            /**
              * Síťové chyby (DNS, timeout, nedostupný server).
              * Typicky znamenají, že neběží VPN.
              */
@@ -82,6 +144,13 @@ class WebViewActivity : AppCompatActivity() {
                 // Chyby podřízených požadavků (obrázky, skripty) ignorujeme.
                 if (request?.isForMainFrame != true) return
                 showNetworkWarning(error?.errorCode, request.url)
+            }
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                // Úspěšné načtení — příští návštěva může znovu použít uložené heslo.
+                autoAuthTriedHost = null
+                awaitingHttpAuth = false
             }
         }
 
@@ -104,7 +173,8 @@ class WebViewActivity : AppCompatActivity() {
         }
 
         val uri = runCatching { Uri.parse(url) }.getOrNull()
-        supportActionBar?.title = uri?.host ?: "Odkaz"
+        currentHost = uri?.host
+        supportActionBar?.title = currentHost ?: "Odkaz"
 
         LinkHistory.addEntry(this, url)
         webView.loadUrl(url)
@@ -137,6 +207,119 @@ class WebViewActivity : AppCompatActivity() {
         } catch (e: Exception) {
             false
         }
+    }
+
+    private fun showHttpAuthDialog(
+        handler: HttpAuthHandler,
+        host: String,
+        realm: String?
+    ) {
+        if (authDialogShowing || isFinishing) {
+            handler.cancel()
+            return
+        }
+        authDialogShowing = true
+        progressBar.visibility = View.GONE
+
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_http_auth, null)
+        val realmView = view.findViewById<android.widget.TextView>(R.id.authRealm)
+        val usernameInput = view.findViewById<TextInputEditText>(R.id.usernameInput)
+        val passwordInput = view.findViewById<TextInputEditText>(R.id.passwordInput)
+        val rememberCheck = view.findViewById<MaterialCheckBox>(R.id.rememberCheck)
+
+        val realmLabel = realm?.takeIf { it.isNotBlank() }
+        realmView.text = buildString {
+            append("Server ")
+            append(host)
+            append(" vyžaduje přihlášení.")
+            if (realmLabel != null) {
+                append("\nOblast: ")
+                append(realmLabel)
+            }
+        }
+
+        HttpCredentials.get(this, host)?.let {
+            usernameInput.setText(it.username)
+            passwordInput.setText(it.password)
+            rememberCheck.isChecked = true
+        }
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Přihlášení")
+            .setView(view)
+            .setPositiveButton("Přihlásit", null)
+            .setNegativeButton("Zrušit") { _, _ ->
+                handler.cancel()
+                authDialogShowing = false
+                awaitingHttpAuth = false
+            }
+            .setCancelable(false)
+            .create()
+
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+                .setOnClickListener {
+                    val user = usernameInput.text?.toString()?.trim().orEmpty()
+                    val pass = passwordInput.text?.toString().orEmpty()
+                    if (user.isEmpty()) {
+                        usernameInput.error = "Zadejte jméno"
+                        return@setOnClickListener
+                    }
+                    if (rememberCheck.isChecked) {
+                        HttpCredentials.save(this, host, user, pass)
+                    } else {
+                        HttpCredentials.clear(this, host)
+                    }
+                    autoAuthTriedHost = host
+                    authDialogShowing = false
+                    awaitingHttpAuth = true
+                    dialog.dismiss()
+                    handler.proceed(user, pass)
+                }
+        }
+
+        dialog.show()
+    }
+
+    /**
+     * 401, které WebView nevyřešilo dialogem — typicky Negotiate/Kerberos
+     * (Integrated Windows Auth), které na Androidu nefunguje jako na PC.
+     */
+    private fun showUnauthorizedWarning(url: Uri?) {
+        if (dialogShown) return
+        dialogShown = true
+        progressBar.visibility = View.GONE
+
+        val host = url?.host ?: currentHost ?: "server"
+        val hasSaved = HttpCredentials.get(this, host) != null
+
+        val extra = if (hasSaved) {
+            "\n\nUložené přihlášení pro tuto adresu můžete smazat v menu " +
+                "(⋮ → Zapomenout přihlášení) a zkusit jiné údaje."
+        } else {
+            "\n\nPokud se nepřihlašovací dialog vůbec neobjevil, server pravděpodobně " +
+                "používá Windows Integrated Authentication (Kerberos), které Android " +
+                "neumí stejně jako firemní PC. Pak je potřeba na straně serveru " +
+                "povolit NTLM nebo Basic Auth, případně jiné SSO pro mobilní klienty."
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Přístup odepřen (401)")
+            .setMessage(
+                "Server $host odmítl přihlášení.\n\n" +
+                    "Na firemním PC to často projde samo přes doménový účet. " +
+                    "V této aplikaci je potřeba zadat jméno a heslo ručně " +
+                    "(často ve tvaru DOMÉNA\\uživatel)." +
+                    extra
+            )
+            .setPositiveButton("Zkusit znovu") { _, _ ->
+                dialogShown = false
+                autoAuthTriedHost = null
+                webView.reload()
+            }
+            .setNegativeButton("Zavřít") { _, _ -> finish() }
+            .setCancelable(false)
+            .show()
     }
 
     private fun showCertWarning(error: SslError?) {
@@ -218,6 +401,32 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun confirmClearCredentials() {
+        val host = currentHost
+        val clearHostOnly = host != null && HttpCredentials.get(this, host) != null
+        val message = when {
+            clearHostOnly -> "Smazat uložené jméno a heslo pro $host?"
+            HttpCredentials.hasAny(this) ->
+                "Smazat všechna uložená přihlášení v této aplikaci?"
+            else -> {
+                Toast.makeText(this, "Žádné uložené přihlášení", Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Zapomenout přihlášení")
+            .setMessage(message)
+            .setPositiveButton("Smazat") { _, _ ->
+                if (clearHostOnly) HttpCredentials.clear(this, host!!)
+                else HttpCredentials.clearAll(this)
+                autoAuthTriedHost = null
+                Toast.makeText(this, "Přihlášení smazáno", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Zrušit", null)
+            .show()
+    }
+
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_webview, menu)
         return true
@@ -227,7 +436,12 @@ class WebViewActivity : AppCompatActivity() {
         return when (item.itemId) {
             R.id.action_reload -> {
                 dialogShown = false
+                autoAuthTriedHost = null
                 webView.reload()
+                true
+            }
+            R.id.action_clear_credentials -> {
+                confirmClearCredentials()
                 true
             }
             android.R.id.home -> { finish(); true }

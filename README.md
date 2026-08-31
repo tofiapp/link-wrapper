@@ -12,6 +12,9 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - **Historie** posledních 24 hodin otevřených odkazů (uložená jen lokálně
   v appce, nikam se neposílá).
 - Na domovské obrazovce jde odkaz i ručně vložit a otevřít.
+- **HTTP přihlášení** (Basic / Digest / často i NTLM): když server vrátí 401,
+  appka zobrazí dialog na jméno a heslo. Údaje lze zapamatovat lokálně
+  (menu → Zapomenout přihlášení).
 
 ## Jak appku dostat jako .apk (bez Android Studia)
 
@@ -107,15 +110,29 @@ připomínku pár měsíců předem.
 (Intune → trusted certificate profile). Pak ověřování v aplikaci není potřeba
 vůbec a fungovat bude i běžný prohlížeč.
 
+## HTTP autentizace (401)
+
+Na firemním PC často stačí být přihlášený do Windows — prohlížeč pošle
+doménový účet sám (Integrated Windows Auth). Android to neumí stejně.
+
+Appka proto při HTTP auth challenge zobrazí dialog. Zkoušejte tvar
+`DOMÉNA\uživatel` (např. `SZDC\jnovak`) a firemní heslo.
+
+| Typ na serveru | Šance ve WebView |
+| --- | --- |
+| Basic / Digest | Dobrá — dialog by se měl objevit |
+| NTLM | Někdy funguje (závisí na System WebView) |
+| Negotiate / Kerberos | Typicky **nefunguje** — uvidíte 401 bez dialogu |
+
+Pokud se dialog vůbec neobjeví a zůstane jen „401 Unauthorized“, server
+pravděpodobně vyžaduje Kerberos. Pak je potřeba na straně IIS/IT povolit
+NTLM (nebo Basic přes HTTPS), případně jiné SSO pro mobilní klienty —
+to aplikace sama nevyřeší.
+
+Údaje se ukládají jen lokálně v aplikaci (`HttpCredentials`), nikam se
+neodesílají. Smazání: v WebView menu → **Zapomenout přihlášení**.
+
 ## Co ještě doladit
 
-- **Omezení na konkrétní doménu**: aktuálně appka přijme jakoukoliv http/https
-  adresu. Až budete znát přesnou firemní doménu, přidejte do
-  `app/src/main/AndroidManifest.xml` do `intent-filter` u `WebViewActivity`
-  atribut `android:host="vase-domena.cz"` k `<data>` tagu — appka se pak
-  v "Otevřít pomocí" nabídne jen pro tuhle doménu.
 - **Ikona appky**: teď je jen jednoduchý placeholder (modrý čtverec se
   symbolem odkazu). Dá se snadno vyměnit za firemní logo.
-- **VPN kontrola**: appka nekontroluje, jestli je Cisco AnyConnect připojený —
-  spoléhá na to, že systémová VPN běží. Pokud by se hodilo appce hlásit
-  "nejsi připojený k VPN", dá se to doplnit.

@@ -6,4 +6,9 @@
         android:title="Přenačíst"
         android:icon="@drawable/ic_refresh"
         app:showAsAction="always" />
+    <item
+        android:id="@+id/action_clear_credentials"
+        android:title="Zapomenout přihlášení"
+        android:icon="@drawable/ic_logout"
+        app:showAsAction="never" />
 </menu>
