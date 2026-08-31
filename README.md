@@ -5,16 +5,18 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
+- Po spuštění **rovnou otevře** výchozí stránku
+  `https://test.psst.tudc.cz/HSI.Psst.Data` (bez úvodního menu).
+- Nahoře jen lišta s nabídkou **⋮**: zadat adresu ručně, domovská stránka,
+  přenačíst, historie, zapomenout přihlášení, certifikáty, nastavení odkazů.
 - Objeví se jako volba v systémovém dialogu "Otevřít pomocí" u http/https odkazů
-  (např. při kliknutí na odkaz v Outlooku).
-- Zobrazí stránku ve vestavěném WebView.
-- Tlačítko **Přenačíst** v horní liště.
-- **Historie** posledních 24 hodin otevřených odkazů (uložená jen lokálně
-  v appce, nikam se neposílá).
-- Na domovské obrazovce jde odkaz i ručně vložit a otevřít.
+  (např. při kliknutí na odkaz v Outlooku) — včetně `psst.tudc.cz` a
+  `test.psst.tudc.cz`.
 - **HTTP přihlášení** (Basic / Digest / často i NTLM): když server vrátí 401,
-  appka zobrazí dialog na jméno a heslo. Údaje lze zapamatovat lokálně
-  (menu → Zapomenout přihlášení).
+  appka zobrazí dialog na jméno a heslo. Údaje lze zapamatovat lokálně.
+- **Poloha**: když stránka požádá o geolokaci, appka vyžádá systémové
+  oprávnění a předá polohu do WebView.
+- **Historie** posledních 24 hodin otevřených odkazů (jen lokálně v appce).
 
 ## Jak appku dostat jako .apk (bez Android Studia)
 

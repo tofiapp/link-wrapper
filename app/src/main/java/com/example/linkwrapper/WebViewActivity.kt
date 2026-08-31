@@ -1,18 +1,24 @@
 package com.example.linkwrapper
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.net.Uri
 import android.net.http.SslError
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.webkit.GeolocationPermissions
 import android.webkit.HttpAuthHandler
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
@@ -22,17 +28,23 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.textfield.TextInputLayout
 
 class WebViewActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_URL = "extra_url"
+
+        /** Stránka, která se otevře hned po spuštění aplikace. */
+        const val DEFAULT_URL = "https://test.psst.tudc.cz/HSI.Psst.Data"
     }
 
     private lateinit var webView: WebView
@@ -50,6 +62,18 @@ class WebViewActivity : AppCompatActivity() {
 
     private var currentHost: String? = null
 
+    /** Čekající žádost stránky o geolokaci (dokud uživatel neudělí oprávnění). */
+    private var pendingGeoOrigin: String? = null
+    private var pendingGeoCallback: GeolocationPermissions.Callback? = null
+
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val allowed = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        finishGeolocationRequest(allowed)
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -57,13 +81,19 @@ class WebViewActivity : AppCompatActivity() {
 
         val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
-        toolbar.setNavigationOnClickListener { onBackPressedDispatcher.onBackPressed() }
+        // Žádná šipka zpět — jen nabídka ⋮.
+        supportActionBar?.setDisplayHomeAsUpEnabled(false)
+        toolbar.navigationIcon = null
 
         webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
 
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
+        webView.settings.setGeolocationEnabled(true)
+        // Některé firemní stránky očekávají „plný“ prohlížeč.
+        webView.settings.useWideViewPort = true
+        webView.settings.loadWithOverviewMode = true
 
         webView.webViewClient = object : WebViewClient() {
 
@@ -151,6 +181,7 @@ class WebViewActivity : AppCompatActivity() {
                 // Úspěšné načtení — příští návštěva může znovu použít uložené heslo.
                 autoAuthTriedHost = null
                 awaitingHttpAuth = false
+                url?.let { applyTitle(it) }
             }
         }
 
@@ -160,29 +191,53 @@ class WebViewActivity : AppCompatActivity() {
                 progressBar.setProgressCompat(newProgress, true)
                 if (newProgress >= 100) progressBar.visibility = View.GONE
             }
+
+            /**
+             * Stránka volá navigator.geolocation — Android vyžaduje runtime oprávnění.
+             */
+            override fun onGeolocationPermissionsShowPrompt(
+                origin: String?,
+                callback: GeolocationPermissions.Callback?
+            ) {
+                handleGeolocationPrompt(origin, callback)
+            }
         }
 
         webView.setOnLongClickListener { true }
 
-        val url = resolveUrl()
+        loadResolvedUrl(resolveUrl())
+    }
 
+    /**
+     * singleTask: další odkaz (Outlook / Sdílet) přijde sem znovu přes onNewIntent.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        dialogShown = false
+        autoAuthTriedHost = null
+        awaitingHttpAuth = false
+        loadResolvedUrl(resolveUrl())
+    }
+
+    private fun loadResolvedUrl(url: String?) {
         if (url.isNullOrEmpty()) {
             Toast.makeText(this, "Nebyla předána žádná adresa", Toast.LENGTH_SHORT).show()
-            finish()
             return
         }
-
-        val uri = runCatching { Uri.parse(url) }.getOrNull()
-        currentHost = uri?.host
-        supportActionBar?.title = currentHost ?: "Odkaz"
-
+        applyTitle(url)
         LinkHistory.addEntry(this, url)
         webView.loadUrl(url)
     }
 
+    private fun applyTitle(url: String) {
+        val uri = runCatching { Uri.parse(url) }.getOrNull()
+        currentHost = uri?.host
+        supportActionBar?.title = currentHost ?: "Link Wrapper"
+    }
+
     /**
-     * Odkaz může přijít třemi cestami: kliknutím v jiné aplikaci (ACTION_VIEW),
-     * sdílením (ACTION_SEND) nebo z domovské obrazovky aplikace.
+     * Odkaz: ACTION_VIEW / EXTRA_URL / ACTION_SEND, jinak výchozí PSST stránka.
      */
     private fun resolveUrl(): String? {
         intent?.data?.toString()?.let { return it }
@@ -195,7 +250,115 @@ class WebViewActivity : AppCompatActivity() {
                 .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
                 ?: shared.takeIf { it.isNotEmpty() }?.let { "https://$it" }
         }
-        return null
+
+        // Spuštění z ikony aplikace — rovnou domovská PSST adresa.
+        return DEFAULT_URL
+    }
+
+    private fun normalizeUrl(raw: String): String? {
+        var text = raw.trim()
+        if (text.isEmpty()) return null
+        if (!text.startsWith("http://") && !text.startsWith("https://")) {
+            text = "https://$text"
+        }
+        if (Uri.parse(text).host.isNullOrEmpty()) return null
+        return text
+    }
+
+    private fun showOpenUrlDialog() {
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_open_url, null)
+        val urlLayout = view.findViewById<TextInputLayout>(R.id.urlLayout)
+        val urlInput = view.findViewById<TextInputEditText>(R.id.urlInput)
+        urlInput.setText(webView.url ?: DEFAULT_URL)
+        urlInput.setSelection(urlInput.text?.length ?: 0)
+
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Otevřít adresu")
+            .setView(view)
+            .setPositiveButton("Otevřít", null)
+            .setNegativeButton("Zrušit", null)
+            .create()
+
+        fun tryOpen() {
+            val normalized = normalizeUrl(urlInput.text?.toString().orEmpty())
+            if (normalized == null) {
+                urlLayout.error = "Tohle nevypadá jako adresa"
+                return
+            }
+            urlLayout.error = null
+            dialog.dismiss()
+            dialogShown = false
+            autoAuthTriedHost = null
+            loadResolvedUrl(normalized)
+        }
+
+        urlInput.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_GO) {
+                tryOpen()
+                true
+            } else false
+        }
+
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener { tryOpen() }
+        }
+        dialog.show()
+    }
+
+    private fun handleGeolocationPrompt(
+        origin: String?,
+        callback: GeolocationPermissions.Callback?
+    ) {
+        if (callback == null) return
+
+        if (hasLocationPermission()) {
+            callback.invoke(origin, true, false)
+            return
+        }
+
+        pendingGeoOrigin = origin
+        pendingGeoCallback = callback
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Přístup k poloze")
+            .setMessage(
+                "Stránka ${origin ?: "web"} chce použít polohu zařízení " +
+                    "(např. mapa nebo GPS funkce)."
+            )
+            .setPositiveButton("Povolit") { _, _ ->
+                locationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
+            .setNegativeButton("Odmítnout") { _, _ ->
+                finishGeolocationRequest(false)
+            }
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun hasLocationPermission(): Boolean {
+        val fine = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        return fine || coarse
+    }
+
+    private fun finishGeolocationRequest(allowed: Boolean) {
+        val origin = pendingGeoOrigin
+        val callback = pendingGeoCallback
+        pendingGeoOrigin = null
+        pendingGeoCallback = null
+        callback?.invoke(origin, allowed, false)
+        if (!allowed) {
+            Toast.makeText(this, "Poloha nebyla povolena", Toast.LENGTH_SHORT).show()
+        }
     }
 
     /** Je aktivní VPN spojení? */
@@ -317,8 +480,9 @@ class WebViewActivity : AppCompatActivity() {
                 autoAuthTriedHost = null
                 webView.reload()
             }
-            .setNegativeButton("Zavřít") { _, _ -> finish() }
-            .setCancelable(false)
+            .setNegativeButton("Zavřít", null)
+            .setCancelable(true)
+            .setOnDismissListener { dialogShown = false }
             .show()
     }
 
@@ -360,8 +524,9 @@ class WebViewActivity : AppCompatActivity() {
                 "na této stránce žádné přihlašovací údaje." +
                 diag
             )
-            .setPositiveButton("Zavřít") { _, _ -> finish() }
-            .setCancelable(false)
+            .setPositiveButton("Zavřít", null)
+            .setCancelable(true)
+            .setOnDismissListener { dialogShown = false }
             .show()
     }
 
@@ -392,12 +557,13 @@ class WebViewActivity : AppCompatActivity() {
         MaterialAlertDialogBuilder(this)
             .setTitle("Nepodařilo se připojit")
             .setMessage("$detail\n\n$vpnHint\n\nAdresa: ${url?.host ?: "neznámá"}")
-            .setPositiveButton("Zavřít") { _, _ -> finish() }
-            .setNegativeButton("Zkusit znovu") { _, _ ->
+            .setPositiveButton("Zkusit znovu") { _, _ ->
                 dialogShown = false
                 webView.reload()
             }
-            .setCancelable(false)
+            .setNegativeButton("Zavřít", null)
+            .setCancelable(true)
+            .setOnDismissListener { dialogShown = false }
             .show()
     }
 
@@ -427,6 +593,49 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showCertInfo() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Ověřování certifikátů")
+            .setMessage(CertPinning.describeChain(this))
+            .setPositiveButton("Zavřít", null)
+            .show()
+    }
+
+    private fun openLinkSettings() {
+        val steps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            "1. Klepni na „Otevírání odkazů\"\n" +
+                "2. Zapni „Otevírat podporované odkazy\"\n" +
+                "3. V „Podporované webové adresy\" zaškrtni psst.tudc.cz " +
+                "a test.psst.tudc.cz"
+        } else {
+            "1. Klepni na „Otevírat ve výchozím nastavení\"\n" +
+                "2. Zvol „Otevírat v této aplikaci\""
+        }
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Nastavit otevírání odkazů")
+            .setMessage(
+                "Android sám nenabídne aplikaci u odkazů, dokud ji nepovolíš " +
+                    "v nastavení.\n\n$steps\n\n" +
+                    "Pokud Outlook odkazy i tak otevírá sám, vypni jeho vestavěný " +
+                    "prohlížeč: Outlook → Nastavení → Obecné → Otevírat odkazy."
+            )
+            .setPositiveButton("Otevřít nastavení") { _, _ ->
+                try {
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", packageName, null)
+                        )
+                    )
+                } catch (e: Exception) {
+                    startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
+            }
+            .setNegativeButton("Zavřít", null)
+            .show()
+    }
+
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_webview, menu)
         return true
@@ -434,17 +643,38 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.action_open_url -> {
+                showOpenUrlDialog()
+                true
+            }
+            R.id.action_home -> {
+                dialogShown = false
+                autoAuthTriedHost = null
+                loadResolvedUrl(DEFAULT_URL)
+                true
+            }
             R.id.action_reload -> {
                 dialogShown = false
                 autoAuthTriedHost = null
                 webView.reload()
                 true
             }
+            R.id.action_history -> {
+                startActivity(Intent(this, HistoryActivity::class.java))
+                true
+            }
             R.id.action_clear_credentials -> {
                 confirmClearCredentials()
                 true
             }
-            android.R.id.home -> { finish(); true }
+            R.id.action_cert_info -> {
+                showCertInfo()
+                true
+            }
+            R.id.action_link_settings -> {
+                openLinkSettings()
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
