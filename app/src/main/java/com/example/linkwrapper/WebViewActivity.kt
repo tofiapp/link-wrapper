@@ -325,10 +325,11 @@ class WebViewActivity : AppCompatActivity() {
             ) {
                 if (request?.isForMainFrame != true) return
                 if (errorResponse?.statusCode != 401) return
-                if (view != null) authFailedViews.add(view)
-                if (view !== activeWebView) return
+                val webView = view ?: return
+                authFailedViews.add(webView)
+                if (webView !== activeWebView) return
                 val failedUrl = request.url
-                view.post {
+                webView.post {
                     if (awaitingHttpAuth || authDialogShowing || dialogShown) return@post
                     showUnauthorizedWarning(failedUrl)
                 }
