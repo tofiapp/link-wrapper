@@ -18,6 +18,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.HttpAuthHandler
 import android.webkit.SslErrorHandler
@@ -25,8 +26,14 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -38,31 +45,46 @@ import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 
+/** Jedna karta prohlížeče — vlastní WebView, název a adresa. */
+private class BrowserTab(
+    val id: Long,
+    val webView: WebView,
+    var title: String,
+    var url: String
+)
+
 class WebViewActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_URL = "extra_url"
-
-        /** Stránka, která se otevře hned po spuštění aplikace. */
         const val DEFAULT_URL = "https://test.psst.tudc.cz/HSI.Psst.Data"
+        private const val MAX_TABS = 8
     }
 
-    private lateinit var webView: WebView
+    private lateinit var toolbar: MaterialToolbar
     private lateinit var progressBar: LinearProgressIndicator
+    private lateinit var webContainer: FrameLayout
+    private lateinit var tabStrip: LinearLayout
+    private lateinit var tabScroll: HorizontalScrollView
+
+    private val tabs = mutableListOf<BrowserTab>()
+    private var activeTabId: Long = -1L
+    private var nextTabId = 1L
+
+    private val activeTab: BrowserTab?
+        get() = tabs.find { it.id == activeTabId }
+
+    private val activeWebView: WebView?
+        get() = activeTab?.webView
 
     // Aby po chybě nevyskočilo víc dialogů za sebou.
     private var dialogShown = false
     private var authDialogShowing = false
-
-    /** WebView právě řeší HTTP auth challenge (Basic/Digest/NTLM). */
     private var awaitingHttpAuth = false
 
-    /** Host, pro který jsme právě zkusili uložené heslo — při dalším 401 už dialog. */
-    private var autoAuthTriedHost: String? = null
+    /** Auth klíče, pro které jsme právě zkusili uložené heslo. */
+    private val autoAuthTriedKeys = mutableSetOf<String>()
 
-    private var currentHost: String? = null
-
-    /** Čekající žádost stránky o geolokaci (dokud uživatel neudělí oprávnění). */
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
 
@@ -74,34 +96,176 @@ class WebViewActivity : AppCompatActivity() {
         finishGeolocationRequest(allowed)
     }
 
-    @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_webview)
 
-        val toolbar = findViewById<MaterialToolbar>(R.id.toolbar)
+        toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
-        // Žádná šipka zpět — jen nabídka ⋮.
         supportActionBar?.setDisplayHomeAsUpEnabled(false)
         toolbar.navigationIcon = null
 
-        webView = findViewById(R.id.webView)
         progressBar = findViewById(R.id.progressBar)
+        webContainer = findViewById(R.id.webContainer)
+        tabStrip = findViewById(R.id.tabStrip)
+        tabScroll = findViewById(R.id.tabScroll)
 
+        CookieManager.getInstance().setAcceptCookie(true)
+
+        findViewById<ImageButton>(R.id.newTabButton).setOnClickListener {
+            openInNewTab(DEFAULT_URL)
+        }
+
+        val startUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
+        openInNewTab(startUrl)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        dialogShown = false
+        awaitingHttpAuth = false
+        val url = resolveUrlFromIntent(intent) ?: return
+        // Externí odkaz / sdílení / historie → nová karta.
+        openInNewTab(url)
+    }
+
+    override fun onDestroy() {
+        tabs.toList().forEach { destroyTab(it) }
+        tabs.clear()
+        super.onDestroy()
+    }
+
+    // ── Karty ───────────────────────────────────────────────────────────
+
+    private fun openInNewTab(url: String) {
+        if (tabs.size >= MAX_TABS) {
+            Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val webView = createWebView()
+        val tab = BrowserTab(
+            id = nextTabId++,
+            webView = webView,
+            title = hostLabel(url),
+            url = url
+        )
+        tabs.add(tab)
+        webContainer.addView(
+            webView,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        selectTab(tab.id)
+        LinkHistory.addEntry(this, url)
+        webView.loadUrl(url)
+        refreshTabStrip()
+    }
+
+    private fun selectTab(tabId: Long) {
+        activeTabId = tabId
+        tabs.forEach { tab ->
+            tab.webView.visibility = if (tab.id == tabId) View.VISIBLE else View.GONE
+        }
+        activeTab?.let { applyChrome(it) }
+        refreshTabStrip()
+    }
+
+    private fun closeTab(tabId: Long) {
+        val index = tabs.indexOfFirst { it.id == tabId }
+        if (index < 0) return
+        val closing = tabs.removeAt(index)
+        destroyTab(closing)
+
+        if (tabs.isEmpty()) {
+            openInNewTab(DEFAULT_URL)
+            return
+        }
+        if (activeTabId == tabId) {
+            val next = tabs.getOrNull(index.coerceAtMost(tabs.lastIndex)) ?: tabs.last()
+            selectTab(next.id)
+        } else {
+            refreshTabStrip()
+        }
+    }
+
+    private fun destroyTab(tab: BrowserTab) {
+        webContainer.removeView(tab.webView)
+        tab.webView.stopLoading()
+        tab.webView.webChromeClient = null
+        tab.webView.destroy()
+    }
+
+    private fun refreshTabStrip() {
+        tabStrip.removeAllViews()
+        val inflater = LayoutInflater.from(this)
+        for (tab in tabs) {
+            val item = inflater.inflate(R.layout.item_browser_tab, tabStrip, false)
+            val root = item.findViewById<View>(R.id.tabRoot)
+            val title = item.findViewById<TextView>(R.id.tabTitle)
+            val close = item.findViewById<ImageButton>(R.id.tabClose)
+            val selected = tab.id == activeTabId
+
+            title.text = tab.title
+            title.setTextColor(
+                ContextCompat.getColor(this, if (selected) R.color.accent else R.color.ink_soft)
+            )
+            root.setBackgroundResource(
+                if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
+            )
+            root.setOnClickListener { selectTab(tab.id) }
+            close.setOnClickListener { closeTab(tab.id) }
+            tabStrip.addView(item)
+        }
+        tabScroll.post {
+            val idx = tabs.indexOfFirst { it.id == activeTabId }
+            if (idx >= 0 && idx < tabStrip.childCount) {
+                val child = tabStrip.getChildAt(idx)
+                tabScroll.smoothScrollTo((child.left - 24).coerceAtLeast(0), 0)
+            }
+        }
+    }
+
+    private fun applyChrome(tab: BrowserTab) {
+        supportActionBar?.title = tab.title
+        currentHostForUi = runCatching { Uri.parse(tab.url).host }.getOrNull()
+    }
+
+    private var currentHostForUi: String? = null
+
+    private fun hostLabel(url: String): String {
+        return runCatching { Uri.parse(url).host }.getOrNull() ?: "Karta"
+    }
+
+    private fun updateTabMeta(webView: WebView, url: String?, title: String?) {
+        val tab = tabs.find { it.webView === webView } ?: return
+        if (!url.isNullOrBlank()) {
+            tab.url = url
+            if (title.isNullOrBlank()) tab.title = hostLabel(url)
+        }
+        if (!title.isNullOrBlank()) {
+            tab.title = title.take(40)
+        }
+        if (tab.id == activeTabId) applyChrome(tab)
+        refreshTabStrip()
+    }
+
+    // ── WebView factory ─────────────────────────────────────────────────
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun createWebView(): WebView {
+        val webView = WebView(this)
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.setGeolocationEnabled(true)
-        // Některé firemní stránky očekávají „plný“ prohlížeč.
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = true
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+        webView.setOnLongClickListener { true }
 
         webView.webViewClient = object : WebViewClient() {
-
-            /**
-             * Certifikát, kterému zařízení systémově nedůvěřuje.
-             * Spojení pokračuje jen tehdy, když certifikát pochází
-             * z firemního řetězce CA (viz CertPinning.kt).
-             */
             override fun onReceivedSslError(
                 view: WebView?,
                 handler: SslErrorHandler?,
@@ -111,14 +275,10 @@ class WebViewActivity : AppCompatActivity() {
                     handler?.proceed()
                 } else {
                     handler?.cancel()
-                    showCertWarning(error)
+                    if (view === activeWebView) showCertWarning(error)
                 }
             }
 
-            /**
-             * HTTP Basic / Digest / (někdy) NTLM — server chce jméno a heslo.
-             * Na PC to často pošle Windows samo; tady musí uživatel zadat údaje.
-             */
             override fun onReceivedHttpAuthRequest(
                 view: WebView?,
                 handler: HttpAuthHandler?,
@@ -132,10 +292,17 @@ class WebViewActivity : AppCompatActivity() {
                     return
                 }
 
-                // Jednou zkus uložené heslo; když server znovu požádá, ukaž dialog.
+                val key = HttpCredentials.authKey(host)
                 val saved = HttpCredentials.get(this@WebViewActivity, host)
-                if (saved != null && autoAuthTriedHost != host) {
-                    autoAuthTriedHost = host
+                if (saved != null && key !in autoAuthTriedKeys) {
+                    autoAuthTriedKeys.add(key)
+                    handler.proceed(saved.username, saved.password)
+                    return
+                }
+
+                // Dialog jen pro aktivní kartu — ostatní počkají na sdílené heslo.
+                if (view !== activeWebView && saved != null) {
+                    autoAuthTriedKeys.add(key)
                     handler.proceed(saved.username, saved.password)
                     return
                 }
@@ -143,18 +310,14 @@ class WebViewActivity : AppCompatActivity() {
                 showHttpAuthDialog(handler, host, realm)
             }
 
-            /**
-             * 401 bez volání onReceivedHttpAuthRequest — typicky Windows Integrated
-             * Auth (Negotiate/Kerberos), které Android WebView neumí jako PC.
-             */
             override fun onReceivedHttpError(
                 view: WebView?,
                 request: WebResourceRequest?,
                 errorResponse: WebResourceResponse?
             ) {
+                if (view !== activeWebView) return
                 if (request?.isForMainFrame != true) return
                 if (errorResponse?.statusCode != 401) return
-                // Auth callback může dorazit ve stejném „kole“ — počkej na UI thread.
                 val failedUrl = request.url
                 view?.post {
                     if (awaitingHttpAuth || authDialogShowing || dialogShown) return@post
@@ -162,39 +325,35 @@ class WebViewActivity : AppCompatActivity() {
                 }
             }
 
-            /**
-             * Síťové chyby (DNS, timeout, nedostupný server).
-             * Typicky znamenají, že neběží VPN.
-             */
             override fun onReceivedError(
                 view: WebView?,
                 request: WebResourceRequest?,
                 error: WebResourceError?
             ) {
-                // Chyby podřízených požadavků (obrázky, skripty) ignorujeme.
+                if (view !== activeWebView) return
                 if (request?.isForMainFrame != true) return
                 showNetworkWarning(error?.errorCode, request.url)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
-                // Úspěšné načtení — příští návštěva může znovu použít uložené heslo.
-                autoAuthTriedHost = null
                 awaitingHttpAuth = false
-                url?.let { applyTitle(it) }
+                updateTabMeta(view ?: return, url, view.title)
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                if (view !== activeWebView) return
                 progressBar.visibility = View.VISIBLE
                 progressBar.setProgressCompat(newProgress, true)
                 if (newProgress >= 100) progressBar.visibility = View.GONE
             }
 
-            /**
-             * Stránka volá navigator.geolocation — Android vyžaduje runtime oprávnění.
-             */
+            override fun onReceivedTitle(view: WebView?, title: String?) {
+                updateTabMeta(view ?: return, view.url, title)
+            }
+
             override fun onGeolocationPermissionsShowPrompt(
                 origin: String?,
                 callback: GeolocationPermissions.Callback?
@@ -203,56 +362,25 @@ class WebViewActivity : AppCompatActivity() {
             }
         }
 
-        webView.setOnLongClickListener { true }
-
-        loadResolvedUrl(resolveUrl())
+        return webView
     }
 
-    /**
-     * singleTask: další odkaz (Outlook / Sdílet) přijde sem znovu přes onNewIntent.
-     */
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        dialogShown = false
-        autoAuthTriedHost = null
-        awaitingHttpAuth = false
-        loadResolvedUrl(resolveUrl())
-    }
+    // ── URL helpers ─────────────────────────────────────────────────────
 
-    private fun loadResolvedUrl(url: String?) {
-        if (url.isNullOrEmpty()) {
-            Toast.makeText(this, "Nebyla předána žádná adresa", Toast.LENGTH_SHORT).show()
-            return
-        }
-        applyTitle(url)
-        LinkHistory.addEntry(this, url)
-        webView.loadUrl(url)
-    }
-
-    private fun applyTitle(url: String) {
-        val uri = runCatching { Uri.parse(url) }.getOrNull()
-        currentHost = uri?.host
-        supportActionBar?.title = currentHost ?: "Link Wrapper"
-    }
-
-    /**
-     * Odkaz: ACTION_VIEW / EXTRA_URL / ACTION_SEND, jinak výchozí PSST stránka.
-     */
-    private fun resolveUrl(): String? {
+    private fun resolveUrlFromIntent(intent: Intent?): String? {
         intent?.data?.toString()?.let { return it }
         intent?.getStringExtra(EXTRA_URL)?.let { return it }
 
         if (intent?.action == Intent.ACTION_SEND) {
             val shared = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
-            // Sdílený text bývá věta s odkazem uvnitř, ne holá adresa.
             return shared.split(Regex("\\s+"))
                 .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
                 ?: shared.takeIf { it.isNotEmpty() }?.let { "https://$it" }
         }
 
-        // Spuštění z ikony aplikace — rovnou domovská PSST adresa.
-        return DEFAULT_URL
+        // Studený start z ikony — bez EXTRA/data.
+        if (intent?.action == Intent.ACTION_MAIN) return DEFAULT_URL
+        return null
     }
 
     private fun normalizeUrl(raw: String): String? {
@@ -265,17 +393,31 @@ class WebViewActivity : AppCompatActivity() {
         return text
     }
 
-    private fun showOpenUrlDialog() {
+    private fun loadInActiveTab(url: String) {
+        val tab = activeTab ?: run {
+            openInNewTab(url)
+            return
+        }
+        dialogShown = false
+        LinkHistory.addEntry(this, url)
+        tab.url = url
+        tab.title = hostLabel(url)
+        applyChrome(tab)
+        refreshTabStrip()
+        tab.webView.loadUrl(url)
+    }
+
+    private fun showOpenUrlDialog(openAsNewTab: Boolean = false) {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_open_url, null)
         val urlLayout = view.findViewById<TextInputLayout>(R.id.urlLayout)
         val urlInput = view.findViewById<TextInputEditText>(R.id.urlInput)
-        urlInput.setText(webView.url ?: DEFAULT_URL)
+        urlInput.setText(activeTab?.url ?: DEFAULT_URL)
         urlInput.setSelection(urlInput.text?.length ?: 0)
 
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle("Otevřít adresu")
+            .setTitle(if (openAsNewTab) "Nová karta" else "Otevřít adresu")
             .setView(view)
-            .setPositiveButton("Otevřít", null)
+            .setPositiveButton(if (openAsNewTab) "Otevřít v kartě" else "Otevřít", null)
             .setNegativeButton("Zrušit", null)
             .create()
 
@@ -288,8 +430,7 @@ class WebViewActivity : AppCompatActivity() {
             urlLayout.error = null
             dialog.dismiss()
             dialogShown = false
-            autoAuthTriedHost = null
-            loadResolvedUrl(normalized)
+            if (openAsNewTab) openInNewTab(normalized) else loadInActiveTab(normalized)
         }
 
         urlInput.setOnEditorActionListener { _, actionId, _ ->
@@ -305,20 +446,19 @@ class WebViewActivity : AppCompatActivity() {
         dialog.show()
     }
 
+    // ── Poloha ──────────────────────────────────────────────────────────
+
     private fun handleGeolocationPrompt(
         origin: String?,
         callback: GeolocationPermissions.Callback?
     ) {
         if (callback == null) return
-
         if (hasLocationPermission()) {
             callback.invoke(origin, true, false)
             return
         }
-
         pendingGeoOrigin = origin
         pendingGeoCallback = callback
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Přístup k poloze")
             .setMessage(
@@ -333,9 +473,7 @@ class WebViewActivity : AppCompatActivity() {
                     )
                 )
             }
-            .setNegativeButton("Odmítnout") { _, _ ->
-                finishGeolocationRequest(false)
-            }
+            .setNegativeButton("Odmítnout") { _, _ -> finishGeolocationRequest(false) }
             .setCancelable(false)
             .show()
     }
@@ -361,7 +499,8 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    /** Je aktivní VPN spojení? */
+    // ── Síť / VPN ───────────────────────────────────────────────────────
+
     private fun isVpnActive(): Boolean {
         return try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -371,6 +510,8 @@ class WebViewActivity : AppCompatActivity() {
             false
         }
     }
+
+    // ── HTTP auth ───────────────────────────────────────────────────────
 
     private fun showHttpAuthDialog(
         handler: HttpAuthHandler,
@@ -385,16 +526,21 @@ class WebViewActivity : AppCompatActivity() {
         progressBar.visibility = View.GONE
 
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_http_auth, null)
-        val realmView = view.findViewById<android.widget.TextView>(R.id.authRealm)
+        val realmView = view.findViewById<TextView>(R.id.authRealm)
         val usernameInput = view.findViewById<TextInputEditText>(R.id.usernameInput)
         val passwordInput = view.findViewById<TextInputEditText>(R.id.passwordInput)
         val rememberCheck = view.findViewById<MaterialCheckBox>(R.id.rememberCheck)
 
+        val shared = HttpCredentials.isPsstHost(host)
         val realmLabel = realm?.takeIf { it.isNotBlank() }
         realmView.text = buildString {
             append("Server ")
             append(host)
             append(" vyžaduje přihlášení.")
+            if (shared) {
+                append("\n\nÚdaje budou platit pro všechny stránky *.psst.tudc.cz ")
+                append("ve všech kartách, dokud se neodhlásíte.")
+            }
             if (realmLabel != null) {
                 append("\nOblast: ")
                 append(realmLabel)
@@ -406,6 +552,8 @@ class WebViewActivity : AppCompatActivity() {
             passwordInput.setText(it.password)
             rememberCheck.isChecked = true
         }
+        // U PSST je zapamatování výchozí a dává největší smysl.
+        if (shared) rememberCheck.isChecked = true
 
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle("Přihlášení")
@@ -428,12 +576,12 @@ class WebViewActivity : AppCompatActivity() {
                         usernameInput.error = "Zadejte jméno"
                         return@setOnClickListener
                     }
-                    if (rememberCheck.isChecked) {
+                    if (rememberCheck.isChecked || shared) {
                         HttpCredentials.save(this, host, user, pass)
                     } else {
                         HttpCredentials.clear(this, host)
                     }
-                    autoAuthTriedHost = host
+                    autoAuthTriedKeys.add(HttpCredentials.authKey(host))
                     authDialogShowing = false
                     awaitingHttpAuth = true
                     dialog.dismiss()
@@ -444,41 +592,34 @@ class WebViewActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    /**
-     * 401, které WebView nevyřešilo dialogem — typicky Negotiate/Kerberos
-     * (Integrated Windows Auth), které na Androidu nefunguje jako na PC.
-     */
     private fun showUnauthorizedWarning(url: Uri?) {
         if (dialogShown) return
         dialogShown = true
         progressBar.visibility = View.GONE
 
-        val host = url?.host ?: currentHost ?: "server"
-        val hasSaved = HttpCredentials.get(this, host) != null
+        val host = url?.host ?: currentHostForUi ?: "server"
+        val hasSaved = HttpCredentials.hasFor(this, host)
 
         val extra = if (hasSaved) {
-            "\n\nUložené přihlášení pro tuto adresu můžete smazat v menu " +
-                "(⋮ → Zapomenout přihlášení) a zkusit jiné údaje."
+            "\n\nUložené přihlášení můžete smazat v menu (⋮ → Odhlásit) a zkusit jiné údaje."
         } else {
             "\n\nPokud se nepřihlašovací dialog vůbec neobjevil, server pravděpodobně " +
                 "používá Windows Integrated Authentication (Kerberos), které Android " +
-                "neumí stejně jako firemní PC. Pak je potřeba na straně serveru " +
-                "povolit NTLM nebo Basic Auth, případně jiné SSO pro mobilní klienty."
+                "neumí stejně jako firemní PC."
         }
 
         MaterialAlertDialogBuilder(this)
             .setTitle("Přístup odepřen (401)")
             .setMessage(
                 "Server $host odmítl přihlášení.\n\n" +
-                    "Na firemním PC to často projde samo přes doménový účet. " +
-                    "V této aplikaci je potřeba zadat jméno a heslo ručně " +
-                    "(často ve tvaru DOMÉNA\\uživatel)." +
+                    "Zadejte jméno a heslo ručně (často DOMÉNA\\uživatel). " +
+                    "Pro *.psst.tudc.cz stačí jednou — platí ve všech kartách." +
                     extra
             )
             .setPositiveButton("Zkusit znovu") { _, _ ->
                 dialogShown = false
-                autoAuthTriedHost = null
-                webView.reload()
+                autoAuthTriedKeys.clear()
+                activeWebView?.reload()
             }
             .setNegativeButton("Zavřít", null)
             .setCancelable(true)
@@ -494,7 +635,7 @@ class WebViewActivity : AppCompatActivity() {
         val detail = when (error?.primaryError) {
             SslError.SSL_UNTRUSTED ->
                 "Certifikát stránky nevydala firemní certifikační autorita " +
-                "(SZT Root BAU ECC CA) ani jiná autorita, které zařízení důvěřuje."
+                    "(SZT Root BAU ECC CA) ani jiná autorita, které zařízení důvěřuje."
             SslError.SSL_EXPIRED -> "Certifikát stránky vypršel."
             SslError.SSL_IDMISMATCH ->
                 "Certifikát patří jiné adrese, než na kterou se připojujete."
@@ -503,9 +644,7 @@ class WebViewActivity : AppCompatActivity() {
             else -> "Certifikát stránky se nepodařilo ověřit."
         }
 
-        // Diagnostika: pokud selhalo načtení CA z aplikace, řekni to rovnou.
         val loadIssue = CertPinning.loadError()
-
         val diag = buildString {
             append("\n\nDetail: kód ")
             append(error?.primaryError ?: -1)
@@ -517,12 +656,12 @@ class WebViewActivity : AppCompatActivity() {
             .setTitle("Spojení nebylo ověřeno")
             .setMessage(
                 detail +
-                "\n\nStránka nebyla načtena. Pokud je to očekávané (např. byla " +
-                "vyměněna firemní CA), obraťte se na IT — do aplikace je potřeba " +
-                "doplnit nový certifikát." +
-                "\n\nPokud jste tuto hlášku nečekali, nepokračujte a nezadávejte " +
-                "na této stránce žádné přihlašovací údaje." +
-                diag
+                    "\n\nStránka nebyla načtena. Pokud je to očekávané (např. byla " +
+                    "vyměněna firemní CA), obraťte se na IT — do aplikace je potřeba " +
+                    "doplnit nový certifikát." +
+                    "\n\nPokud jste tuto hlášku nečekali, nepokračujte a nezadávejte " +
+                    "na této stránce žádné přihlašovací údaje." +
+                    diag
             )
             .setPositiveButton("Zavřít", null)
             .setCancelable(true)
@@ -539,18 +678,14 @@ class WebViewActivity : AppCompatActivity() {
             "VPN je připojená. Server možná neběží nebo je adresa chybná."
         } else {
             "VPN není připojená. Interní stránky jsou dostupné jen přes " +
-            "Cisco AnyConnect — připojte se a zkuste to znovu."
+                "Cisco AnyConnect — připojte se a zkuste to znovu."
         }
 
         val detail = when (code) {
-            WebViewClient.ERROR_HOST_LOOKUP ->
-                "Adresu serveru se nepodařilo přeložit."
-            WebViewClient.ERROR_CONNECT ->
-                "K serveru se nepodařilo připojit."
-            WebViewClient.ERROR_TIMEOUT ->
-                "Server neodpověděl včas."
-            WebViewClient.ERROR_PROXY_AUTHENTICATION ->
-                "Firemní proxy vyžaduje přihlášení."
+            WebViewClient.ERROR_HOST_LOOKUP -> "Adresu serveru se nepodařilo přeložit."
+            WebViewClient.ERROR_CONNECT -> "K serveru se nepodařilo připojit."
+            WebViewClient.ERROR_TIMEOUT -> "Server neodpověděl včas."
+            WebViewClient.ERROR_PROXY_AUTHENTICATION -> "Firemní proxy vyžaduje přihlášení."
             else -> "Stránku se nepodařilo načíst."
         }
 
@@ -559,7 +694,7 @@ class WebViewActivity : AppCompatActivity() {
             .setMessage("$detail\n\n$vpnHint\n\nAdresa: ${url?.host ?: "neznámá"}")
             .setPositiveButton("Zkusit znovu") { _, _ ->
                 dialogShown = false
-                webView.reload()
+                activeWebView?.reload()
             }
             .setNegativeButton("Zavřít", null)
             .setCancelable(true)
@@ -567,30 +702,50 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
-    private fun confirmClearCredentials() {
-        val host = currentHost
-        val clearHostOnly = host != null && HttpCredentials.get(this, host) != null
-        val message = when {
-            clearHostOnly -> "Smazat uložené jméno a heslo pro $host?"
-            HttpCredentials.hasAny(this) ->
-                "Smazat všechna uložená přihlášení v této aplikaci?"
-            else -> {
-                Toast.makeText(this, "Žádné uložené přihlášení", Toast.LENGTH_SHORT).show()
-                return
-            }
+    /**
+     * Odhlášení: smaže uložené heslo (sdílené pro PSST), cookies a session data,
+     * pak přenačte všechny karty — další přístup znovu vyžádá přihlášení.
+     */
+    private fun confirmLogout() {
+        if (!HttpCredentials.hasAny(this) && tabs.isEmpty()) {
+            Toast.makeText(this, "Nejste přihlášeni", Toast.LENGTH_SHORT).show()
+            return
         }
 
         MaterialAlertDialogBuilder(this)
-            .setTitle("Zapomenout přihlášení")
-            .setMessage(message)
-            .setPositiveButton("Smazat") { _, _ ->
-                if (clearHostOnly) HttpCredentials.clear(this, host!!)
-                else HttpCredentials.clearAll(this)
-                autoAuthTriedHost = null
-                Toast.makeText(this, "Přihlášení smazáno", Toast.LENGTH_SHORT).show()
+            .setTitle("Odhlásit")
+            .setMessage(
+                "Smaže uložené jméno a heslo pro *.psst.tudc.cz i cookies " +
+                    "ve všech kartách. Při dalším načtení bude potřeba se znovu přihlásit."
+            )
+            .setPositiveButton("Odhlásit") { _, _ ->
+                performLogout()
             }
             .setNegativeButton("Zrušit", null)
             .show()
+    }
+
+    private fun performLogout() {
+        HttpCredentials.clearAll(this)
+        autoAuthTriedKeys.clear()
+        awaitingHttpAuth = false
+
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.removeAllCookies(null)
+        cookieManager.flush()
+        try {
+            WebStorage.getInstance().deleteAllData()
+        } catch (_: Exception) {
+            // starší WebView — ignorovat
+        }
+
+        tabs.forEach { tab ->
+            tab.webView.clearCache(true)
+            tab.webView.clearFormData()
+            dialogShown = false
+            tab.webView.reload()
+        }
+        Toast.makeText(this, "Odhlášeno", Toast.LENGTH_SHORT).show()
     }
 
     private fun showCertInfo() {
@@ -644,27 +799,28 @@ class WebViewActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.action_open_url -> {
-                showOpenUrlDialog()
+                showOpenUrlDialog(openAsNewTab = false)
+                true
+            }
+            R.id.action_new_tab -> {
+                showOpenUrlDialog(openAsNewTab = true)
                 true
             }
             R.id.action_home -> {
-                dialogShown = false
-                autoAuthTriedHost = null
-                loadResolvedUrl(DEFAULT_URL)
+                loadInActiveTab(DEFAULT_URL)
                 true
             }
             R.id.action_reload -> {
                 dialogShown = false
-                autoAuthTriedHost = null
-                webView.reload()
+                activeWebView?.reload()
                 true
             }
             R.id.action_history -> {
                 startActivity(Intent(this, HistoryActivity::class.java))
                 true
             }
-            R.id.action_clear_credentials -> {
-                confirmClearCredentials()
+            R.id.action_logout -> {
+                confirmLogout()
                 true
             }
             R.id.action_cert_info -> {
@@ -681,6 +837,13 @@ class WebViewActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (webView.canGoBack()) webView.goBack() else super.onBackPressed()
+        val wv = activeWebView
+        if (wv != null && wv.canGoBack()) {
+            wv.goBack()
+        } else if (tabs.size > 1) {
+            closeTab(activeTabId)
+        } else {
+            super.onBackPressed()
+        }
     }
 }

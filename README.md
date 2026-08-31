@@ -7,16 +7,16 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 - Po spuštění **rovnou otevře** výchozí stránku
   `https://test.psst.tudc.cz/HSI.Psst.Data` (bez úvodního menu).
-- Nahoře jen lišta s nabídkou **⋮**: zadat adresu ručně, domovská stránka,
-  přenačíst, historie, zapomenout přihlášení, certifikáty, nastavení odkazů.
+- **Karty** jako v prohlížeči: lišta pod toolbarem, tlačítko **+** pro novou
+  kartu, zavření karty křížkem (max. 8 najednou). Každá karta má vlastní WebView.
+- Nabídka **⋮**: zadat adresu, nová karta, domovská stránka, přenačíst,
+  historie, **odhlásit**, certifikáty, nastavení odkazů.
 - Objeví se jako volba v systémovém dialogu "Otevřít pomocí" u http/https odkazů
-  (např. při kliknutí na odkaz v Outlooku) — včetně `psst.tudc.cz` a
-  `test.psst.tudc.cz`.
-- **HTTP přihlášení** (Basic / Digest / často i NTLM): když server vrátí 401,
-  appka zobrazí dialog na jméno a heslo. Údaje lze zapamatovat lokálně.
-- **Poloha**: když stránka požádá o geolokaci, appka vyžádá systémové
-  oprávnění a předá polohu do WebView.
-- **Historie** posledních 24 hodin otevřených odkazů (jen lokálně v appce).
+  (včetně `psst.tudc.cz` a `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
+- **Jedno přihlášení pro *.psst.tudc.cz**: jméno/heslo i cookies platí ve všech
+  kartách. Znovu se ptá až po **Odhlásit** (smaže heslo + cookies).
+- **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
+- **Historie** posledních 24 hodin (jen lokálně v appce).
 
 ## Jak appku dostat jako .apk (bez Android Studia)
 
@@ -119,6 +119,9 @@ doménový účet sám (Integrated Windows Auth). Android to neumí stejně.
 
 Appka proto při HTTP auth challenge zobrazí dialog. Zkoušejte tvar
 `DOMÉNA\uživatel` (např. `SZDC\jnovak`) a firemní heslo.
+
+Pro celou rodinu `*.psst.tudc.cz` se údaje ukládají **jednou** a sdílí se
+mezi kartami (spolu s cookies WebView). Odhlášení: **⋮ → Odhlásit**.
 
 | Typ na serveru | Šance ve WebView |
 | --- | --- |

@@ -6,6 +6,10 @@
         android:title="Zadat adresu"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_new_tab"
+        android:title="Nová karta"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_home"
         android:title="Domovská stránka"
         app:showAsAction="never" />
@@ -18,8 +22,8 @@
         android:title="Historie"
         app:showAsAction="never" />
     <item
-        android:id="@+id/action_clear_credentials"
-        android:title="Zapomenout přihlášení"
+        android:id="@+id/action_logout"
+        android:title="Odhlásit"
         app:showAsAction="never" />
     <item
         android:id="@+id/action_cert_info"
