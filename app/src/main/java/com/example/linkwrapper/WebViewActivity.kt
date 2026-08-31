@@ -44,6 +44,8 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import java.util.Collections
+import java.util.IdentityHashMap
 
 /** Jedna karta prohlížeče — vlastní WebView, název a adresa. */
 private class BrowserTab(
@@ -82,8 +84,15 @@ class WebViewActivity : AppCompatActivity() {
     private var authDialogShowing = false
     private var awaitingHttpAuth = false
 
-    /** Auth klíče, pro které jsme právě zkusili uložené heslo. */
-    private val autoAuthTriedKeys = mutableSetOf<String>()
+    /**
+     * Počet HTTP auth challenge za sebou pro daný klíč.
+     * Uložené heslo posíláme automaticky (bez dialogu); když jich je moc
+     * (špatné heslo), teprve pak ukážeme dialog.
+     */
+    private val authChallengeCounts = mutableMapOf<String, Int>()
+
+    /** WebView, které právě dostaly 401 — nesmíme resetovat počítadlo auth. */
+    private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
 
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
@@ -103,7 +112,9 @@ class WebViewActivity : AppCompatActivity() {
         toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(false)
+        supportActionBar?.setDisplayShowTitleEnabled(false)
         toolbar.navigationIcon = null
+        toolbar.title = null
 
         progressBar = findViewById(R.id.progressBar)
         webContainer = findViewById(R.id.webContainer)
@@ -111,10 +122,6 @@ class WebViewActivity : AppCompatActivity() {
         tabScroll = findViewById(R.id.tabScroll)
 
         CookieManager.getInstance().setAcceptCookie(true)
-
-        findViewById<ImageButton>(R.id.newTabButton).setOnClickListener {
-            openInNewTab(DEFAULT_URL)
-        }
 
         val startUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
         openInNewTab(startUrl)
@@ -192,6 +199,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun destroyTab(tab: BrowserTab) {
+        authFailedViews.remove(tab.webView)
         webContainer.removeView(tab.webView)
         tab.webView.stopLoading()
         tab.webView.webChromeClient = null
@@ -229,7 +237,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun applyChrome(tab: BrowserTab) {
-        supportActionBar?.title = tab.title
+        // Název stránky je na kartě v liště — toolbar title nepoužíváme.
         currentHostForUi = runCatching { Uri.parse(tab.url).host }.getOrNull()
     }
 
@@ -294,17 +302,17 @@ class WebViewActivity : AppCompatActivity() {
 
                 val key = HttpCredentials.authKey(host)
                 val saved = HttpCredentials.get(this@WebViewActivity, host)
-                if (saved != null && key !in autoAuthTriedKeys) {
-                    autoAuthTriedKeys.add(key)
-                    handler.proceed(saved.username, saved.password)
-                    return
-                }
-
-                // Dialog jen pro aktivní kartu — ostatní počkají na sdílené heslo.
-                if (view !== activeWebView && saved != null) {
-                    autoAuthTriedKeys.add(key)
-                    handler.proceed(saved.username, saved.password)
-                    return
+                if (saved != null) {
+                    val count = (authChallengeCounts[key] ?: 0) + 1
+                    authChallengeCounts[key] = count
+                    // NTLM může mít několik kol; po větším počtu je heslo asi špatně.
+                    if (count <= 12) {
+                        handler.proceed(saved.username, saved.password)
+                        return
+                    }
+                    // Přestaň smyčku — nech uživatele zadat údaje znovu.
+                    HttpCredentials.clear(this@WebViewActivity, host)
+                    authChallengeCounts.remove(key)
                 }
 
                 showHttpAuthDialog(handler, host, realm)
@@ -315,11 +323,12 @@ class WebViewActivity : AppCompatActivity() {
                 request: WebResourceRequest?,
                 errorResponse: WebResourceResponse?
             ) {
-                if (view !== activeWebView) return
                 if (request?.isForMainFrame != true) return
                 if (errorResponse?.statusCode != 401) return
+                if (view != null) authFailedViews.add(view)
+                if (view !== activeWebView) return
                 val failedUrl = request.url
-                view?.post {
+                view.post {
                     if (awaitingHttpAuth || authDialogShowing || dialogShown) return@post
                     showUnauthorizedWarning(failedUrl)
                 }
@@ -338,6 +347,12 @@ class WebViewActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 awaitingHttpAuth = false
+                if (view != null && view !in authFailedViews) {
+                    // Skutečně načtená stránka — příští navigace znovu auto-přihlásí.
+                    runCatching { Uri.parse(url ?: "").host }.getOrNull()
+                        ?.let { authChallengeCounts.remove(HttpCredentials.authKey(it)) }
+                }
+                if (view != null) authFailedViews.remove(view)
                 updateTabMeta(view ?: return, url, view.title)
             }
         }
@@ -581,7 +596,7 @@ class WebViewActivity : AppCompatActivity() {
                     } else {
                         HttpCredentials.clear(this, host)
                     }
-                    autoAuthTriedKeys.add(HttpCredentials.authKey(host))
+                    authChallengeCounts[HttpCredentials.authKey(host)] = 0
                     authDialogShowing = false
                     awaitingHttpAuth = true
                     dialog.dismiss()
@@ -618,7 +633,7 @@ class WebViewActivity : AppCompatActivity() {
             )
             .setPositiveButton("Zkusit znovu") { _, _ ->
                 dialogShown = false
-                autoAuthTriedKeys.clear()
+                authChallengeCounts.clear()
                 activeWebView?.reload()
             }
             .setNegativeButton("Zavřít", null)
@@ -727,7 +742,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun performLogout() {
         HttpCredentials.clearAll(this)
-        autoAuthTriedKeys.clear()
+        authChallengeCounts.clear()
         awaitingHttpAuth = false
 
         val cookieManager = CookieManager.getInstance()
@@ -803,7 +818,7 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_new_tab -> {
-                showOpenUrlDialog(openAsNewTab = true)
+                openInNewTab(DEFAULT_URL)
                 true
             }
             R.id.action_home -> {

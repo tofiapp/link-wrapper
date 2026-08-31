@@ -6,32 +6,28 @@
     android:orientation="vertical"
     android:background="@color/surface">
 
+    <!--
+      Horní lišta: karty místo názvu stránky.
+      Vpravo menu: domeček, +, ⋮ (viz menu_webview.xml).
+    -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         style="@style/AppBar"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium"
-        app:subtitleTextAppearance="@style/TextAppearance.Material3.BodySmall" />
-
-    <!-- Lišta karet jako v prohlížeči -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="12dp"
-        android:paddingEnd="8dp"
-        android:background="@color/surface">
+        android:layout_height="56dp"
+        app:contentInsetStart="8dp"
+        app:contentInsetEnd="0dp"
+        app:contentInsetStartWithNavigation="8dp"
+        app:title="">
 
         <HorizontalScrollView
             android:id="@+id/tabScroll"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:layout_weight="1"
             android:scrollbars="none"
             android:fillViewport="false"
-            android:overScrollMode="never">
+            android:overScrollMode="never"
+            android:clipToPadding="false">
 
             <LinearLayout
                 android:id="@+id/tabStrip"
@@ -39,19 +35,9 @@
                 android:layout_height="match_parent"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingVertical="6dp" />
+                android:paddingVertical="10dp" />
         </HorizontalScrollView>
-
-        <ImageButton
-            android:id="@+id/newTabButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Nová karta"
-            android:padding="8dp"
-            android:src="@drawable/ic_add"
-            app:tint="@color/accent" />
-    </LinearLayout>
+    </com.google.android.material.appbar.MaterialToolbar>
 
     <com.google.android.material.progressindicator.LinearProgressIndicator
         android:id="@+id/progressBar"
