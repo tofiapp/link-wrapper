@@ -10,4 +10,5 @@
     <color name="accent">#FF6BA3D4</color>
     <color name="accent_wash">#FF1A2C3D</color>
     <color name="alert">#FFF2B8B5</color>
+    <color name="alert_wash">#FF3A1F1E</color>
 </resources>

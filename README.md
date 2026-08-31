@@ -16,6 +16,9 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - **Jedno přihlášení pro *.psst.tudc.cz**: celostránkový formulář; další stránky
   se přihlásí automaticky. **Odhlásit** platí pro všechny karty a vrátí na
   obrazovku „Byl jste odhlášen“.
+- **VPN brána**: bez Cisco AnyConnect ukáže přihlášení s červenou hláškou.
+  Když VPN vypadne během používání, stejná obrazovka; po opětovném připojení
+  se vrátí na otevřené karty.
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
 - **Historie** posledních 24 hodin (jen lokálně v appce).
 

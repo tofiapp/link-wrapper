@@ -36,6 +36,36 @@
                 android:letterSpacing="-0.02"
                 android:gravity="center_horizontal" />
 
+            <!-- Červená notifikace: VPN není připojená -->
+            <LinearLayout
+                android:id="@+id/vpnBanner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:background="@drawable/bg_vpn_banner"
+                android:orientation="vertical"
+                android:paddingHorizontal="16dp"
+                android:paddingVertical="14dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="VPN není připojená"
+                    android:textColor="@color/alert"
+                    android:textSize="15sp"
+                    android:fontFamily="sans-serif-medium" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="Připojte se přes Cisco AnyConnect. Po připojení vás aplikace vrátí zpět."
+                    android:textColor="@color/ink_soft"
+                    android:textSize="13sp"
+                    android:lineSpacingMultiplier="1.3" />
+            </LinearLayout>
+
             <!-- Banner po odhlášení -->
             <LinearLayout
                 android:id="@+id/loggedOutBanner"
