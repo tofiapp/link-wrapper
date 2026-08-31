@@ -158,6 +158,7 @@ class WebViewActivity : AppCompatActivity() {
         supportActionBar?.setDisplayShowTitleEnabled(false)
         toolbar.navigationIcon = null
         toolbar.title = null
+        toolbar.setContentInsetsAbsolute(0, 0)
 
         progressBar = findViewById(R.id.progressBar)
         webContainer = findViewById(R.id.webContainer)
