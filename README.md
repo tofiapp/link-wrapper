@@ -18,13 +18,37 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 1. Založ si nový repozitář na GitHubu (klidně soukromý).
 2. Nahraj do něj obsah tohoto projektu (celou tuhle složku).
 3. Po pushnutí do větve `main` se automaticky spustí GitHub Actions workflow
-   (`.github/workflows/build.yml`), který appku sestaví.
-4. Jdi do repozitáře → záložka **Actions** → poslední běh → dole v sekci
-   **Artifacts** najdeš `LinkWrapper-debug-apk` → stáhni si zip, uvnitř je
-   `app-debug.apk`.
+   (`.github/workflows/build.yml`), který appku sestaví, očísluje a podepíše.
+4. Stáhni APK jedním z těchto způsobů:
+   - **Releases** (pohodlnější): v repozitáři záložka **Releases** → nejnovější
+     verze → soubor `LinkWrapper-1.0.N.apk`.
+   - **Actions**: záložka **Actions** → poslední běh → dole v sekci
+     **Artifacts** najdeš `LinkWrapper-1.0.N` → stáhni zip, uvnitř je APK.
 5. Ten `.apk` nahraj do tabletu (email sám sobě, Google Drive, USB…) a nainstaluj.
    Bude potřeba v nastavení tabletu povolit instalaci z "neznámých zdrojů"
    (protože appka nejde přes Google Play).
+
+Build jde spustit i ručně: **Actions** → **Build APK** → **Run workflow**.
+
+## Automatické číslování verzí
+
+Každý GitHub Actions build dostane unikátní číslo z pořadí běhu workflow:
+
+| Co | Příklad | K čemu je |
+| --- | --- | --- |
+| `versionName` | `1.0.15` | Viditelná verze (domovská obrazovka appky, název APK, GitHub Release) |
+| `versionCode` | `15` | Interní číslo pro Android — musí růst, aby šla appka na tabletu aktualizovat |
+
+Lokální sestavení v Android Studiu použije `1.0.0-local` (versionCode `1`).
+
+Major/minor (ta `1.0`) se mění ručně v `gradle.properties` (`versionMajor` /
+`versionMinor`). Patch doplní CI samo.
+
+Na tabletu se nainstalovaná verze ukáže dole na úvodní obrazovce. Novější APK
+ze stejného podpisu přepíše starší instalaci — není potřeba nejdřív odinstalovat.
+
+Podpisový klíč je v `app/keystore/` (repo je soukromé). Díky tomu mají všechny
+CI buildy stejný podpis a aktualizace na tabletu fungují.
 
 ## Firemní certifikát (důležité)
 

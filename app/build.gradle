@@ -1,6 +1,41 @@
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
+def resolveVersionCode() {
+    def override = project.findProperty("versionCode")
+    if (override != null && override.toString().trim()) {
+        return override.toString().toInteger()
+    }
+    def runNumber = System.getenv("GITHUB_RUN_NUMBER")
+    if (runNumber != null && runNumber.trim()) {
+        return runNumber.toInteger()
+    }
+    return 1
+}
+
+def resolveVersionName() {
+    def override = project.findProperty("versionName")
+    if (override != null && override.toString().trim()) {
+        return override.toString()
+    }
+    def major = (project.findProperty("versionMajor") ?: "1").toString()
+    def minor = (project.findProperty("versionMinor") ?: "0").toString()
+    def runNumber = System.getenv("GITHUB_RUN_NUMBER")
+    if (runNumber != null && runNumber.trim()) {
+        return "${major}.${minor}.${runNumber}"
+    }
+    return "${major}.${minor}.0-local"
+}
+
+def appVersionCode = resolveVersionCode()
+def appVersionName = resolveVersionName()
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace 'com.example.linkwrapper'
     compileSdk 34
@@ -9,13 +44,25 @@ android {
         applicationId "com.example.linkwrapper"
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        versionCode appVersionCode
+        versionName appVersionName
+    }
+
+    signingConfigs {
+        release {
+            if (keystorePropertiesFile.exists()) {
+                storeFile rootProject.file(keystoreProperties["storeFile"])
+                storePassword keystoreProperties["storePassword"]
+                keyAlias keystoreProperties["keyAlias"]
+                keyPassword keystoreProperties["keyPassword"]
+            }
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
+            signingConfig signingConfigs.release
         }
     }
 
@@ -26,6 +73,19 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            output.outputFileName = "LinkWrapper-${variant.versionName}.apk"
+        }
+    }
+}
+
+tasks.register("printVersion") {
+    doLast {
+        println "VERSION_NAME=${appVersionName}"
+        println "VERSION_CODE=${appVersionCode}"
     }
 }
 

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">Link Wrapper</string>
+    <string name="version_label">Verze %1$s</string>
 </resources>
