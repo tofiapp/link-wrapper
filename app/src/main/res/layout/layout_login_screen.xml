@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Nadpis PSST Data nahoře (stejné místo jako dřívější „Přihlášení“).
-  Formulář pod ním — na výšku vycentrovaný ve zbývajícím prostoru.
+  Nadpis PSST Data nahoře.
+  VPN-only: jen varování uprostřed (bez přihlašovacího formuláře).
+  LOGOUT / AUTH: formulář pod nadpisem.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -27,7 +28,46 @@
         android:letterSpacing="-0.02"
         android:gravity="start" />
 
+    <!-- Samostatný panel jen pro výpadek VPN (bez formuláře) -->
+    <LinearLayout
+        android:id="@+id/vpnOnlyPanel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingHorizontal="36dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:src="@drawable/ic_warning_triangle"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="VPN není připojená"
+            android:textColor="@color/alert"
+            android:textSize="20sp"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center_horizontal" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="Připojte se přes Cisco AnyConnect.\nPo připojení vás aplikace vrátí zpět."
+            android:textColor="@color/ink_soft"
+            android:textSize="15sp"
+            android:lineSpacingMultiplier="1.35"
+            android:gravity="center_horizontal" />
+    </LinearLayout>
+
     <ScrollView
+        android:id="@+id/loginFormScroll"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="120dp"
@@ -37,6 +77,7 @@
         android:clipToPadding="false">
 
         <LinearLayout
+            android:id="@+id/loginFormPanel"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
@@ -45,36 +86,50 @@
             android:paddingHorizontal="28dp"
             android:paddingBottom="40dp">
 
-            <!-- Červená notifikace: VPN není připojená -->
+            <!-- VPN hláška nad formulářem (např. při odhlášení bez VPN) -->
             <LinearLayout
                 android:id="@+id/vpnBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:background="@drawable/bg_vpn_banner"
-                android:orientation="vertical"
-                android:paddingHorizontal="16dp"
-                android:paddingVertical="14dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="14dp"
+                android:paddingVertical="12dp"
                 android:visibility="gone">
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="VPN není připojená"
-                    android:textColor="@color/alert"
-                    android:textSize="15sp"
-                    android:fontFamily="sans-serif-medium" />
+                <ImageView
+                    android:layout_width="28dp"
+                    android:layout_height="28dp"
+                    android:src="@drawable/ic_warning_triangle"
+                    android:contentDescription="@null" />
 
-                <TextView
-                    android:layout_width="match_parent"
+                <LinearLayout
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:text="Připojte se přes Cisco AnyConnect. Po připojení vás aplikace vrátí zpět."
-                    android:textColor="@color/ink_soft"
-                    android:textSize="13sp"
-                    android:lineSpacingMultiplier="1.3" />
+                    android:layout_weight="1"
+                    android:layout_marginStart="12dp"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="VPN není připojená"
+                        android:textColor="@color/alert"
+                        android:textSize="14sp"
+                        android:fontFamily="sans-serif-medium" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="Připojte Cisco AnyConnect, pak se můžete přihlásit."
+                        android:textColor="@color/ink_soft"
+                        android:textSize="13sp"
+                        android:lineSpacingMultiplier="1.3" />
+                </LinearLayout>
             </LinearLayout>
 
-            <!-- Banner po odhlášení -->
             <LinearLayout
                 android:id="@+id/loggedOutBanner"
                 android:layout_width="match_parent"
