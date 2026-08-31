@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Nadpis PSST Data nahoře.
+  Nadpis Přihlášení nahoře.
   VPN-only: jen varování uprostřed (bez přihlašovacího formuláře).
   LOGOUT / AUTH: formulář pod nadpisem.
 -->
@@ -21,7 +21,7 @@
         android:layout_gravity="top"
         android:paddingHorizontal="28dp"
         android:paddingTop="72dp"
-        android:text="PSST Data"
+        android:text="Přihlášení"
         android:textColor="@color/ink"
         android:textSize="28sp"
         android:fontFamily="sans-serif-medium"

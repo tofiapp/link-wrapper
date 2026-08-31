@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Rect
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -22,8 +23,8 @@ import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
@@ -47,6 +48,10 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -150,6 +155,7 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, true)
         setContentView(R.layout.activity_webview)
 
         toolbar = findViewById(R.id.toolbar)
@@ -165,7 +171,7 @@ class WebViewActivity : AppCompatActivity() {
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
-        applySoftInputMode()
+        bindImeInsets()
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -251,6 +257,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun selectTab(tabId: Long) {
+        if (tabId != activeTabId) hideKeyboard()
         activeTabId = tabId
         tabs.forEach { tab ->
             tab.webView.visibility = if (tab.id == tabId) View.VISIBLE else View.GONE
@@ -786,7 +793,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Celá obrazovka „PSST Data“.
+     * Celá obrazovka přihlášení.
      * [handler] != null → odpověď na HTTP 401; null → přihlášení po Odhlásit / VPN.
      */
     private fun showLoginScreen(
@@ -854,23 +861,47 @@ class WebViewActivity : AppCompatActivity() {
         vpnBanner.visibility =
             if (!vpnOnly && !isVpnActive()) View.VISIBLE else View.GONE
         if (vpnOnly) hideKeyboard()
-        applySoftInputMode()
     }
 
     /**
-     * Na webu klávesnice překryje stránku (stránka se nesmršťuje, jde dál scrollovat).
-     * U přihlašovacího formuláře okno posuneme, ať pole zůstanou vidět.
+     * Klávesnice si bere spodní okraj (padding). Stránka nad ní zůstane
+     * plná a scrollovatelná; po schování IME padding zmizí a layout zajede zpět.
      */
-    private fun applySoftInputMode() {
-        val loginFormVisible = loginVisible && loginGate != LoginGate.VPN
-        val mode = if (loginFormVisible) {
-            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or
-                WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
-        } else {
-            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or
-                WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+    private val visibleFrame = Rect()
+
+    private fun bindImeInsets() {
+        val root = findViewById<View>(R.id.root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            setImePadding(v, imeBottom)
+            WindowInsetsCompat.Builder(insets)
+                .setInsets(WindowInsetsCompat.Type.ime(), androidx.core.graphics.Insets.NONE)
+                .build()
         }
-        window.setSoftInputMode(mode)
+        root.viewTreeObserver.addOnGlobalLayoutListener {
+            applyVisibleFrameImePadding(root)
+        }
+        ViewCompat.requestApplyInsets(root)
+    }
+
+    private fun applyVisibleFrameImePadding(root: View) {
+        val fromInsets = ViewCompat.getRootWindowInsets(root)
+            ?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+        if (fromInsets > 0) {
+            setImePadding(root, fromInsets)
+            return
+        }
+        root.getWindowVisibleDisplayFrame(visibleFrame)
+        val loc = IntArray(2)
+        root.getLocationOnScreen(loc)
+        val overlap = (loc[1] + root.height - visibleFrame.bottom).coerceAtLeast(0)
+        val minKeyboard = (80 * resources.displayMetrics.density).toInt()
+        setImePadding(root, if (overlap > minKeyboard) overlap else 0)
+    }
+
+    private fun setImePadding(v: View, imeBottom: Int) {
+        if (v.paddingBottom == imeBottom) return
+        v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, imeBottom)
     }
 
     private fun hideLoginScreen() {
@@ -882,18 +913,51 @@ class WebViewActivity : AppCompatActivity() {
         vpnBanner.visibility = View.GONE
         authDialogShowing = false
         loginVisible = false
-        applySoftInputMode()
         pendingAuthHandler = null
         pendingAuthHost = null
         // pendingResumeUrl nech — může se hodit po VPN
     }
 
     private fun hideKeyboard() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.hide(android.view.WindowInsets.Type.ime())
+        }
+        WindowInsetsControllerCompat(window, window.decorView)
+            .hide(WindowInsetsCompat.Type.ime())
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        val focus = currentFocus ?: loginOverlay
+        val focus = currentFocus ?: if (::loginOverlay.isInitialized) loginOverlay else window.decorView
         imm.hideSoftInputFromWindow(focus.windowToken, 0)
         if (::usernameInput.isInitialized) usernameInput.clearFocus()
         if (::passwordInput.isInitialized) passwordInput.clearFocus()
+        activeWebView?.clearFocus()
+        if (::webContainer.isInitialized) {
+            webContainer.isFocusableInTouchMode = true
+            webContainer.requestFocus()
+        }
+    }
+
+    private fun isImeVisible(): Boolean {
+        val insets = ViewCompat.getRootWindowInsets(window.decorView)
+        if (insets?.isVisible(WindowInsetsCompat.Type.ime()) == true) return true
+        val root = window.decorView.findViewById<View>(R.id.root)
+        val minKeyboard = (80 * resources.displayMetrics.density).toInt()
+        return root != null && root.paddingBottom > minKeyboard
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (ev.action == MotionEvent.ACTION_DOWN && isImeVisible()) {
+            val focused = currentFocus
+            if (focused is android.widget.EditText) {
+                val loc = IntArray(2)
+                focused.getLocationOnScreen(loc)
+                val x = ev.rawX
+                val y = ev.rawY
+                val inside = x >= loc[0] && x <= loc[0] + focused.width &&
+                    y >= loc[1] && y <= loc[1] + focused.height
+                if (!inside) hideKeyboard()
+            }
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun submitLogin() {
@@ -1190,6 +1254,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        hideKeyboard()
         return when (item.itemId) {
             R.id.action_open_url -> {
                 showOpenUrlDialog(openAsNewTab = false)
@@ -1230,6 +1295,10 @@ class WebViewActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
+        if (isImeVisible()) {
+            hideKeyboard()
+            return
+        }
         if (loginVisible) {
             // VPN / odhlášení: zůstat na obrazovce. HTTP auth: zrušit požadavek.
             if (pendingAuthHandler != null && loginGate == LoginGate.AUTH) {
