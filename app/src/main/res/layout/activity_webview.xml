@@ -1,23 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical">
+    android:orientation="vertical"
+    android:background="@color/surface">
 
-    <androidx.appcompat.widget.Toolbar
+    <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
+        style="@style/AppBar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
+        app:navigationIcon="@drawable/ic_back"
+        app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium"
+        app:subtitleTextAppearance="@style/TextAppearance.Material3.BodySmall" />
 
-    <ProgressBar
+    <com.google.android.material.progressindicator.LinearProgressIndicator
         android:id="@+id/progressBar"
-        style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="4dp"
-        android:max="100"
-        android:visibility="gone" />
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:trackThickness="2dp"
+        app:trackCornerRadius="0dp"
+        app:indicatorColor="@color/accent"
+        app:trackColor="@android:color/transparent" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/line" />
 
     <WebView
         android:id="@+id/webView"

@@ -50,36 +50,62 @@ ze stejného podpisu přepíše starší instalaci — není potřeba nejdřív 
 Podpisový klíč je v `app/keystore/` (repo je soukromé). Díky tomu mají všechny
 CI buildy stejný podpis a aktualizace na tabletu fungují.
 
-## Firemní certifikát (důležité)
+## Firemní certifikáty (důležité)
 
-Tablety nemají systémově nainstalovanou firemní kořenovou CA
-(**SZT Root BAU ECC CA**, Správa železnic), proto jim prohlížeč hlásí
-`NET::ERR_CERT_AUTHORITY_INVALID`. Aplikace to řeší tak, že ověřuje, jestli
-certifikát stránky **vydala tato firemní CA** — její certifikát je vložený
-v `app/src/main/res/raw/corporate_ca.pem`.
+Tablety nemají systémově nainstalovanou firemní CA (Správa železnic), proto
+jim prohlížeč hlásí `NET::ERR_CERT_AUTHORITY_INVALID`. Aplikace si ověření
+provede sama.
+
+Řetězec certifikátů je dvouúrovňový:
+
+```
+SZT Root BAU ECC CA          platnost do 4. 4. 2039
+  └─ SZT Sub BAU ECC CA1     platnost do 22. 5. 2028
+       └─ psst.tudc.cz       obnovuje se ~1× ročně
+```
+
+Certifikát stránky podepisuje **mezilehlá** CA, ne kořenová. Oba certifikáty
+autorit jsou vložené v projektu:
+
+- `app/src/main/res/raw/corporate_ca.pem` — kořenová
+- `app/src/main/res/raw/corporate_sub_ca.pem` — mezilehlá
+
+### Jak ověření probíhá
+
+1. Kořenová CA musí odpovídat otisku `EXPECTED_ROOT_SHA256` v `CertPinning.kt`
+   a být self-signed.
+2. Mezilehlá CA musí být podepsaná kořenovou. Vlastní otisk zapsaný nemá —
+   ověřuje se podpisem, takže při její výměně stačí vyměnit soubor.
+3. Certifikát serveru musí být podepsaný mezilehlou CA.
+4. Všechny tři musí být časově platné, obě autority musí mít `CA:TRUE`.
 
 Aplikace **neignoruje certifikátové chyby plošně** a neváže se na jeden
-konkrétní web. Cokoliv, co tato CA nevydala, je odmítnuto a uživateli se
-zobrazí varování — ochrana proti podvrženému spojení zůstává funkční.
+konkrétní web. Cokoliv mimo tento řetězec je odmítnuto a stránka se nenačte —
+ochrana proti podvrženému spojení zůstává funkční. Dialog nemá možnost
+„pokračovat i tak" a nemá ji dostat.
 
-### Výhoda tohoto řešení
+### Výhody
 
 - Funguje pro **všechny** interní stránky za firemní SSL inspekcí.
-- **Přežije pravidelnou výměnu** certifikátů jednotlivých stránek (ty se mění
-  ~1× ročně) — v aplikaci není potřeba nic měnit.
-- Zásah bude potřeba až **v dubnu 2039**, kdy vyprší kořenová CA.
+- **Přežije každoroční obnovu** certifikátů jednotlivých stránek — v aplikaci
+  není potřeba měnit nic.
 
-### Až vyprší kořenová CA (2039)
+### Termíny údržby
 
-1. Vyexportuj novou kořenovou CA z prohlížeče na PC (Base-64 X.509 `.CER`).
-2. Nahraď jí soubor `app/src/main/res/raw/corporate_ca.pem`.
-3. Uprav kontrolní otisk `EXPECTED_CA_SHA256` v `CertPinning.kt`
-   (zjistíš: `openssl x509 -in ca.pem -noout -fingerprint -sha256`).
-4. Pushni a stáhni nové APK z Actions.
+**Květen 2028** — vyprší mezilehlá CA. Vyexportuj novou z prohlížeče
+(Base-64 X.509 `.CER`, prostřední položka v cestě k certifikátu) a nahraď jí
+`corporate_sub_ca.pem`. Otisk nikam zapisovat nemusíš.
 
-**Nejlepší řešení dlouhodobě:** nechat IT nasadit tuto CA na tablety
-systémově (Intune → trusted certificate profile). Pak ověřování v aplikaci
-není potřeba vůbec a fungovat bude i běžný prohlížeč.
+**Duben 2039** — vyprší kořenová CA. Stejný postup pro `corporate_ca.pem`,
+navíc je potřeba přepsat `EXPECTED_ROOT_SHA256` v `CertPinning.kt`
+(`openssl x509 -in ca.pem -noout -fingerprint -sha256`).
+
+Certifikáty se často obnovují dřív, než skutečně vyprší — stojí za to mít
+připomínku pár měsíců předem.
+
+**Nejlepší řešení dlouhodobě:** nechat IT nasadit obě CA na tablety systémově
+(Intune → trusted certificate profile). Pak ověřování v aplikaci není potřeba
+vůbec a fungovat bude i běžný prohlížeč.
 
 ## Co ještě doladit
 
