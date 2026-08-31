@@ -86,6 +86,7 @@
                 app:contentInsetEnd="0dp"
                 app:contentInsetStart="0dp"
                 app:contentInsetStartWithNavigation="0dp"
+                app:popupTheme="@style/ThemeOverlay.LinkWrapper.Popup"
                 app:title=""
                 app:titleMargin="0dp" />
         </LinearLayout>
