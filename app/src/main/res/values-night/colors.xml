@@ -5,6 +5,7 @@
     <color name="ink_faint">#FF757D86</color>
     <color name="surface">#FF14181D</color>
     <color name="surface_raised">#FF1C2127</color>
+    <color name="surface_sunken">#FF1A1F26</color>
     <color name="line">#FF2C333B</color>
     <!-- Světlejší varianta rgb(31, 101, 159) pro tmavý režim -->
     <color name="accent">#FF6BA3D4</color>
