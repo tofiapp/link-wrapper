@@ -114,6 +114,7 @@ class WebViewActivity : AppCompatActivity() {
     // Aby po chybě nevyskočilo víc dialogů za sebou.
     private var dialogShown = false
     private var urlDialog: AlertDialog? = null
+    private var warningDialog: AlertDialog? = null
     private var authDialogShowing = false
     private var awaitingHttpAuth = false
     private var loginVisible = false
@@ -215,7 +216,15 @@ class WebViewActivity : AppCompatActivity() {
         setIntent(intent)
         dialogShown = false
         awaitingHttpAuth = false
-        val url = resolveUrlFromIntent(intent) ?: return
+
+        val url = explicitUrlFromIntent(intent)
+        if (url == null) {
+            // Návrat z ikony / recent apps — neotevírat novou kartu hlavní stránky.
+            if (tabs.isEmpty() && !loginVisible && isVpnActive()) {
+                openInNewTab(DEFAULT_URL)
+            }
+            return
+        }
         if (loginVisible) {
             // Po odhlášení / VPN nejdřív dokončit bránu, pak otevřít odkaz.
             pendingResumeUrl = url
@@ -336,18 +345,29 @@ class WebViewActivity : AppCompatActivity() {
     private var currentHostForUi: String? = null
 
     /**
-     * Název karty: přednostně číslo z `dmId=` v URL (grafy PSST).
-     * Jinak hostitel — ne document title typu „graf“.
+     * Název karty: Home na hlavní stránce, jinak `dmId` z URL.
+     * Document title („graf“) nepoužíváme.
      */
     private fun tabLabel(url: String): String {
         return runCatching {
             val uri = Uri.parse(url)
+            if (isHomeUrl(uri)) return@runCatching "Home"
             uri.getQueryParameter("dmId")
                 ?.takeIf { it.isNotBlank() }
                 ?: uri.getQueryParameter("dmid")
                     ?.takeIf { it.isNotBlank() }
                 ?: uri.host
         }.getOrNull() ?: "Karta"
+    }
+
+    /** Výchozí PSST Data bez dmId — karta „Home“. */
+    private fun isHomeUrl(uri: Uri): Boolean {
+        val host = uri.host?.lowercase() ?: return false
+        if (host != "test.psst.tudc.cz" && host != "psst.tudc.cz") return false
+        val path = uri.path?.trimEnd('/') ?: ""
+        return path.equals("/HSI.Psst.Data", ignoreCase = true) &&
+            uri.getQueryParameter("dmId").isNullOrBlank() &&
+            uri.getQueryParameter("dmid").isNullOrBlank()
     }
 
     private fun updateTabMeta(webView: WebView, url: String?, title: String?) {
@@ -384,7 +404,9 @@ class WebViewActivity : AppCompatActivity() {
                     handler?.proceed()
                 } else {
                     handler?.cancel()
-                    if (view === activeWebView) showCertWarning(error)
+                    if (view === activeWebView && !shouldSuppressPageErrorDialogs()) {
+                        showCertWarning(error)
+                    }
                 }
             }
 
@@ -438,6 +460,7 @@ class WebViewActivity : AppCompatActivity() {
                 val failedUrl = request.url
                 webView.post {
                     if (awaitingHttpAuth || authDialogShowing || dialogShown) return@post
+                    if (shouldSuppressPageErrorDialogs()) return@post
                     showUnauthorizedWarning(failedUrl)
                 }
             }
@@ -449,6 +472,7 @@ class WebViewActivity : AppCompatActivity() {
             ) {
                 if (view !== activeWebView) return
                 if (request?.isForMainFrame != true) return
+                if (shouldSuppressPageErrorDialogs()) return
                 showNetworkWarning(error?.errorCode, request.url)
             }
 
@@ -491,6 +515,14 @@ class WebViewActivity : AppCompatActivity() {
     // ── URL helpers ─────────────────────────────────────────────────────
 
     private fun resolveUrlFromIntent(intent: Intent?): String? {
+        explicitUrlFromIntent(intent)?.let { return it }
+        // Studený start z ikony — bez EXTRA/data.
+        if (intent?.action == Intent.ACTION_MAIN) return DEFAULT_URL
+        return null
+    }
+
+    /** Jen když intent nese konkrétní adresu (odkaz, sdílení, EXTRA). Ne launcher. */
+    private fun explicitUrlFromIntent(intent: Intent?): String? {
         intent?.data?.toString()?.let { return it }
         intent?.getStringExtra(EXTRA_URL)?.let { return it }
 
@@ -500,9 +532,6 @@ class WebViewActivity : AppCompatActivity() {
                 .firstOrNull { it.startsWith("http://") || it.startsWith("https://") }
                 ?: shared.takeIf { it.isNotEmpty() }?.let { "https://$it" }
         }
-
-        // Studený start z ikony — bez EXTRA/data.
-        if (intent?.action == Intent.ACTION_MAIN) return DEFAULT_URL
         return null
     }
 
@@ -704,6 +733,8 @@ class WebViewActivity : AppCompatActivity() {
      * Otevřené karty zůstanou pod overlay (stav se neztratí).
      */
     private fun enterVpnGate() {
+        dismissWarningDialog()
+        tabs.forEach { it.webView.stopLoading() }
         when (loginGate) {
             LoginGate.LOGOUT, LoginGate.AUTH -> {
                 // Uživatel je na přihlášení — formulář nech, jen kompaktní banner.
@@ -1069,6 +1100,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun showUnauthorizedWarning(url: Uri?) {
         if (dialogShown) return
+        if (shouldSuppressPageErrorDialogs()) return
         dialogShown = true
         progressBar.visibility = View.GONE
 
@@ -1104,6 +1136,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun showCertWarning(error: SslError?) {
         if (dialogShown) return
+        if (shouldSuppressPageErrorDialogs()) return
         dialogShown = true
         progressBar.visibility = View.GONE
 
@@ -1146,6 +1179,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun showNetworkWarning(code: Int?, url: Uri?) {
         if (dialogShown) return
+        if (shouldSuppressPageErrorDialogs()) return
         dialogShown = true
         progressBar.visibility = View.GONE
 
@@ -1164,7 +1198,7 @@ class WebViewActivity : AppCompatActivity() {
             else -> "Stránku se nepodařilo načíst."
         }
 
-        MaterialAlertDialogBuilder(this)
+        warningDialog = MaterialAlertDialogBuilder(this)
             .setTitle("Nepodařilo se připojit")
             .setMessage("$detail\n\n$vpnHint\n\nAdresa: ${url?.host ?: "neznámá"}")
             .setPositiveButton("Zkusit znovu") { _, _ ->
@@ -1173,8 +1207,23 @@ class WebViewActivity : AppCompatActivity() {
             }
             .setNegativeButton("Zavřít", null)
             .setCancelable(true)
-            .setOnDismissListener { dialogShown = false }
+            .setOnDismissListener {
+                dialogShown = false
+                warningDialog = null
+            }
             .show()
+    }
+
+    /** Při výpadku VPN stačí dočasná obrazovka — žádný vyskakovací dialog. */
+    private fun shouldSuppressPageErrorDialogs(): Boolean {
+        return loginVisible || loginGate == LoginGate.VPN || !isVpnActive()
+    }
+
+    private fun dismissWarningDialog() {
+        warningDialog?.setOnDismissListener(null)
+        warningDialog?.dismiss()
+        warningDialog = null
+        dialogShown = false
     }
 
     private fun confirmLogout() {
