@@ -75,7 +75,6 @@ class WebViewActivity : AppCompatActivity() {
 
     private lateinit var loginOverlay: View
     private lateinit var loggedOutBanner: View
-    private lateinit var loginSubtitle: TextView
     private lateinit var usernameLayout: TextInputLayout
     private lateinit var usernameInput: TextInputEditText
     private lateinit var passwordInput: TextInputEditText
@@ -179,7 +178,7 @@ class WebViewActivity : AppCompatActivity() {
         val tab = BrowserTab(
             id = nextTabId++,
             webView = webView,
-            title = hostLabel(url),
+            title = tabLabel(url),
             url = url
         )
         tabs.add(tab)
@@ -268,18 +267,27 @@ class WebViewActivity : AppCompatActivity() {
 
     private var currentHostForUi: String? = null
 
-    private fun hostLabel(url: String): String {
-        return runCatching { Uri.parse(url).host }.getOrNull() ?: "Karta"
+    /**
+     * Název karty: přednostně číslo z `dmId=` v URL (grafy PSST).
+     * Jinak hostitel — ne document title typu „graf“.
+     */
+    private fun tabLabel(url: String): String {
+        return runCatching {
+            val uri = Uri.parse(url)
+            uri.getQueryParameter("dmId")
+                ?.takeIf { it.isNotBlank() }
+                ?: uri.getQueryParameter("dmid")
+                    ?.takeIf { it.isNotBlank() }
+                ?: uri.host
+        }.getOrNull() ?: "Karta"
     }
 
     private fun updateTabMeta(webView: WebView, url: String?, title: String?) {
         val tab = tabs.find { it.webView === webView } ?: return
+        // title z HTML záměrně ignorujeme — u grafů je to často jen „graf“.
         if (!url.isNullOrBlank()) {
             tab.url = url
-            if (title.isNullOrBlank()) tab.title = hostLabel(url)
-        }
-        if (!title.isNullOrBlank()) {
-            tab.title = title.take(40)
+            tab.title = tabLabel(url)
         }
         if (tab.id == activeTabId) applyChrome(tab)
         refreshTabStrip()
@@ -344,8 +352,7 @@ class WebViewActivity : AppCompatActivity() {
                     host = host,
                     handler = handler,
                     loggedOut = false,
-                    resumeUrl = null,
-                    subtitle = "Server $host vyžaduje přihlášení."
+                    resumeUrl = null
                 )
             }
 
@@ -448,7 +455,7 @@ class WebViewActivity : AppCompatActivity() {
         dialogShown = false
         LinkHistory.addEntry(this, url)
         tab.url = url
-        tab.title = hostLabel(url)
+        tab.title = tabLabel(url)
         applyChrome(tab)
         refreshTabStrip()
         tab.webView.loadUrl(url)
@@ -563,7 +570,6 @@ class WebViewActivity : AppCompatActivity() {
     private fun bindLoginUi() {
         loginOverlay = findViewById(R.id.loginOverlay)
         loggedOutBanner = findViewById(R.id.loggedOutBanner)
-        loginSubtitle = findViewById(R.id.loginSubtitle)
         usernameLayout = findViewById(R.id.usernameLayout)
         usernameInput = findViewById(R.id.usernameInput)
         passwordInput = findViewById(R.id.passwordInput)
@@ -580,15 +586,14 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Celá obrazovka místo malého dialogu.
+     * Celá obrazovka „PSST Data“.
      * [handler] != null → odpověď na HTTP 401; null → přihlášení po Odhlásit.
      */
     private fun showLoginScreen(
         host: String,
         handler: HttpAuthHandler?,
         loggedOut: Boolean,
-        resumeUrl: String?,
-        subtitle: String
+        resumeUrl: String?
     ) {
         if (isFinishing) {
             handler?.cancel()
@@ -608,7 +613,6 @@ class WebViewActivity : AppCompatActivity() {
         progressBar.visibility = View.GONE
 
         loggedOutBanner.visibility = if (loggedOut) View.VISIBLE else View.GONE
-        loginSubtitle.text = subtitle
         rememberCheck.isChecked = true
         usernameLayout.error = null
         usernameInput.setText("")
@@ -823,8 +827,7 @@ class WebViewActivity : AppCompatActivity() {
             host = "psst.tudc.cz",
             handler = null,
             loggedOut = true,
-            resumeUrl = DEFAULT_URL,
-            subtitle = "Pro pokračování se znovu přihlaste."
+            resumeUrl = DEFAULT_URL
         )
 
         val cookieManager = CookieManager.getInstance()
