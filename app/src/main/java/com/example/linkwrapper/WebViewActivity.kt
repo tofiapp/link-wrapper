@@ -831,6 +831,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun hideLoginScreen() {
+        hideKeyboard()
         loginOverlay.visibility = View.GONE
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
@@ -842,6 +843,14 @@ class WebViewActivity : AppCompatActivity() {
         pendingAuthHandler = null
         pendingAuthHost = null
         // pendingResumeUrl nech — může se hodit po VPN
+    }
+
+    private fun hideKeyboard() {
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        val focus = currentFocus ?: loginOverlay
+        imm.hideSoftInputFromWindow(focus.windowToken, 0)
+        if (::usernameInput.isInitialized) usernameInput.clearFocus()
+        if (::passwordInput.isInitialized) passwordInput.clearFocus()
     }
 
     private fun submitLogin() {
@@ -862,6 +871,9 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         usernameLayout.error = null
+
+        // Hned schovej klávesnici — ještě před přechodem do WebView.
+        hideKeyboard()
 
         val host = pendingAuthHost ?: "psst.tudc.cz"
         if (rememberCheck.isChecked || HttpCredentials.isPsstHost(host)) {
