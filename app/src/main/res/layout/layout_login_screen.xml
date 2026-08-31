@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- FrameLayout drží formulář ve středu; ScrollView řeší klávesnici na výšku. -->
+<!--
+  Nadpis PSST Data nahoře (stejné místo jako dřívější „Přihlášení“).
+  Formulář pod ním — na výšku vycentrovaný ve zbývajícím prostoru.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/loginOverlay"
@@ -10,38 +13,43 @@
     android:clickable="true"
     android:focusable="true">
 
-    <ScrollView
+    <TextView
+        android:id="@+id/loginTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:fillViewport="false"
+        android:layout_gravity="top"
+        android:paddingHorizontal="28dp"
+        android:paddingTop="72dp"
+        android:text="PSST Data"
+        android:textColor="@color/ink"
+        android:textSize="28sp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="-0.02"
+        android:gravity="start" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="120dp"
+        android:fillViewport="true"
         android:scrollbars="none"
-        android:overScrollMode="ifContentScrolls">
+        android:overScrollMode="ifContentScrolls"
+        android:clipToPadding="false">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:gravity="center_horizontal"
+            android:layout_gravity="center_vertical"
             android:paddingHorizontal="28dp"
-            android:paddingVertical="32dp">
-
-            <TextView
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="PSST Data"
-                android:textColor="@color/ink"
-                android:textSize="28sp"
-                android:fontFamily="sans-serif-medium"
-                android:letterSpacing="-0.02"
-                android:gravity="center_horizontal" />
+            android:paddingBottom="40dp">
 
             <!-- Červená notifikace: VPN není připojená -->
             <LinearLayout
                 android:id="@+id/vpnBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
                 android:background="@drawable/bg_vpn_banner"
                 android:orientation="vertical"
                 android:paddingHorizontal="16dp"
@@ -71,7 +79,7 @@
                 android:id="@+id/loggedOutBanner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
+                android:layout_marginTop="16dp"
                 android:background="@drawable/bg_logged_out_banner"
                 android:orientation="vertical"
                 android:paddingHorizontal="16dp"
@@ -101,7 +109,7 @@
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
+                android:layout_marginTop="24dp"
                 android:hint="Uživatelské jméno"
                 app:boxBackgroundColor="@color/surface_raised">
 
