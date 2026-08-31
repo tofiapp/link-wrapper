@@ -1,10 +1,10 @@
 package com.example.linkwrapper
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 
@@ -17,6 +17,9 @@ class HomeActivity : AppCompatActivity() {
         val urlInput = findViewById<EditText>(R.id.urlInput)
         val openButton = findViewById<Button>(R.id.openButton)
         val historyButton = findViewById<Button>(R.id.historyButton)
+        val versionText = findViewById<TextView>(R.id.versionText)
+
+        versionText.text = getString(R.string.version_label, installedVersionName())
 
         openButton.setOnClickListener {
             var text = urlInput.text.toString().trim()
@@ -34,6 +37,14 @@ class HomeActivity : AppCompatActivity() {
 
         historyButton.setOnClickListener {
             startActivity(Intent(this, HistoryActivity::class.java))
+        }
+    }
+
+    private fun installedVersionName(): String {
+        return try {
+            packageManager.getPackageInfo(packageName, 0).versionName ?: "—"
+        } catch (e: Exception) {
+            "—"
         }
     }
 }
