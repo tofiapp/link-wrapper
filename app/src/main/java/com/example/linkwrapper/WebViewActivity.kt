@@ -29,6 +29,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebViewDatabase
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
@@ -723,16 +724,12 @@ class WebViewActivity : AppCompatActivity() {
      * pak přenačte všechny karty — další přístup znovu vyžádá přihlášení.
      */
     private fun confirmLogout() {
-        if (!HttpCredentials.hasAny(this) && tabs.isEmpty()) {
-            Toast.makeText(this, "Nejste přihlášeni", Toast.LENGTH_SHORT).show()
-            return
-        }
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Odhlásit")
             .setMessage(
-                "Smaže uložené jméno a heslo pro *.psst.tudc.cz i cookies " +
-                    "ve všech kartách. Při dalším načtení bude potřeba se znovu přihlásit."
+                "Smaže uložené jméno a heslo pro *.psst.tudc.cz, cookies " +
+                    "i HTTP přihlášení ve všech kartách. Při dalším načtení " +
+                    "bude potřeba se znovu přihlásit."
             )
             .setPositiveButton("Odhlásit") { _, _ ->
                 performLogout()
@@ -741,27 +738,50 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Skutečné odhlášení: uložené heslo + cookies + HTTP auth cache ve WebView.
+     * Samotné reload nestačí — WebView si heslo drží v paměti a pošle ho znovu.
+     * Proto karty zničíme a otevřeme znovu až po vyčištění cookies.
+     */
     private fun performLogout() {
         HttpCredentials.clearAll(this)
         authChallengeCounts.clear()
+        authFailedViews.clear()
         awaitingHttpAuth = false
+        authDialogShowing = false
+        dialogShown = false
 
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.removeAllCookies(null)
-        cookieManager.flush()
+        try {
+            @Suppress("DEPRECATION")
+            WebViewDatabase.getInstance(this).clearHttpAuthUsernamePassword()
+        } catch (_: Exception) {
+            // API se liší podle verze WebView
+        }
+
         try {
             WebStorage.getInstance().deleteAllData()
         } catch (_: Exception) {
             // starší WebView — ignorovat
         }
 
-        tabs.forEach { tab ->
-            tab.webView.clearCache(true)
-            tab.webView.clearFormData()
-            dialogShown = false
-            tab.webView.reload()
+        val urlsToRestore = tabs.map { it.url }.ifEmpty { listOf(DEFAULT_URL) }
+
+        // Nejdřív zastavit a zničit WebView (smaže i paměťové HTTP auth).
+        tabs.toList().forEach { destroyTab(it) }
+        tabs.clear()
+        activeTabId = -1L
+        refreshTabStrip()
+
+        val cookieManager = CookieManager.getInstance()
+        cookieManager.removeSessionCookies(null)
+        cookieManager.removeAllCookies { _ ->
+            cookieManager.flush()
+            runOnUiThread {
+                // Jedna čistá karta na domovskou / poslední adresu — bez uloženého hesla.
+                openInNewTab(urlsToRestore.firstOrNull() ?: DEFAULT_URL)
+                Toast.makeText(this, "Odhlášeno", Toast.LENGTH_SHORT).show()
+            }
         }
-        Toast.makeText(this, "Odhlášeno", Toast.LENGTH_SHORT).show()
     }
 
     private fun showCertInfo() {
@@ -809,6 +829,11 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_webview, menu)
+        // Zvýraznit + a domeček kontrastní barvou (iconTint v XML někde nepřepíše theme).
+        val accent = ContextCompat.getColor(this, R.color.accent)
+        listOf(R.id.action_new_tab, R.id.action_home).forEach { id ->
+            menu?.findItem(id)?.icon?.mutate()?.setTint(accent)
+        }
         return true
     }
 
