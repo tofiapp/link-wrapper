@@ -15,8 +15,8 @@
         <item name="android:background">@color/surface</item>
         <item name="titleTextColor">@color/ink</item>
         <item name="subtitleTextColor">@color/ink_faint</item>
-        <item name="android:clipChildren">false</item>
-        <item name="android:clipToPadding">false</item>
+        <item name="android:clipChildren">true</item>
+        <item name="android:clipToPadding">true</item>
         <!-- Výchozí ikony (domeček, ⋮) — ink; + se obarví v kódu na accent -->
         <item name="colorControlNormal">@color/ink_soft</item>
     </style>

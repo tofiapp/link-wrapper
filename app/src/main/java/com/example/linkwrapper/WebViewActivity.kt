@@ -23,6 +23,7 @@ import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
@@ -79,6 +80,9 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var tabScroll: HorizontalScrollView
 
     private lateinit var loginOverlay: View
+    private lateinit var loginTitle: View
+    private lateinit var vpnOnlyPanel: View
+    private lateinit var loginFormScroll: View
     private lateinit var loggedOutBanner: View
     private lateinit var vpnBanner: View
     private lateinit var usernameLayout: TextInputLayout
@@ -160,6 +164,7 @@ class WebViewActivity : AppCompatActivity() {
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
+        applySoftInputMode()
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -168,7 +173,7 @@ class WebViewActivity : AppCompatActivity() {
         if (isVpnActive()) {
             openInNewTab(startUrl)
         } else {
-            // Bez VPN — přihlašovací obrazovka s červenou notifikací.
+            // Bez VPN — jen varování, bez přihlašovacího formuláře.
             showLoginScreen(
                 host = "psst.tudc.cz",
                 handler = null,
@@ -669,20 +674,19 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * VPN vypnutá: ukaž přihlašovací obrazovku s červenou notifikací.
-     * Otevřené karty necháme pod overlay (stav se neztratí).
+     * VPN vypnutá: jen varování (bez přihlašovacího formuláře).
+     * Otevřené karty zůstanou pod overlay (stav se neztratí).
      */
     private fun enterVpnGate() {
         when (loginGate) {
             LoginGate.LOGOUT, LoginGate.AUTH -> {
-                // Už jsme na přihlášení — jen červený banner VPN.
+                // Uživatel je na přihlášení — formulář nech, jen kompaktní banner.
                 vpnBanner.visibility = View.VISIBLE
                 updateLoginFormForVpn(false)
                 return
             }
             LoginGate.VPN -> {
-                vpnBanner.visibility = View.VISIBLE
-                updateLoginFormForVpn(false)
+                applyLoginChrome()
                 return
             }
             LoginGate.NONE -> Unit
@@ -760,6 +764,9 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun bindLoginUi() {
         loginOverlay = findViewById(R.id.loginOverlay)
+        loginTitle = findViewById(R.id.loginTitle)
+        vpnOnlyPanel = findViewById(R.id.vpnOnlyPanel)
+        loginFormScroll = findViewById(R.id.loginFormScroll)
         loggedOutBanner = findViewById(R.id.loggedOutBanner)
         vpnBanner = findViewById(R.id.vpnBanner)
         usernameLayout = findViewById(R.id.usernameLayout)
@@ -814,8 +821,6 @@ class WebViewActivity : AppCompatActivity() {
             else -> LoginGate.AUTH
         }
 
-        loggedOutBanner.visibility = if (loggedOut) View.VISIBLE else View.GONE
-        vpnBanner.visibility = if (vpnMissing) View.VISIBLE else View.GONE
         rememberCheck.isChecked = true
         usernameLayout.error = null
         if (clearFields) {
@@ -823,23 +828,60 @@ class WebViewActivity : AppCompatActivity() {
             passwordInput.setText("")
         }
 
+        applyLoginChrome()
         updateLoginFormForVpn(isVpnActive())
 
         loginOverlay.visibility = View.VISIBLE
         loginOverlay.bringToFront()
-        if (loginButton.isEnabled) usernameInput.requestFocus()
+        if (loginGate != LoginGate.VPN && loginButton.isEnabled) {
+            usernameInput.requestFocus()
+        }
+    }
+
+    /**
+     * VPN brána = jen varování uprostřed.
+     * Odhlášení / HTTP 401 = formulář; pokud VPN chybí, nad ním kompaktní banner.
+     */
+    private fun applyLoginChrome() {
+        if (!::vpnOnlyPanel.isInitialized) return
+        val vpnOnly = loginGate == LoginGate.VPN
+        vpnOnlyPanel.visibility = if (vpnOnly) View.VISIBLE else View.GONE
+        loginFormScroll.visibility = if (vpnOnly) View.GONE else View.VISIBLE
+        loginTitle.visibility = if (vpnOnly) View.GONE else View.VISIBLE
+        loggedOutBanner.visibility =
+            if (!vpnOnly && loginGate == LoginGate.LOGOUT) View.VISIBLE else View.GONE
+        vpnBanner.visibility =
+            if (!vpnOnly && !isVpnActive()) View.VISIBLE else View.GONE
+        if (vpnOnly) hideKeyboard()
+        applySoftInputMode()
+    }
+
+    /**
+     * Na webu klávesnice překryje stránku (stránka se nesmršťuje, jde dál scrollovat).
+     * U přihlašovacího formuláře okno posuneme, ať pole zůstanou vidět.
+     */
+    private fun applySoftInputMode() {
+        val loginFormVisible = loginVisible && loginGate != LoginGate.VPN
+        val mode = if (loginFormVisible) {
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+        } else {
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN
+        }
+        window.setSoftInputMode(mode)
     }
 
     private fun hideLoginScreen() {
         hideKeyboard()
         loginOverlay.visibility = View.GONE
+        if (::vpnOnlyPanel.isInitialized) vpnOnlyPanel.visibility = View.GONE
+        if (::loginFormScroll.isInitialized) loginFormScroll.visibility = View.GONE
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
         authDialogShowing = false
         loginVisible = false
-        if (loginGate != LoginGate.VPN) {
-            // VPN bránu si pamatuje exitVpnGate; tady čistíme AUTH/LOGOUT.
-        }
+        applySoftInputMode()
         pendingAuthHandler = null
         pendingAuthHost = null
         // pendingResumeUrl nech — může se hodit po VPN
@@ -1134,6 +1176,14 @@ class WebViewActivity : AppCompatActivity() {
             title.setSpan(ForegroundColorSpan(alert), 0, title.length, 0)
             item.title = title
             item.icon?.mutate()?.setTint(alert)
+        }
+        // Toolbar drží jen ikony; karty jsou vedle, ať pod ně nezajíždí.
+        toolbar.post {
+            val lp = toolbar.layoutParams
+            if (lp.width != LinearLayout.LayoutParams.WRAP_CONTENT) {
+                lp.width = LinearLayout.LayoutParams.WRAP_CONTENT
+                toolbar.layoutParams = lp
+            }
         }
         return true
     }

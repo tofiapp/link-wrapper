@@ -3,68 +3,97 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/surface"
-    android:clipChildren="false">
+    android:background="@color/surface">
 
     <LinearLayout
         android:id="@+id/browserChrome"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:clipChildren="false">
+        android:orientation="vertical">
 
         <!--
-          Horní lišta: karty místo názvu stránky.
-          Vpravo menu: +, domeček, ⋮ (viz menu_webview.xml).
+          Karty vlevo (vlastní sloupec, oříznuté), vpravo samostatný toolbar
+          s +, domečkem a ⋮ — karty pod tlačítka nemůžou zajet.
         -->
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/toolbar"
-            style="@style/AppBar"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:clipChildren="false"
-            android:clipToPadding="false"
-            app:contentInsetStart="4dp"
-            app:contentInsetEnd="0dp"
-            app:contentInsetStartWithNavigation="4dp"
-            app:title="">
+            android:background="@color/surface"
+            android:clipChildren="true"
+            android:clipToPadding="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <HorizontalScrollView
-                android:id="@+id/tabScroll"
-                android:layout_width="match_parent"
+            <FrameLayout
+                android:layout_width="0dp"
                 android:layout_height="match_parent"
-                android:scrollbars="none"
-                android:fillViewport="false"
-                android:overScrollMode="never"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                android:paddingStart="4dp"
-                android:paddingEnd="8dp">
+                android:layout_weight="1"
+                android:clipChildren="true"
+                android:clipToPadding="true">
 
-                <LinearLayout
-                    android:id="@+id/tabStrip"
-                    android:layout_width="wrap_content"
+                <HorizontalScrollView
+                    android:id="@+id/tabScroll"
+                    android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:clipChildren="false"
-                    android:clipToPadding="false"
+                    android:clipChildren="true"
+                    android:clipToPadding="true"
+                    android:fillViewport="false"
+                    android:overScrollMode="never"
                     android:paddingStart="4dp"
-                    android:paddingEnd="12dp"
-                    android:paddingTop="8dp"
-                    android:paddingBottom="8dp" />
-            </HorizontalScrollView>
-        </com.google.android.material.appbar.MaterialToolbar>
+                    android:paddingEnd="16dp"
+                    android:scrollbars="none">
+
+                    <LinearLayout
+                        android:id="@+id/tabStrip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="2dp"
+                        android:paddingTop="8dp"
+                        android:paddingEnd="4dp"
+                        android:paddingBottom="8dp" />
+                </HorizontalScrollView>
+
+                <View
+                    android:layout_width="20dp"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="end"
+                    android:background="@drawable/tab_strip_fade"
+                    android:clickable="false"
+                    android:focusable="false" />
+            </FrameLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:layout_marginTop="12dp"
+                android:layout_marginBottom="12dp"
+                android:background="@color/line" />
+
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/toolbar"
+                style="@style/AppBar"
+                android:layout_width="wrap_content"
+                android:layout_height="56dp"
+                android:minWidth="0dp"
+                app:contentInsetEnd="0dp"
+                app:contentInsetStart="0dp"
+                app:contentInsetStartWithNavigation="0dp"
+                app:title="" />
+        </LinearLayout>
 
         <com.google.android.material.progressindicator.LinearProgressIndicator
             android:id="@+id/progressBar"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:visibility="gone"
-            app:trackThickness="2dp"
-            app:trackCornerRadius="0dp"
             app:indicatorColor="@color/accent"
-            app:trackColor="@android:color/transparent" />
+            app:trackColor="@android:color/transparent"
+            app:trackCornerRadius="0dp"
+            app:trackThickness="2dp" />
 
         <View
             android:layout_width="match_parent"
@@ -78,7 +107,6 @@
             android:layout_weight="1" />
     </LinearLayout>
 
-    <!-- Celá obrazovka: přihlášení / stav po odhlášení -->
     <include layout="@layout/layout_login_screen" />
 
 </FrameLayout>
