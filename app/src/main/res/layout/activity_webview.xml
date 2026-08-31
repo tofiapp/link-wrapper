@@ -6,13 +6,38 @@
     android:orientation="vertical"
     android:background="@color/surface">
 
+    <!--
+      Horní lišta: karty místo názvu stránky.
+      Vpravo menu: domeček, +, ⋮ (viz menu_webview.xml).
+    -->
     <com.google.android.material.appbar.MaterialToolbar
         android:id="@+id/toolbar"
         style="@style/AppBar"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium"
-        app:subtitleTextAppearance="@style/TextAppearance.Material3.BodySmall" />
+        android:layout_height="56dp"
+        app:contentInsetStart="8dp"
+        app:contentInsetEnd="0dp"
+        app:contentInsetStartWithNavigation="8dp"
+        app:title="">
+
+        <HorizontalScrollView
+            android:id="@+id/tabScroll"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scrollbars="none"
+            android:fillViewport="false"
+            android:overScrollMode="never"
+            android:clipToPadding="false">
+
+            <LinearLayout
+                android:id="@+id/tabStrip"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="10dp" />
+        </HorizontalScrollView>
+    </com.google.android.material.appbar.MaterialToolbar>
 
     <com.google.android.material.progressindicator.LinearProgressIndicator
         android:id="@+id/progressBar"
@@ -29,9 +54,10 @@
         android:layout_height="1dp"
         android:background="@color/line" />
 
-    <WebView
-        android:id="@+id/webView"
+    <FrameLayout
+        android:id="@+id/webContainer"
         android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
 </LinearLayout>
