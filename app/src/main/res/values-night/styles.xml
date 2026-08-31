@@ -1,11 +1,11 @@
 <resources>
-    <style name="Theme.LinkWrapper" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.LinkWrapper" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/accent</item>
-        <item name="colorOnPrimary">#FFFFFFFF</item>
+        <item name="colorOnPrimary">#FF102030</item>
         <item name="colorSurface">@color/surface</item>
         <item name="colorOnSurface">@color/ink</item>
         <item name="android:statusBarColor">@color/surface</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:navigationBarColor">@color/surface</item>
         <item name="android:windowBackground">@color/surface</item>
         <item name="materialAlertDialogTheme">@style/RoundedDialog</item>

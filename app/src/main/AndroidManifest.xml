@@ -26,19 +26,37 @@
             android:name=".WebViewActivity"
             android:exported="true"
             android:launchMode="singleTask">
+
+            <!--
+              Konkrétní firemní doména. Uvedená explicitně, aby se aplikace
+              nabídla i na Androidu 12+, kde se obecné http/https filtry
+              bez ověření domény často přeskakují.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="psst.tudc.cz" />
+                <data android:scheme="http" android:host="psst.tudc.cz" />
+            </intent-filter>
+
+            <!-- Ostatní adresy: aplikace se nabídne v "Otevřít pomocí". -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="http" />
                 <data android:scheme="https" />
-                <!--
-                  Zatím appka přijímá jakoukoliv http/https adresu, aby se
-                  objevila v systémovém dialogu "Otevřít pomocí".
-                  Až budete znát konkrétní firemní doménu, přidejte sem
-                  <data android:scheme="https" android:host="vase-domena.cz" />
-                  a appka pak nabídne otevření jen pro tuhle doménu.
-                -->
+            </intent-filter>
+
+            <!--
+              Sdílení odkazu. Náhradní cesta, když Outlook otevírání
+              odkazů nepředá systému - uživatel dá Sdílet a vybere aplikaci.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
 
