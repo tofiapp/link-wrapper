@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.LinkWrapper" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+</resources>
