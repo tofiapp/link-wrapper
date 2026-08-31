@@ -50,6 +50,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.view.menu.MenuBuilder
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -1177,22 +1178,17 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun confirmLogout() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Odhlásit")
-            .setMessage(
-                "Odhlásí vás ze všech karet a stránek *.psst.tudc.cz. " +
-                    "Smaže uložené heslo, cookies i session."
-            )
-            .setPositiveButton("Odhlásit") { _, _ ->
-                performLogout()
-            }
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_confirm_logout, null)
+        MaterialAlertDialogBuilder(this, R.style.LogoutDialog)
+            .setView(view)
+            .setPositiveButton("Odhlásit") { _, _ -> performLogout() }
             .setNegativeButton("Zrušit", null)
             .show()
     }
 
     /**
      * Odhlášení pro celou aplikaci: heslo + cookies + HTTP auth cache + všechny karty.
-     * Uživatel skončí na celostránkovém přihlášení s textem „Byl jste odhlášen“.
+     * Uživatel skončí na přihlášení s textem „Byl jste odhlášen“.
      */
     private fun performLogout() {
         // Zruš případné čekající HTTP auth.
@@ -1285,8 +1281,13 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
+    @SuppressLint("RestrictedApi")
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_webview, menu)
+        if (menu is MenuBuilder) {
+            menu.setOptionalIconsVisible(true)
+            menu.setGroupDividerEnabled(true)
+        }
         val accent = ContextCompat.getColor(this, R.color.accent)
         val inkSoft = ContextCompat.getColor(this, R.color.ink_soft)
         val alert = ContextCompat.getColor(this, R.color.alert)
@@ -1294,6 +1295,16 @@ class WebViewActivity : AppCompatActivity() {
         // Jen + je modré; domeček zůstane neutrální.
         menu?.findItem(R.id.action_new_tab)?.icon?.mutate()?.setTint(accent)
         menu?.findItem(R.id.action_home)?.icon?.mutate()?.setTint(inkSoft)
+
+        listOf(
+            R.id.action_open_url,
+            R.id.action_reload,
+            R.id.action_history,
+            R.id.action_cert_info,
+            R.id.action_link_settings
+        ).forEach { id ->
+            menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
+        }
 
         // Odhlásit dole, červené jako typické „sign out“.
         menu?.findItem(R.id.action_logout)?.let { item ->

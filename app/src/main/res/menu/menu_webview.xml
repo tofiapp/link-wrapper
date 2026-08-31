@@ -19,22 +19,27 @@
         <item
             android:id="@+id/action_open_url"
             android:title="Zadat URL adresu"
+            android:icon="@drawable/ic_link"
             app:showAsAction="never" />
         <item
             android:id="@+id/action_reload"
             android:title="Přenačíst"
+            android:icon="@drawable/ic_refresh"
             app:showAsAction="never" />
         <item
             android:id="@+id/action_history"
             android:title="Historie"
+            android:icon="@drawable/ic_history"
             app:showAsAction="never" />
         <item
             android:id="@+id/action_cert_info"
             android:title="Ověřování certifikátů"
+            android:icon="@drawable/ic_shield"
             app:showAsAction="never" />
         <item
             android:id="@+id/action_link_settings"
             android:title="Nastavení odkazů"
+            android:icon="@drawable/ic_settings_alert"
             app:showAsAction="never" />
     </group>
 

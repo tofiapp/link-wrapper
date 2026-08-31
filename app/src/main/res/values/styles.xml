@@ -9,6 +9,11 @@
         <item name="android:navigationBarColor">@color/surface</item>
         <item name="android:windowBackground">@color/surface</item>
         <item name="materialAlertDialogTheme">@style/RoundedDialog</item>
+        <item name="popupMenuBackground">@drawable/bg_popup_menu</item>
+        <item name="actionOverflowMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="popupMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="textAppearanceLargePopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
+        <item name="textAppearanceSmallPopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
     </style>
 
     <style name="AppBar" parent="Widget.Material3.Toolbar">
@@ -19,9 +24,65 @@
         <item name="android:clipToPadding">true</item>
         <!-- Výchozí ikony (domeček, ⋮) — ink; + se obarví v kódu na accent -->
         <item name="colorControlNormal">@color/ink_soft</item>
+        <item name="popupTheme">@style/ThemeOverlay.LinkWrapper.Popup</item>
+    </style>
+
+    <style name="ThemeOverlay.LinkWrapper.Popup" parent="ThemeOverlay.Material3.Light">
+        <item name="android:colorBackground">@color/surface_raised</item>
+        <item name="colorSurface">@color/surface_raised</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorControlNormal">@color/ink_soft</item>
+        <item name="popupMenuBackground">@drawable/bg_popup_menu</item>
+        <item name="android:popupMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="popupMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="textAppearanceLargePopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
+        <item name="textAppearanceSmallPopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
+    </style>
+
+    <style name="Widget.LinkWrapper.PopupMenu.Overflow" parent="Widget.Material3.PopupMenu.Overflow">
+        <item name="android:popupBackground">@drawable/bg_popup_menu</item>
+        <item name="android:popupElevation">10dp</item>
+        <item name="overlapAnchor">false</item>
+    </style>
+
+    <style name="TextAppearance.LinkWrapper.PopupMenu" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textColor">@color/ink</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">-0.01</item>
     </style>
     <style name="RoundedDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="shapeAppearanceOverlay">@style/DialogShape</item>
+        <item name="colorSurface">@color/surface_raised</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.LinkWrapper.DialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.LinkWrapper.DialogButton.Neutral</item>
+    </style>
+
+    <style name="LogoutDialog" parent="RoundedDialog">
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.LinkWrapper.DialogButton.Destructive</item>
+    </style>
+
+    <style name="Widget.LinkWrapper.DialogButton" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <style name="Widget.LinkWrapper.DialogButton.Neutral" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/ink_soft</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+    <style name="Widget.LinkWrapper.DialogButton.Destructive" parent="Widget.Material3.Button.TextButton.Dialog">
+        <item name="android:textColor">@color/alert</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:letterSpacing">0</item>
     </style>
 
     <style name="DialogShape">

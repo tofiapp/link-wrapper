@@ -9,15 +9,39 @@
         <item name="android:navigationBarColor">@color/surface</item>
         <item name="android:windowBackground">@color/surface</item>
         <item name="materialAlertDialogTheme">@style/RoundedDialog</item>
+        <item name="popupMenuBackground">@drawable/bg_popup_menu</item>
+        <item name="actionOverflowMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="popupMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="textAppearanceLargePopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
+        <item name="textAppearanceSmallPopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
     </style>
 
     <style name="AppBar" parent="Widget.Material3.Toolbar">
         <item name="android:background">@color/surface</item>
         <item name="titleTextColor">@color/ink</item>
         <item name="subtitleTextColor">@color/ink_faint</item>
+        <item name="popupTheme">@style/ThemeOverlay.LinkWrapper.Popup</item>
+        <item name="colorControlNormal">@color/ink_soft</item>
+    </style>
+
+    <style name="ThemeOverlay.LinkWrapper.Popup" parent="ThemeOverlay.Material3.Dark">
+        <item name="android:colorBackground">@color/surface_raised</item>
+        <item name="colorSurface">@color/surface_raised</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorControlNormal">@color/ink_soft</item>
+        <item name="popupMenuBackground">@drawable/bg_popup_menu</item>
+        <item name="android:popupMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="popupMenuStyle">@style/Widget.LinkWrapper.PopupMenu.Overflow</item>
+        <item name="textAppearanceLargePopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
+        <item name="textAppearanceSmallPopupMenu">@style/TextAppearance.LinkWrapper.PopupMenu</item>
     </style>
     <style name="RoundedDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="shapeAppearanceOverlay">@style/DialogShape</item>
+        <item name="colorSurface">@color/surface_raised</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.LinkWrapper.DialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.LinkWrapper.DialogButton.Neutral</item>
     </style>
 
     <style name="DialogShape">
