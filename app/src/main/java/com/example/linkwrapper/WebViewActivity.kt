@@ -1178,22 +1178,17 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun confirmLogout() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Odhlásit")
-            .setMessage(
-                "Odhlásí vás ze všech karet a stránek *.psst.tudc.cz. " +
-                    "Smaže uložené heslo, cookies i session."
-            )
-            .setPositiveButton("Odhlásit") { _, _ ->
-                performLogout()
-            }
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_confirm_logout, null)
+        MaterialAlertDialogBuilder(this, R.style.LogoutDialog)
+            .setView(view)
+            .setPositiveButton("Odhlásit") { _, _ -> performLogout() }
             .setNegativeButton("Zrušit", null)
             .show()
     }
 
     /**
      * Odhlášení pro celou aplikaci: heslo + cookies + HTTP auth cache + všechny karty.
-     * Uživatel skončí na přihlášení s tichou hláškou „Odhlášeno“.
+     * Uživatel skončí na přihlášení s textem „Byl jste odhlášen“.
      */
     private fun performLogout() {
         // Zruš případné čekající HTTP auth.
@@ -1228,7 +1223,7 @@ class WebViewActivity : AppCompatActivity() {
         savedActiveTabIndex = 0
         refreshTabStrip()
 
-        // Hned ukaž přihlášení s „Odhlášeno“ — cookies dočistíme na pozadí.
+        // Hned ukaž přihlášení s „Byl jste odhlášen“ — cookies dočistíme na pozadí.
         showLoginScreen(
             host = "psst.tudc.cz",
             handler = null,

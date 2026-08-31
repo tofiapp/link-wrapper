@@ -37,6 +37,11 @@
     </style>
     <style name="RoundedDialog" parent="ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="shapeAppearanceOverlay">@style/DialogShape</item>
+        <item name="colorSurface">@color/surface_raised</item>
+        <item name="colorOnSurface">@color/ink</item>
+        <item name="colorPrimary">@color/accent</item>
+        <item name="buttonBarPositiveButtonStyle">@style/Widget.LinkWrapper.DialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/Widget.LinkWrapper.DialogButton.Neutral</item>
     </style>
 
     <style name="DialogShape">
