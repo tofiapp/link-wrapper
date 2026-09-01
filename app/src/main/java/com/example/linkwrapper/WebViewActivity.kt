@@ -37,10 +37,9 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
-import android.webkit.WebStorage
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebViewDatabase
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
@@ -58,12 +57,10 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
-import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
-import java.io.File
 import java.util.Collections
 import java.util.IdentityHashMap
 import kotlin.system.exitProcess
@@ -80,12 +77,13 @@ class WebViewActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_URL = "extra_url"
-        const val EXTRA_LOGGED_OUT = "extra_logged_out"
         const val DEFAULT_URL = "https://test.psst.tudc.cz/HSI.Psst.Data"
         private const val MAX_TABS = 8
-        private const val PREFS_SESSION_GATE = "session_gate"
-        private const val KEY_LOGGED_OUT = "logged_out"
+        private const val MAX_AUTH_ROUNDS = 16
+        private const val LOGIN_TIMEOUT_MS = 15_000L
     }
+
+    private enum class Gate { BROWSER, LOGIN, VPN }
 
     private lateinit var toolbar: MaterialToolbar
     private lateinit var progressBar: LinearProgressIndicator
@@ -104,7 +102,6 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var usernameInput: TextInputEditText
     private lateinit var passwordLayout: TextInputLayout
     private lateinit var passwordInput: TextInputEditText
-    private lateinit var rememberCheck: MaterialCheckBox
     private lateinit var loginButton: MaterialButton
 
     private val tabs = mutableListOf<BrowserTab>()
@@ -117,55 +114,36 @@ class WebViewActivity : AppCompatActivity() {
     private val activeWebView: WebView?
         get() = activeTab?.webView
 
-    // Aby po chybě nevyskočilo víc dialogů za sebou.
+    private var gate = Gate.LOGIN
+    private var showSignedOutBanner = false
     private var dialogShown = false
     private var urlDialog: AlertDialog? = null
     private var warningDialog: AlertDialog? = null
-    private var authDialogShowing = false
-    private var awaitingHttpAuth = false
-    private var loginVisible = false
 
-    /** Proč je zobrazená přihlašovací obrazovka. */
-    private enum class LoginGate { NONE, VPN, LOGOUT, AUTH }
-    private var loginGate = LoginGate.NONE
-
-    /** Čekající HTTP auth z WebView (null = přihlášení po odhlášení / VPN). */
+    /** Čekající HTTP auth, když uživatel právě vyplňuje formulář. */
     private var pendingAuthHandler: HttpAuthHandler? = null
-    private var pendingAuthHost: String? = null
-    private var pendingResumeUrl: String? = null
+    private var awaitingHttpAuth = false
 
-    /** URL ke spuštění po připojení VPN (studený start bez VPN). */
+    /** Údaje z formuláře, dokud je server neověří. Pak jdou do [Session]. */
+    private var pendingCredentials: Credentials? = null
+    private var verifyingLogin = false
+
     private var pendingStartUrl: String? = null
-
-    /** Snapshot karet při výpadku VPN — pro obnovení, kdyby WebView zmizela. */
+    private var pendingResumeUrl: String? = null
     private var savedTabUrls: List<String> = emptyList()
     private var savedActiveTabIndex: Int = 0
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val vpnCheckRunnable = Runnable { applyVpnState(isVpnActive()) }
-
-    /**
-     * Počet HTTP auth challenge za sebou **na jedné WebView**.
-     * Globální počítadlo by při nové kartě (historie) sečetlo kola všech karet
-     * a po 12 smaže heslo — to vypadá jako odhlášení.
-     */
-    private val authChallengeCounts = IdentityHashMap<WebView, MutableMap<String, Int>>()
-
-    /** WebView, které právě dostaly 401 — nesmíme resetovat počítadlo auth. */
-    private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
-
-    /**
-     * Probíhá odeslané přihlášení. Overlay zůstane, dokud se stránka nenačte
-     * s právě zadanými údaji — jinak stačí cokoliv a stará NTLM session pustí dál.
-     */
-    private var submittedCredentials: SavedCredentials? = null
-    private var loginAwaitingPage = false
-    private var loginSubmitInFlight = false
+    private val vpnCheckRunnable = Runnable { refreshGate() }
     private val loginTimeoutRunnable = Runnable {
-        if (loginAwaitingPage) failLoginAttempt()
+        if (verifyingLogin) failLogin("Přihlášení vypršelo. Zkuste to znovu.")
     }
 
+    private val authChallengeCounts = IdentityHashMap<WebView, MutableMap<String, Int>>()
+    private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
+
+    private var currentHostForUi: String? = null
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
 
@@ -199,45 +177,27 @@ class WebViewActivity : AppCompatActivity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
 
-        val startUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
-        pendingStartUrl = startUrl
-        if (consumeLoggedOutFlag() || intent.getBooleanExtra(EXTRA_LOGGED_OUT, false)) {
-            // Nový proces po Odhlásit — žádná stará NTLM session ani cookies.
-            try {
-                CookieManager.getInstance().removeAllCookies(null)
-                CookieManager.getInstance().flush()
-            } catch (_: Exception) {
-            }
-            HttpCredentials.clearAll(this)
-            showLoginScreen(
-                host = "psst.tudc.cz",
-                handler = null,
-                loggedOut = true,
-                resumeUrl = startUrl,
-                vpnMissing = !isVpnActive(),
-                gate = LoginGate.LOGOUT
-            )
-            return
-        }
-        if (isVpnActive()) {
-            openInNewTab(startUrl)
-        } else {
-            // Bez VPN — jen varování, bez přihlašovacího formuláře.
-            showLoginScreen(
-                host = "psst.tudc.cz",
-                handler = null,
-                loggedOut = false,
-                resumeUrl = startUrl,
-                vpnMissing = true,
-                gate = LoginGate.VPN
-            )
-        }
+        pendingStartUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
+        showSignedOutBanner = Session.consumeSignedOutBanner(this)
+        refreshGate()
     }
 
     override fun onStart() {
         super.onStart()
         registerVpnMonitor()
         scheduleVpnCheck()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        (activeWebView ?: tabs.firstOrNull()?.webView)?.resumeTimers()
+        activeWebView?.onResume()
+    }
+
+    override fun onPause() {
+        tabs.forEach { it.webView.onPause() }
+        tabs.firstOrNull()?.webView?.pauseTimers()
+        super.onPause()
     }
 
     override fun onStop() {
@@ -250,18 +210,15 @@ class WebViewActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         dialogShown = false
-        // awaitingHttpAuth neresetovat — přeruší NTLM a může to shodit session.
 
         val url = explicitUrlFromIntent(intent)
         if (url == null) {
-            // Návrat z ikony / recent apps — neotevírat novou kartu hlavní stránky.
-            if (tabs.isEmpty() && !loginVisible && isVpnActive() && loginGate == LoginGate.NONE) {
+            if (tabs.isEmpty() && gate == Gate.BROWSER && isVpnActive() && Session.isActive(this)) {
                 openInNewTab(DEFAULT_URL)
             }
             return
         }
-        if (loginVisible) {
-            // Po odhlášení / VPN nejdřív dokončit bránu, pak otevřít odkaz.
+        if (gate != Gate.BROWSER) {
             pendingResumeUrl = url
             pendingStartUrl = url
             return
@@ -269,7 +226,6 @@ class WebViewActivity : AppCompatActivity() {
         openUrlFromExternal(url)
     }
 
-    /** Historie / sdílení: stejnou adresu znovu neotevírej — jen přepni kartu. */
     private fun openUrlFromExternal(url: String) {
         val existing = tabs.find { samePage(it.url, url) }
         if (existing != null) {
@@ -302,6 +258,94 @@ class WebViewActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    /**
+     * Jediná brána: bez VPN → VPN obrazovka; bez relace → přihlášení;
+     * jinak home. Home se nenačte, dokud [Session] neexistuje.
+     */
+    private fun refreshGate() {
+        if (isFinishing) return
+        if (!isVpnActive()) {
+            enterVpnGate()
+            return
+        }
+        vpnBanner.visibility = View.GONE
+        if (verifyingLogin) {
+            presentLogin()
+            return
+        }
+        if (!Session.isActive(this)) {
+            presentLogin()
+            return
+        }
+        presentBrowser()
+    }
+
+    private fun presentLogin() {
+        gate = Gate.LOGIN
+        progressBar.visibility = View.GONE
+        loginOverlay.visibility = View.VISIBLE
+        loginOverlay.bringToFront()
+        vpnOnlyPanel.visibility = View.GONE
+        loginFormColumn.visibility = View.VISIBLE
+        loginFormScroll.visibility = View.VISIBLE
+        loginTitle.visibility = View.VISIBLE
+        loggedOutBanner.visibility = if (showSignedOutBanner) View.VISIBLE else View.GONE
+        vpnBanner.visibility = if (!isVpnActive()) View.VISIBLE else View.GONE
+        updateLoginButton()
+        if (!verifyingLogin && loginButton.isEnabled) {
+            if (usernameInput.text.isNullOrEmpty()) usernameInput.requestFocus()
+            else passwordInput.requestFocus()
+        }
+    }
+
+    private fun presentBrowser() {
+        gate = Gate.BROWSER
+        showSignedOutBanner = false
+        hideLoginOverlay()
+        if (tabs.isEmpty()) {
+            restoreSavedTabsOrStart()
+        } else {
+            activeWebView?.onResume()
+        }
+    }
+
+    private fun enterVpnGate() {
+        dismissWarningDialog()
+        tabs.forEach { tab ->
+            tab.webView.stopLoading()
+            tab.webView.onPause()
+        }
+        if (gate == Gate.BROWSER && tabs.isNotEmpty()) {
+            savedTabUrls = tabs.map { it.url }
+            savedActiveTabIndex = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
+        }
+        if (verifyingLogin) {
+            failLogin(null)
+        }
+        gate = Gate.VPN
+        hideKeyboard()
+        loginOverlay.visibility = View.VISIBLE
+        loginOverlay.bringToFront()
+        progressBar.visibility = View.GONE
+        vpnOnlyPanel.visibility = View.VISIBLE
+        loginFormColumn.visibility = View.GONE
+        loginFormScroll.visibility = View.GONE
+        loginTitle.visibility = View.GONE
+        loggedOutBanner.visibility = View.GONE
+        vpnBanner.visibility = View.GONE
+    }
+
+    private fun restoreSavedTabsOrStart() {
+        val urls = savedTabUrls
+        if (urls.isNotEmpty()) {
+            urls.forEach { openInNewTab(it) }
+            val idx = savedActiveTabIndex.coerceIn(0, tabs.lastIndex)
+            selectTab(tabs[idx].id)
+        } else {
+            openInNewTab(pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL)
+        }
+    }
+
     // ── Karty ───────────────────────────────────────────────────────────
 
     private fun openInNewTab(url: String) {
@@ -326,14 +370,16 @@ class WebViewActivity : AppCompatActivity() {
         )
         selectTab(tab.id)
         webView.loadUrl(url)
-        refreshTabStrip()
     }
 
     private fun selectTab(tabId: Long) {
         if (tabId != activeTabId) hideKeyboard()
         activeTabId = tabId
         tabs.forEach { tab ->
-            tab.webView.visibility = if (tab.id == tabId) View.VISIBLE else View.GONE
+            val selected = tab.id == tabId
+            tab.webView.visibility = if (selected) View.VISIBLE else View.GONE
+            // Skrytá karta s grafem jinak pořád kreslí a žere GPU/CPU.
+            if (selected) tab.webView.onResume() else tab.webView.onPause()
         }
         activeTab?.let { applyChrome(it) }
         refreshTabStrip()
@@ -362,23 +408,27 @@ class WebViewActivity : AppCompatActivity() {
         authChallengeCounts.remove(tab.webView)
         webContainer.removeView(tab.webView)
         tab.webView.stopLoading()
+        tab.webView.onPause()
         tab.webView.webChromeClient = null
         tab.webView.destroy()
     }
 
-    private fun bumpAuthCount(webView: WebView, key: String): Int {
+    private fun destroyAllTabs() {
+        tabs.toList().forEach { destroyTab(it) }
+        tabs.clear()
+        activeTabId = -1L
+        refreshTabStrip()
+    }
+
+    private fun bumpAuthCount(webView: WebView): Int {
         val map = authChallengeCounts.getOrPut(webView) { mutableMapOf() }
-        val n = (map[key] ?: 0) + 1
-        map[key] = n
+        val n = (map["session"] ?: 0) + 1
+        map["session"] = n
         return n
     }
 
-    private fun resetAuthCount(webView: WebView, key: String) {
-        authChallengeCounts[webView]?.remove(key)
-    }
-
-    private fun resetAuthCountsForHost(key: String) {
-        authChallengeCounts.values.forEach { it.remove(key) }
+    private fun resetAuthCount(webView: WebView) {
+        authChallengeCounts[webView]?.remove("session")
     }
 
     private fun refreshTabStrip() {
@@ -412,16 +462,9 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun applyChrome(tab: BrowserTab) {
-        // Název stránky je na kartě v liště — toolbar title nepoužíváme.
         currentHostForUi = runCatching { Uri.parse(tab.url).host }.getOrNull()
     }
 
-    private var currentHostForUi: String? = null
-
-    /**
-     * Název karty: Home na hlavní stránce, jinak `dmId` z URL.
-     * Document title („graf“) nepoužíváme.
-     */
     private fun tabLabel(url: String): String {
         return runCatching {
             val uri = Uri.parse(url)
@@ -434,7 +477,6 @@ class WebViewActivity : AppCompatActivity() {
         }.getOrNull() ?: "Karta"
     }
 
-    /** Výchozí PSST Data bez dmId — karta „Home“. */
     private fun isHomeUrl(uri: Uri): Boolean {
         val host = uri.host?.lowercase() ?: return false
         if (host != "test.psst.tudc.cz" && host != "psst.tudc.cz") return false
@@ -444,18 +486,22 @@ class WebViewActivity : AppCompatActivity() {
             uri.getQueryParameter("dmid").isNullOrBlank()
     }
 
-    private fun updateTabMeta(webView: WebView, url: String?, title: String?) {
+    private fun updateTabMeta(webView: WebView, url: String?) {
         val tab = tabs.find { it.webView === webView } ?: return
-        // title z HTML záměrně ignorujeme — u grafů je to často jen „graf“.
+        var stripChanged = false
         if (!url.isNullOrBlank()) {
             tab.url = url
-            tab.title = tabLabel(url)
+            val label = tabLabel(url)
+            if (tab.title != label) {
+                tab.title = label
+                stripChanged = true
+            }
         }
         if (tab.id == activeTabId) applyChrome(tab)
-        refreshTabStrip()
+        if (stripChanged) refreshTabStrip()
     }
 
-    // ── WebView factory ─────────────────────────────────────────────────
+    // ── WebView ─────────────────────────────────────────────────────────
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createWebView(): WebView {
@@ -465,6 +511,19 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.setGeolocationEnabled(true)
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = true
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        webView.settings.allowFileAccess = false
+        webView.settings.allowContentAccess = false
+        @Suppress("DEPRECATION")
+        webView.settings.allowFileAccessFromFileURLs = false
+        @Suppress("DEPRECATION")
+        webView.settings.allowUniversalAccessFromFileURLs = false
+        webView.settings.mediaPlaybackRequiresUserGesture = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            webView.settings.offscreenPreRaster = true
+        }
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView.setOnLongClickListener { true }
 
@@ -496,68 +555,37 @@ class WebViewActivity : AppCompatActivity() {
                     awaitingHttpAuth = false
                     return
                 }
-
                 val webView = view ?: run {
                     handler.cancel()
                     awaitingHttpAuth = false
                     return
                 }
-                val key = HttpCredentials.authKey(host)
+                // Nová výzva = předchozí 401 byl handshake (NTLM), ne konečné odmítnutí.
+                authFailedViews.remove(webView)
 
-                if (loginAwaitingPage) {
-                    val creds = submittedCredentials
-                    if (creds != null) {
-                        val count = bumpAuthCount(webView, key)
-                        if (count <= 16) {
-                            handler.proceed(creds.username, creds.password)
-                            return
-                        }
-                        resetAuthCount(webView, key)
-                    }
-                    pendingAuthHandler = handler
-                    pendingAuthHost = host
-                    failLoginAttempt()
-                    return
-                }
-
-                // Formulář je vidět — nepouštěj dál uloženou (starou) session.
-                if (loginVisible && loginGate != LoginGate.VPN) {
-                    showLoginScreen(
-                        host = host,
-                        handler = handler,
-                        loggedOut = loginGate == LoginGate.LOGOUT,
-                        resumeUrl = null,
-                        gate = if (loginGate == LoginGate.LOGOUT) {
-                            LoginGate.LOGOUT
-                        } else {
-                            LoginGate.AUTH
-                        },
-                        clearFields = false
-                    )
-                    return
-                }
-
-                val saved = HttpCredentials.get(this@WebViewActivity, host)
-                if (saved != null) {
-                    val count = bumpAuthCount(webView, key)
-                    // NTLM může mít několik kol na jedné kartě.
-                    if (count <= 16) {
-                        handler.proceed(saved.username, saved.password)
+                val creds = pendingCredentials ?: Session.credentials(this@WebViewActivity)
+                val canAuto = creds != null && (verifyingLogin || gate == Gate.BROWSER)
+                if (canAuto) {
+                    val count = bumpAuthCount(webView)
+                    if (count <= MAX_AUTH_ROUNDS) {
+                        handler.proceed(creds!!.username, creds.password)
                         return
                     }
-                    resetAuthCount(webView, key)
+                    resetAuthCount(webView)
+                    if (verifyingLogin) {
+                        pendingAuthHandler = handler
+                        failLogin("Neplatné jméno nebo heslo")
+                        return
+                    }
+                    // Relace zůstává, dokud uživatel nestiskne Odhlásit.
+                    handler.cancel()
+                    awaitingHttpAuth = false
+                    return
                 }
 
-                showLoginScreen(
-                    host = host,
-                    handler = handler,
-                    loggedOut = false,
-                    resumeUrl = null,
-                    gate = LoginGate.AUTH,
-                    clearFields = saved == null
-                )
-                if (saved != null && usernameInput.text.isNullOrEmpty()) {
-                    usernameInput.setText(saved.username)
+                pendingAuthHandler = handler
+                if (!verifyingLogin && !Session.isActive(this@WebViewActivity)) {
+                    presentLogin()
                 }
             }
 
@@ -570,16 +598,11 @@ class WebViewActivity : AppCompatActivity() {
                 if (errorResponse?.statusCode != 401) return
                 val webView = view ?: return
                 authFailedViews.add(webView)
-                if (loginAwaitingPage) {
-                    webView.post {
-                        if (loginAwaitingPage) failLoginAttempt()
-                    }
-                    return
-                }
+                if (verifyingLogin) return
                 if (webView !== activeWebView) return
                 val failedUrl = request.url
                 webView.post {
-                    if (awaitingHttpAuth || authDialogShowing || dialogShown) return@post
+                    if (awaitingHttpAuth || gate != Gate.BROWSER || dialogShown) return@post
                     if (shouldSuppressPageErrorDialogs()) return@post
                     showUnauthorizedWarning(failedUrl)
                 }
@@ -592,6 +615,10 @@ class WebViewActivity : AppCompatActivity() {
             ) {
                 if (view !== activeWebView) return
                 if (request?.isForMainFrame != true) return
+                if (verifyingLogin) {
+                    failLogin("Stránku se nepodařilo načíst. Zkontrolujte VPN a zkuste to znovu.")
+                    return
+                }
                 if (shouldSuppressPageErrorDialogs()) return
                 showNetworkWarning(error?.errorCode, request.url)
             }
@@ -600,40 +627,38 @@ class WebViewActivity : AppCompatActivity() {
                 super.onPageFinished(view, url)
                 awaitingHttpAuth = false
                 val failedAuth = view != null && view in authFailedViews
-                if (view != null && !failedAuth) {
-                    // Skutečně načtená stránka — příští navigace znovu auto-přihlásí.
-                    runCatching { Uri.parse(url ?: "").host }.getOrNull()
-                        ?.let { resetAuthCount(view, HttpCredentials.authKey(it)) }
-                }
-                if (loginAwaitingPage && view != null && view === activeWebView) {
+                if (view != null && !failedAuth) resetAuthCount(view)
+                if (verifyingLogin && view != null && view === activeWebView) {
                     val finishedUrl = url
                     view.post {
-                        if (!loginAwaitingPage) return@post
+                        if (!verifyingLogin) return@post
+                        if (awaitingHttpAuth) return@post
                         if (failedAuth || view in authFailedViews) {
-                            failLoginAttempt()
+                            failLogin("Neplatné jméno nebo heslo")
                             return@post
                         }
-                        if (finishedUrl.isNullOrBlank() || finishedUrl == "about:blank") {
-                            return@post
-                        }
-                        succeedLoginAttempt()
+                        if (finishedUrl.isNullOrBlank() || finishedUrl == "about:blank") return@post
+                        succeedLogin()
                     }
                 }
                 if (view != null) authFailedViews.remove(view)
-                updateTabMeta(view ?: return, url, view.title)
+                updateTabMeta(view ?: return, url)
             }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (view !== activeWebView) return
-                progressBar.visibility = View.VISIBLE
-                progressBar.setProgressCompat(newProgress, true)
-                if (newProgress >= 100) progressBar.visibility = View.GONE
-            }
-
-            override fun onReceivedTitle(view: WebView?, title: String?) {
-                updateTabMeta(view ?: return, view.url, title)
+                if (gate != Gate.BROWSER && !verifyingLogin) return
+                // Overlay progress — bez animace a bez GONE/VISIBLE na každý procent.
+                if (newProgress in 1..99) {
+                    if (progressBar.visibility != View.VISIBLE) {
+                        progressBar.visibility = View.VISIBLE
+                    }
+                    progressBar.setProgressCompat(newProgress, false)
+                } else if (progressBar.visibility != View.GONE) {
+                    progressBar.visibility = View.GONE
+                }
             }
 
             override fun onGeolocationPermissionsShowPrompt(
@@ -647,16 +672,14 @@ class WebViewActivity : AppCompatActivity() {
         return webView
     }
 
-    // ── URL helpers ─────────────────────────────────────────────────────
+    // ── URL ─────────────────────────────────────────────────────────────
 
     private fun resolveUrlFromIntent(intent: Intent?): String? {
         explicitUrlFromIntent(intent)?.let { return it }
-        // Studený start z ikony — bez EXTRA/data.
         if (intent?.action == Intent.ACTION_MAIN) return DEFAULT_URL
         return null
     }
 
-    /** Jen když intent nese konkrétní adresu (odkaz, sdílení, EXTRA). Ne launcher. */
     private fun explicitUrlFromIntent(intent: Intent?): String? {
         intent?.data?.toString()?.let { return it }
         intent?.getStringExtra(EXTRA_URL)?.let { return it }
@@ -687,9 +710,14 @@ class WebViewActivity : AppCompatActivity() {
         }
         dialogShown = false
         tab.url = url
-        tab.title = tabLabel(url)
-        applyChrome(tab)
-        refreshTabStrip()
+        val label = tabLabel(url)
+        if (tab.title != label) {
+            tab.title = label
+            applyChrome(tab)
+            refreshTabStrip()
+        } else {
+            applyChrome(tab)
+        }
         tab.webView.loadUrl(url)
     }
 
@@ -797,7 +825,7 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    // ── Síť / VPN ───────────────────────────────────────────────────────
+    // ── VPN ─────────────────────────────────────────────────────────────
 
     private fun isVpnActive(): Boolean {
         return try {
@@ -822,14 +850,10 @@ class WebViewActivity : AppCompatActivity() {
         }
         networkCallback = callback
         try {
-            // Sleduj všechny změny sítě — VPN se projevuje na activeNetwork.
             cm.registerDefaultNetworkCallback(callback)
         } catch (_: Exception) {
             try {
-                cm.registerNetworkCallback(
-                    NetworkRequest.Builder().build(),
-                    callback
-                )
+                cm.registerNetworkCallback(NetworkRequest.Builder().build(), callback)
             } catch (_: Exception) {
                 networkCallback = null
             }
@@ -843,115 +867,15 @@ class WebViewActivity : AppCompatActivity() {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
             cm.unregisterNetworkCallback(callback)
         } catch (_: Exception) {
-            // už odregistrováno
         }
     }
 
     private fun scheduleVpnCheck() {
         mainHandler.removeCallbacks(vpnCheckRunnable)
-        // Krátký debounce — při přepínání VPN bývá několik událostí za sebou.
         mainHandler.postDelayed(vpnCheckRunnable, 350)
     }
 
-    private fun applyVpnState(vpnOn: Boolean) {
-        if (isFinishing) return
-        if (!vpnOn) {
-            enterVpnGate()
-        } else {
-            exitVpnGate()
-        }
-    }
-
-    /**
-     * VPN vypnutá: jen varování (bez přihlašovacího formuláře).
-     * Otevřené karty zůstanou pod overlay (stav se neztratí).
-     */
-    private fun enterVpnGate() {
-        dismissWarningDialog()
-        tabs.forEach { it.webView.stopLoading() }
-        when (loginGate) {
-            LoginGate.LOGOUT, LoginGate.AUTH -> {
-                // Uživatel je na přihlášení — formulář nech, jen kompaktní banner.
-                vpnBanner.visibility = View.VISIBLE
-                updateLoginFormForVpn(false)
-                return
-            }
-            LoginGate.VPN -> {
-                applyLoginChrome()
-                return
-            }
-            LoginGate.NONE -> Unit
-        }
-
-        // Zapamatuj otevřené karty (pro případ, že by se WebView zničila).
-        if (tabs.isNotEmpty()) {
-            savedTabUrls = tabs.map { it.url }
-            savedActiveTabIndex = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
-        }
-
-        showLoginScreen(
-            host = "psst.tudc.cz",
-            handler = null,
-            loggedOut = false,
-            resumeUrl = pendingStartUrl ?: activeTab?.url ?: DEFAULT_URL,
-            vpnMissing = true,
-            gate = LoginGate.VPN,
-            clearFields = false
-        )
-    }
-
-    /**
-     * VPN znovu běží: vrať uživatele tam, kde byl (karty zůstaly v paměti).
-     * Po odhlášení VPN sama přihlášení nepřeskakuje.
-     */
-    private fun exitVpnGate() {
-        vpnBanner.visibility = View.GONE
-        updateLoginFormForVpn(true)
-
-        when (loginGate) {
-            LoginGate.LOGOUT, LoginGate.AUTH -> return
-            LoginGate.NONE -> return
-            LoginGate.VPN -> Unit
-        }
-
-        hideLoginScreen()
-        loginGate = LoginGate.NONE
-
-        if (tabs.isEmpty()) {
-            restoreSavedTabsOrStart()
-        } else {
-            // Karty pořád běží pod overlay — jen je znovu ukaž / případně reload.
-            refreshTabStrip()
-            activeWebView?.let { wv ->
-                // Po výpadku sítě někdy pomůže jemné obnovení aktivní karty.
-                if (wv.url.isNullOrBlank()) {
-                    val url = savedTabUrls.getOrNull(savedActiveTabIndex)
-                        ?: pendingStartUrl
-                        ?: DEFAULT_URL
-                    wv.loadUrl(url)
-                }
-            }
-        }
-    }
-
-    private fun restoreSavedTabsOrStart() {
-        val urls = savedTabUrls
-        if (urls.isNotEmpty()) {
-            urls.forEach { openInNewTab(it) }
-            val idx = savedActiveTabIndex.coerceIn(0, tabs.lastIndex)
-            selectTab(tabs[idx].id)
-        } else {
-            openInNewTab(pendingStartUrl ?: pendingResumeUrl ?: DEFAULT_URL)
-        }
-    }
-
-    private fun updateLoginFormForVpn(vpnOn: Boolean) {
-        if (!::loginButton.isInitialized) return
-        loginButton.isEnabled = vpnOn || loginGate == LoginGate.LOGOUT || loginGate == LoginGate.AUTH
-        loginButton.alpha = if (loginButton.isEnabled) 1f else 0.45f
-    }
-
-    // ── Přihlášení (celá obrazovka) ─────────────────────────────────────
+    // ── Přihlášení ──────────────────────────────────────────────────────
 
     private fun bindLoginUi() {
         loginOverlay = findViewById(R.id.loginOverlay)
@@ -965,7 +889,6 @@ class WebViewActivity : AppCompatActivity() {
         usernameInput = findViewById(R.id.usernameInput)
         passwordLayout = findViewById(R.id.passwordLayout)
         passwordInput = findViewById(R.id.passwordInput)
-        rememberCheck = findViewById(R.id.rememberCheck)
         loginButton = findViewById(R.id.loginButton)
 
         loginButton.setOnClickListener { submitLogin() }
@@ -977,83 +900,112 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Celá obrazovka přihlášení.
-     * [handler] != null → odpověď na HTTP 401; null → přihlášení po Odhlásit / VPN.
-     */
-    private fun showLoginScreen(
-        host: String,
-        handler: HttpAuthHandler?,
-        loggedOut: Boolean,
-        resumeUrl: String?,
-        vpnMissing: Boolean = !isVpnActive(),
-        gate: LoginGate? = null,
-        clearFields: Boolean = true
-    ) {
-        if (isFinishing) {
-            handler?.cancel()
+    private fun updateLoginButton() {
+        if (!::loginButton.isInitialized) return
+        if (verifyingLogin) {
+            loginButton.isEnabled = false
+            loginButton.alpha = 0.7f
+            loginButton.text = "Přihlašuji…"
+            return
+        }
+        val vpnOn = isVpnActive()
+        loginButton.isEnabled = vpnOn
+        loginButton.alpha = if (vpnOn) 1f else 0.45f
+        loginButton.text = "Přihlásit"
+    }
+
+    private fun hideLoginOverlay() {
+        hideKeyboard()
+        loginOverlay.visibility = View.GONE
+        vpnOnlyPanel.visibility = View.GONE
+        loginFormColumn.visibility = View.GONE
+        loginFormScroll.visibility = View.GONE
+        loggedOutBanner.visibility = View.GONE
+        vpnBanner.visibility = View.GONE
+        pendingAuthHandler = null
+        updateLoginButton()
+    }
+
+    private fun submitLogin() {
+        if (verifyingLogin) return
+        if (!isVpnActive()) {
+            vpnBanner.visibility = View.VISIBLE
+            Toast.makeText(this, "Nejdřív připojte VPN (Cisco AnyConnect)", Toast.LENGTH_SHORT)
+                .show()
             return
         }
 
-        // Už běží přihlášení — přepni na nový handler (starý zruš).
-        if (loginVisible && pendingAuthHandler != null && handler != null) {
-            pendingAuthHandler?.cancel()
+        val user = usernameInput.text?.toString()?.trim().orEmpty()
+        val pass = passwordInput.text?.toString().orEmpty()
+        if (user.isEmpty()) {
+            usernameLayout.error = "Zadejte jméno"
+            usernameInput.requestFocus()
+            return
         }
-
-        pendingAuthHandler = handler
-        pendingAuthHost = host
-        if (resumeUrl != null) pendingResumeUrl = resumeUrl
-        authDialogShowing = true
-        loginVisible = true
-        progressBar.visibility = View.GONE
-
-        loginGate = gate ?: when {
-            loggedOut -> LoginGate.LOGOUT
-            handler != null -> LoginGate.AUTH
-            vpnMissing -> LoginGate.VPN
-            else -> LoginGate.AUTH
+        usernameLayout.error = null
+        if (pass.isEmpty()) {
+            passwordLayout.error = "Zadejte heslo"
+            passwordInput.requestFocus()
+            return
         }
+        passwordLayout.error = null
+        hideKeyboard()
 
-        rememberCheck.isChecked = true
+        pendingCredentials = Credentials(user, pass)
+        verifyingLogin = true
+        authChallengeCounts.clear()
+        authFailedViews.clear()
+        updateLoginButton()
+        mainHandler.removeCallbacks(loginTimeoutRunnable)
+        mainHandler.postDelayed(loginTimeoutRunnable, LOGIN_TIMEOUT_MS)
+
+        val handler = pendingAuthHandler
+        pendingAuthHandler = null
+        if (handler != null) {
+            awaitingHttpAuth = true
+            handler.proceed(user, pass)
+        } else {
+            val url = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
+            if (tabs.isEmpty()) openInNewTab(url) else loadInActiveTab(url)
+        }
+    }
+
+    private fun succeedLogin() {
+        if (!verifyingLogin) return
+        val creds = pendingCredentials ?: return
+        verifyingLogin = false
+        mainHandler.removeCallbacks(loginTimeoutRunnable)
+        Session.start(this, creds.username, creds.password)
+        pendingCredentials = null
+        showSignedOutBanner = false
         usernameLayout.error = null
         passwordLayout.error = null
-        if (clearFields) {
-            usernameInput.setText("")
-            passwordInput.setText("")
-        }
-
-        applyLoginChrome()
-        updateLoginFormForVpn(isVpnActive())
-
-        loginOverlay.visibility = View.VISIBLE
-        loginOverlay.bringToFront()
-        if (loginGate != LoginGate.VPN && loginButton.isEnabled) {
-            usernameInput.requestFocus()
-        }
+        refreshGate()
     }
 
-    /**
-     * VPN brána = jen varování uprostřed.
-     * Odhlášení / HTTP 401 = formulář; pokud VPN chybí, nad ním kompaktní banner.
-     */
-    private fun applyLoginChrome() {
-        if (!::vpnOnlyPanel.isInitialized) return
-        val vpnOnly = loginGate == LoginGate.VPN
-        vpnOnlyPanel.visibility = if (vpnOnly) View.VISIBLE else View.GONE
-        loginFormColumn.visibility = if (vpnOnly) View.GONE else View.VISIBLE
-        loginFormScroll.visibility = if (vpnOnly) View.GONE else View.VISIBLE
-        loginTitle.visibility = if (vpnOnly) View.GONE else View.VISIBLE
-        loggedOutBanner.visibility =
-            if (!vpnOnly && loginGate == LoginGate.LOGOUT) View.VISIBLE else View.GONE
-        vpnBanner.visibility =
-            if (!vpnOnly && !isVpnActive()) View.VISIBLE else View.GONE
-        if (vpnOnly) hideKeyboard()
+    private fun failLogin(message: String?) {
+        if (!verifyingLogin && pendingCredentials == null) {
+            if (message != null) passwordLayout.error = message
+            return
+        }
+        verifyingLogin = false
+        pendingCredentials = null
+        mainHandler.removeCallbacks(loginTimeoutRunnable)
+        pendingAuthHandler?.cancel()
+        pendingAuthHandler = null
+        awaitingHttpAuth = false
+        destroyAllTabs()
+        updateLoginButton()
+        if (message != null) {
+            passwordLayout.error = message
+            passwordInput.requestFocus()
+            passwordInput.setSelection(passwordInput.text?.length ?: 0)
+        }
+        if (isVpnActive()) presentLogin()
     }
 
-    /**
-     * Klávesnice si bere spodní okraj (padding). Stránka nad ní zůstane
-     * plná a scrollovatelná; po schování IME padding zmizí a layout zajede zpět.
-     */
+    // ── IME ─────────────────────────────────────────────────────────────
+
     private val visibleFrame = Rect()
 
     private fun bindImeInsets() {
@@ -1070,6 +1022,9 @@ class WebViewActivity : AppCompatActivity() {
                 .build()
         }
         root.viewTreeObserver.addOnGlobalLayoutListener {
+            // Při kreslení grafu WebView pořád mění layout. Padding kvůli
+            // klávesnici řešíme jen na přihlášení, ne na home.
+            if (gate == Gate.BROWSER && urlDialog?.isShowing != true) return@addOnGlobalLayoutListener
             applyVisibleFrameImePadding(root)
         }
         ViewCompat.requestApplyInsets(root)
@@ -1099,22 +1054,6 @@ class WebViewActivity : AppCompatActivity() {
         v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, imeBottom)
     }
 
-    private fun hideLoginScreen() {
-        hideKeyboard()
-        loginOverlay.visibility = View.GONE
-        if (::vpnOnlyPanel.isInitialized) vpnOnlyPanel.visibility = View.GONE
-        if (::loginFormColumn.isInitialized) loginFormColumn.visibility = View.GONE
-        if (::loginFormScroll.isInitialized) loginFormScroll.visibility = View.GONE
-        loggedOutBanner.visibility = View.GONE
-        vpnBanner.visibility = View.GONE
-        authDialogShowing = false
-        loginVisible = false
-        pendingAuthHandler = null
-        pendingAuthHost = null
-        restoreLoginButton()
-        // pendingResumeUrl nech — může se hodit po VPN
-    }
-
     private fun hideKeyboard(from: View? = null) {
         val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
         val dialogWindow = urlDialog?.window
@@ -1136,15 +1075,13 @@ class WebViewActivity : AppCompatActivity() {
             if (::loginOverlay.isInitialized) loginOverlay.windowToken else null,
             window.decorView.windowToken
         ).distinct()
-        tokens.forEach { token ->
-            imm.hideSoftInputFromWindow(token, 0)
-        }
+        tokens.forEach { token -> imm.hideSoftInputFromWindow(token, 0) }
 
         if (::usernameInput.isInitialized) usernameInput.clearFocus()
         if (::passwordInput.isInitialized) passwordInput.clearFocus()
         from?.clearFocus()
         activeWebView?.clearFocus()
-        if (loginVisible) {
+        if (gate != Gate.BROWSER) {
             if (::loginOverlay.isInitialized) loginOverlay.requestFocus()
         } else if (::webContainer.isInitialized) {
             webContainer.isFocusableInTouchMode = true
@@ -1162,7 +1099,11 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.action == MotionEvent.ACTION_DOWN && isImeVisible() && urlDialog?.isShowing != true) {
+        if (ev.action == MotionEvent.ACTION_DOWN &&
+            gate != Gate.BROWSER &&
+            isImeVisible() &&
+            urlDialog?.isShowing != true
+        ) {
             val root = urlDialog?.window?.decorView ?: window.decorView
             if (!isTouchOnEditText(root, ev)) hideKeyboard()
         }
@@ -1189,135 +1130,24 @@ class WebViewActivity : AppCompatActivity() {
         return false
     }
 
-    private fun restoreLoginButton() {
-        if (!::loginButton.isInitialized) return
-        loginButton.text = "Přihlásit"
-        updateLoginFormForVpn(isVpnActive())
-    }
-
-    private fun submitLogin() {
-        if (loginSubmitInFlight || loginAwaitingPage) return
-        if (!isVpnActive()) {
-            vpnBanner.visibility = View.VISIBLE
-            Toast.makeText(
-                this,
-                "Nejdřív připojte VPN (Cisco AnyConnect)",
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        val user = usernameInput.text?.toString()?.trim().orEmpty()
-        val pass = passwordInput.text?.toString().orEmpty()
-        if (user.isEmpty()) {
-            usernameLayout.error = "Zadejte jméno"
-            usernameInput.requestFocus()
-            return
-        }
-        usernameLayout.error = null
-        if (pass.isEmpty()) {
-            passwordLayout.error = "Zadejte heslo"
-            passwordInput.requestFocus()
-            return
-        }
-        passwordLayout.error = null
-
-        hideKeyboard()
-
-        val host = pendingAuthHost ?: "psst.tudc.cz"
-        submittedCredentials = SavedCredentials(user, pass)
-        resetAuthCountsForHost(HttpCredentials.authKey(host))
-
-        val handler = pendingAuthHandler
-        pendingAuthHandler = null
-        val resumeUrl = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
-
-        loginAwaitingPage = true
-        loginSubmitInFlight = true
-        loginButton.isEnabled = false
-        loginButton.text = "Přihlašuji…"
-        mainHandler.removeCallbacks(loginTimeoutRunnable)
-        mainHandler.postDelayed(loginTimeoutRunnable, 15_000)
-
-        if (handler != null) {
-            awaitingHttpAuth = true
-            handler.proceed(user, pass)
-        } else if (tabs.isEmpty()) {
-            openInNewTab(resumeUrl)
-        } else {
-            loadInActiveTab(resumeUrl)
-        }
-    }
-
-    /** Špatné údaje: zůstaň na přihlášení. Stará session nesmí overlay schovat. */
-    private fun failLoginAttempt() {
-        if (!loginAwaitingPage && !loginSubmitInFlight) return
-        loginAwaitingPage = false
-        loginSubmitInFlight = false
-        submittedCredentials = null
-        mainHandler.removeCallbacks(loginTimeoutRunnable)
-        restoreLoginButton()
-        if (!loginVisible) {
-            showLoginScreen(
-                host = pendingAuthHost ?: "psst.tudc.cz",
-                handler = pendingAuthHandler,
-                loggedOut = loginGate == LoginGate.LOGOUT,
-                resumeUrl = pendingResumeUrl,
-                gate = if (loginGate == LoginGate.LOGOUT) LoginGate.LOGOUT else LoginGate.AUTH,
-                clearFields = false
-            )
-        }
-        passwordLayout.error = "Neplatné jméno nebo heslo"
-        passwordInput.requestFocus()
-        passwordInput.setSelection(passwordInput.text?.length ?: 0)
-    }
-
-    /** Údaje sedí — teprve teď schovej overlay a ulož heslo. */
-    private fun succeedLoginAttempt() {
-        if (!loginAwaitingPage) return
-        loginAwaitingPage = false
-        loginSubmitInFlight = false
-        mainHandler.removeCallbacks(loginTimeoutRunnable)
-        val creds = submittedCredentials
-        val host = pendingAuthHost ?: "psst.tudc.cz"
-        if (creds != null && (rememberCheck.isChecked || HttpCredentials.isPsstHost(host))) {
-            HttpCredentials.save(this, host, creds.username, creds.password)
-        } else if (creds != null) {
-            HttpCredentials.clear(this, host)
-        }
-        submittedCredentials = null
-        loginGate = LoginGate.NONE
-        hideLoginScreen()
-    }
+    // ── Dialogy ─────────────────────────────────────────────────────────
 
     private fun showUnauthorizedWarning(url: Uri?) {
         if (dialogShown) return
         if (shouldSuppressPageErrorDialogs()) return
         dialogShown = true
         progressBar.visibility = View.GONE
-
         val host = url?.host ?: currentHostForUi ?: "server"
-        val hasSaved = HttpCredentials.hasFor(this, host)
-
-        val extra = if (hasSaved) {
-            "\n\nUložené přihlášení můžete smazat v menu (⋮ → Odhlásit) a zkusit jiné údaje."
-        } else {
-            "\n\nPokud se nepřihlašovací dialog vůbec neobjevil, server pravděpodobně " +
-                "používá Windows Integrated Authentication (Kerberos), které Android " +
-                "neumí stejně jako firemní PC."
-        }
-
         MaterialAlertDialogBuilder(this)
             .setTitle("Přístup odepřen (401)")
             .setMessage(
                 "Server $host odmítl přihlášení.\n\n" +
-                    "Zadejte jméno a heslo ručně (často DOMÉNA\\uživatel). " +
-                    "Pro *.psst.tudc.cz stačí jednou — platí ve všech kartách." +
-                    extra
+                    "Uložené údaje zůstávají, dokud se neodhlásíte. " +
+                    "Zkuste stránku znovu, nebo se odhlaste a zadejte jiné jméno a heslo."
             )
             .setPositiveButton("Zkusit znovu") { _, _ ->
                 dialogShown = false
-                activeWebView?.let { resetAuthCount(it, HttpCredentials.authKey(host)) }
+                activeWebView?.let { resetAuthCount(it) }
                 activeWebView?.reload()
             }
             .setNegativeButton("Zavřít", null)
@@ -1406,9 +1236,8 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
-    /** Při výpadku VPN stačí dočasná obrazovka — žádný vyskakovací dialog. */
     private fun shouldSuppressPageErrorDialogs(): Boolean {
-        return loginVisible || loginGate == LoginGate.VPN || !isVpnActive()
+        return gate != Gate.BROWSER || !isVpnActive() || verifyingLogin
     }
 
     private fun dismissWarningDialog() {
@@ -1428,155 +1257,36 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Odhlášení pro celou aplikaci: heslo, cookies, HTTP auth cache, WebView i karty.
-     * Údaje musí zmizet hned — ne až později přes apply().
+     * Odhlásit = smazat relaci úplně a restartovat proces.
+     * Chromium drží NTLM v connection poolu procesu; bez restartu by
+     * další uživatel (nebo totéž špatné heslo) pořád viděl starou session.
      */
     private fun performLogout() {
         pendingAuthHandler?.cancel()
         pendingAuthHandler = null
+        pendingCredentials = null
+        verifyingLogin = false
+        showSignedOutBanner = true
         pendingResumeUrl = DEFAULT_URL
         pendingStartUrl = DEFAULT_URL
-        pendingAuthHost = null
-        submittedCredentials = null
-        loginAwaitingPage = false
-        loginSubmitInFlight = false
-        mainHandler.removeCallbacks(loginTimeoutRunnable)
-
-        wipeSessionState()
-
-        authChallengeCounts.clear()
-        authFailedViews.clear()
-        awaitingHttpAuth = false
-        authDialogShowing = false
-        dialogShown = false
-
-        tabs.toList().forEach { destroyTab(it) }
-        tabs.clear()
-        activeTabId = -1L
         savedTabUrls = emptyList()
         savedActiveTabIndex = 0
-        refreshTabStrip()
+        mainHandler.removeCallbacks(loginTimeoutRunnable)
 
-        deleteWebViewDiskData()
-        markLoggedOutFlag()
-        restartProcessAfterLogout()
-    }
+        Session.end(this)
+        Session.wipeBrowser(this, tabs.map { it.webView })
+        destroyAllTabs()
+        Session.deleteChromiumProfile(this)
 
-    /** Smaže uložené heslo, cookies, HTTP auth i cache WebView. */
-    private fun wipeSessionState() {
-        HttpCredentials.clearAll(this)
-
-        tabs.forEach { tab ->
-            val wv = tab.webView
-            try {
-                wv.stopLoading()
-                wv.clearCache(true)
-                wv.clearHistory()
-                wv.clearFormData()
-                wv.clearSslPreferences()
-            } catch (_: Exception) {
-            }
-        }
-
-        try {
-            @Suppress("DEPRECATION")
-            val db = WebViewDatabase.getInstance(this)
-            db.clearHttpAuthUsernamePassword()
-            @Suppress("DEPRECATION")
-            db.clearFormData()
-            @Suppress("DEPRECATION")
-            db.clearUsernamePassword()
-        } catch (_: Exception) {
-        }
-
-        try {
-            WebStorage.getInstance().deleteAllData()
-        } catch (_: Exception) {
-        }
-
-        try {
-            val cookies = CookieManager.getInstance()
-            cookies.removeSessionCookies(null)
-            cookies.removeAllCookies(null)
-            cookies.flush()
-        } catch (_: Exception) {
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                getSystemService(android.view.autofill.AutofillManager::class.java)?.cancel()
-            } catch (_: Exception) {
-            }
-        }
-    }
-
-    /**
-     * Chromium drží NTLM v síťovém kontextu procesu — po destroy WebView
-     * session často přežije. Smazat profil na disku a restartovat proces.
-     */
-    private fun deleteWebViewDiskData() {
-        val dirs = listOf(
-            File(applicationInfo.dataDir, "app_webview"),
-            File(applicationInfo.dataDir, "app_webview_cronet"),
-            File(cacheDir, "WebView"),
-            File(cacheDir, "org.chromium.android_webview")
-        )
-        dirs.forEach { dir ->
-            try {
-                if (dir.exists()) dir.deleteRecursively()
-            } catch (_: Exception) {
-            }
-        }
-        listOf(
-            "webview.db",
-            "webviewCache.db",
-            "webviewCookiesChromium.db",
-            "webviewCookiesChromiumPrivate.db"
-        ).forEach { name ->
-            try {
-                deleteDatabase(name)
-            } catch (_: Exception) {
-            }
-        }
-    }
-
-    private fun markLoggedOutFlag() {
-        getSharedPreferences(PREFS_SESSION_GATE, Context.MODE_PRIVATE)
-            .edit()
-            .putBoolean(KEY_LOGGED_OUT, true)
-            .commit()
-    }
-
-    private fun consumeLoggedOutFlag(): Boolean {
-        val prefs = getSharedPreferences(PREFS_SESSION_GATE, Context.MODE_PRIVATE)
-        val loggedOut = prefs.getBoolean(KEY_LOGGED_OUT, false)
-        if (loggedOut) {
-            prefs.edit().putBoolean(KEY_LOGGED_OUT, false).commit()
-        }
-        return loggedOut
-    }
-
-    /**
-     * Nový proces = prázdná HTTP auth cache i connection pool.
-     * Jinak vymyšlené heslo po Odhlásit pořád otevře starou session.
-     */
-    private fun restartProcessAfterLogout() {
         val intent = Intent(this, WebViewActivity::class.java).apply {
-            putExtra(EXTRA_LOGGED_OUT, true)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
         }
         try {
             startActivity(intent)
         } catch (_: Exception) {
-            showLoginScreen(
-                host = "psst.tudc.cz",
-                handler = null,
-                loggedOut = true,
-                resumeUrl = DEFAULT_URL,
-                vpnMissing = !isVpnActive(),
-                gate = LoginGate.LOGOUT,
-                clearFields = true
-            )
+            usernameInput.setText("")
+            passwordInput.setText("")
+            refreshGate()
             return
         }
         finishAffinity()
@@ -1638,7 +1348,6 @@ class WebViewActivity : AppCompatActivity() {
         val inkSoft = ContextCompat.getColor(this, R.color.ink_soft)
         val alert = ContextCompat.getColor(this, R.color.alert)
 
-        // Jen + je modré; domeček zůstane neutrální.
         menu?.findItem(R.id.action_new_tab)?.icon?.mutate()?.setTint(accent)
         menu?.findItem(R.id.action_home)?.icon?.mutate()?.setTint(inkSoft)
 
@@ -1651,14 +1360,12 @@ class WebViewActivity : AppCompatActivity() {
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
         }
 
-        // Odhlásit dole, červené jako typické „sign out“.
         menu?.findItem(R.id.action_logout)?.let { item ->
             val title = SpannableString("Odhlásit")
             title.setSpan(ForegroundColorSpan(alert), 0, title.length, 0)
             item.title = title
             item.icon?.mutate()?.setTint(alert)
         }
-        // Toolbar drží jen ikony; karty jsou vedle, ať pod ně nezajíždí.
         toolbar.post {
             val lp = toolbar.layoutParams
             if (lp.width != LinearLayout.LayoutParams.WRAP_CONTENT) {
@@ -1671,6 +1378,9 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         hideKeyboard()
+        if (gate != Gate.BROWSER && item.itemId != R.id.action_logout) {
+            return true
+        }
         return when (item.itemId) {
             R.id.action_open_url -> {
                 showOpenUrlDialog(openAsNewTab = false)
@@ -1711,24 +1421,8 @@ class WebViewActivity : AppCompatActivity() {
             hideKeyboard()
             return
         }
-        if (loginVisible) {
-            if (loginAwaitingPage) {
-                loginAwaitingPage = false
-                loginSubmitInFlight = false
-                submittedCredentials = null
-                mainHandler.removeCallbacks(loginTimeoutRunnable)
-                pendingAuthHandler?.cancel()
-                pendingAuthHandler = null
-                restoreLoginButton()
-                return
-            }
-            // VPN / odhlášení: zůstat na obrazovce. HTTP auth: zrušit požadavek.
-            if (pendingAuthHandler != null && loginGate == LoginGate.AUTH) {
-                pendingAuthHandler?.cancel()
-                loginGate = LoginGate.NONE
-                hideLoginScreen()
-                awaitingHttpAuth = false
-            }
+        if (gate != Gate.BROWSER) {
+            if (verifyingLogin) failLogin(null)
             return
         }
         val wv = activeWebView
