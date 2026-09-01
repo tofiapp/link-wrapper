@@ -140,11 +140,11 @@ class WebViewActivity : AppCompatActivity() {
     private val vpnCheckRunnable = Runnable { applyVpnState(isVpnActive()) }
 
     /**
-     * Počet HTTP auth challenge za sebou pro daný klíč.
-     * Uložené heslo posíláme automaticky (bez dialogu); když jich je moc
-     * (špatné heslo), teprve pak ukážeme přihlášení.
+     * Počet HTTP auth challenge za sebou **na jedné WebView**.
+     * Globální počítadlo by při nové kartě (historie) sečetlo kola všech karet
+     * a po 12 smaže heslo — to vypadá jako odhlášení.
      */
-    private val authChallengeCounts = mutableMapOf<String, Int>()
+    private val authChallengeCounts = IdentityHashMap<WebView, MutableMap<String, Int>>()
 
     /** WebView, které právě dostaly 401 — nesmíme resetovat počítadlo auth. */
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
@@ -215,7 +215,7 @@ class WebViewActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         dialogShown = false
-        awaitingHttpAuth = false
+        // awaitingHttpAuth neresetovat — přeruší NTLM a může to shodit session.
 
         val url = explicitUrlFromIntent(intent)
         if (url == null) {
@@ -231,8 +231,31 @@ class WebViewActivity : AppCompatActivity() {
             pendingStartUrl = url
             return
         }
-        // Externí odkaz / sdílení / historie → nová karta.
+        openUrlFromExternal(url)
+    }
+
+    /** Historie / sdílení: stejnou adresu znovu neotevírej — jen přepni kartu. */
+    private fun openUrlFromExternal(url: String) {
+        val existing = tabs.find { samePage(it.url, url) }
+        if (existing != null) {
+            selectTab(existing.id)
+            return
+        }
+        if (tabs.size >= MAX_TABS) {
+            loadInActiveTab(url)
+            return
+        }
         openInNewTab(url)
+    }
+
+    private fun samePage(a: String, b: String): Boolean {
+        fun norm(raw: String): String {
+            val u = runCatching { Uri.parse(raw) }.getOrNull() ?: return raw
+            val path = (u.path ?: "").trimEnd('/')
+            val q = u.encodedQuery ?: ""
+            return "${u.scheme}://${u.host}$path?$q"
+        }
+        return norm(a).equals(norm(b), ignoreCase = true)
     }
 
     override fun onDestroy() {
@@ -301,10 +324,26 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun destroyTab(tab: BrowserTab) {
         authFailedViews.remove(tab.webView)
+        authChallengeCounts.remove(tab.webView)
         webContainer.removeView(tab.webView)
         tab.webView.stopLoading()
         tab.webView.webChromeClient = null
         tab.webView.destroy()
+    }
+
+    private fun bumpAuthCount(webView: WebView, key: String): Int {
+        val map = authChallengeCounts.getOrPut(webView) { mutableMapOf() }
+        val n = (map[key] ?: 0) + 1
+        map[key] = n
+        return n
+    }
+
+    private fun resetAuthCount(webView: WebView, key: String) {
+        authChallengeCounts[webView]?.remove(key)
+    }
+
+    private fun resetAuthCountsForHost(key: String) {
+        authChallengeCounts.values.forEach { it.remove(key) }
     }
 
     private fun refreshTabStrip() {
@@ -423,19 +462,21 @@ class WebViewActivity : AppCompatActivity() {
                     return
                 }
 
+                val webView = view ?: run {
+                    handler.cancel()
+                    awaitingHttpAuth = false
+                    return
+                }
                 val key = HttpCredentials.authKey(host)
                 val saved = HttpCredentials.get(this@WebViewActivity, host)
                 if (saved != null) {
-                    val count = (authChallengeCounts[key] ?: 0) + 1
-                    authChallengeCounts[key] = count
-                    // NTLM může mít několik kol; po větším počtu je heslo asi špatně.
-                    if (count <= 12) {
+                    val count = bumpAuthCount(webView, key)
+                    // NTLM může mít několik kol na jedné kartě.
+                    if (count <= 16) {
                         handler.proceed(saved.username, saved.password)
                         return
                     }
-                    // Přestaň smyčku — nech uživatele zadat údaje znovu.
-                    HttpCredentials.clear(this@WebViewActivity, host)
-                    authChallengeCounts.remove(key)
+                    resetAuthCount(webView, key)
                 }
 
                 showLoginScreen(
@@ -443,8 +484,12 @@ class WebViewActivity : AppCompatActivity() {
                     handler = handler,
                     loggedOut = false,
                     resumeUrl = null,
-                    gate = LoginGate.AUTH
+                    gate = LoginGate.AUTH,
+                    clearFields = saved == null
                 )
+                if (saved != null && usernameInput.text.isNullOrEmpty()) {
+                    usernameInput.setText(saved.username)
+                }
             }
 
             override fun onReceivedHttpError(
@@ -482,7 +527,7 @@ class WebViewActivity : AppCompatActivity() {
                 if (view != null && view !in authFailedViews) {
                     // Skutečně načtená stránka — příští navigace znovu auto-přihlásí.
                     runCatching { Uri.parse(url ?: "").host }.getOrNull()
-                        ?.let { authChallengeCounts.remove(HttpCredentials.authKey(it)) }
+                        ?.let { resetAuthCount(view, HttpCredentials.authKey(it)) }
                 }
                 if (view != null) authFailedViews.remove(view)
                 updateTabMeta(view ?: return, url, view.title)
@@ -1080,7 +1125,7 @@ class WebViewActivity : AppCompatActivity() {
         } else {
             HttpCredentials.clear(this, host)
         }
-        authChallengeCounts[HttpCredentials.authKey(host)] = 0
+        resetAuthCountsForHost(HttpCredentials.authKey(host))
 
         val handler = pendingAuthHandler
         val resumeUrl = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
@@ -1125,7 +1170,7 @@ class WebViewActivity : AppCompatActivity() {
             )
             .setPositiveButton("Zkusit znovu") { _, _ ->
                 dialogShown = false
-                authChallengeCounts.clear()
+                activeWebView?.let { resetAuthCount(it, HttpCredentials.authKey(host)) }
                 activeWebView?.reload()
             }
             .setNegativeButton("Zavřít", null)
