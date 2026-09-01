@@ -141,9 +141,8 @@
                         android:id="@+id/usernameInput"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:autofillHints="username"
                         android:imeOptions="actionNext"
-                        android:importantForAutofill="yes"
+                        android:importantForAutofill="no"
                         android:inputType="textPersonName" />
                 </com.google.android.material.textfield.TextInputLayout>
 
@@ -161,9 +160,8 @@
                         android:id="@+id/passwordInput"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:autofillHints="password"
                         android:imeOptions="actionDone"
-                        android:importantForAutofill="yes"
+                        android:importantForAutofill="no"
                         android:inputType="textPassword" />
                 </com.google.android.material.textfield.TextInputLayout>
 

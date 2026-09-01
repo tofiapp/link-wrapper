@@ -36,10 +36,6 @@ class HomeActivity : AppCompatActivity() {
 
         urlInput.setOnFocusChangeListener { _, _ -> urlLayout.error = null }
 
-        findViewById<MaterialButton>(R.id.historyButton).setOnClickListener {
-            startActivity(Intent(this, HistoryActivity::class.java))
-        }
-
         findViewById<MaterialButton>(R.id.certButton).setOnClickListener {
             showCertInfo()
         }

@@ -69,7 +69,7 @@ object HttpCredentials {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .clear()
-            .apply()
+            .commit()
     }
 
     fun hasAny(context: Context): Boolean {

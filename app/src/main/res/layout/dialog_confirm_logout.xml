@@ -40,7 +40,7 @@
         android:layout_marginTop="6dp"
         android:gravity="center_horizontal"
         android:lineSpacingMultiplier="1.25"
-        android:text="Smaže se uložené přihlášení."
+        android:text="Smaže se uložené přihlášení i relace."
         android:textColor="@color/ink_soft"
         android:textSize="14sp" />
 </LinearLayout>
