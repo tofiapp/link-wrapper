@@ -5,20 +5,18 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
-- Po spuštění **rovnou otevře** výchozí stránku
-  `https://test.psst.tudc.cz/HSI.Psst.Data` (bez úvodního menu).
+- Po spuštění nejdřív **VPN**, pak **přihlášení**. Home
+  (`https://test.psst.tudc.cz/HSI.Psst.Data`) se otevře až po platných údajích.
+- Relace se uloží v aplikaci. Při dalším spuštění se uživatel nepřihlašuje znovu.
+- **Odhlásit** (⋮, dole, červeně) smaže jméno, heslo, cookies i NTLM relaci
+  úplně a vrátí na obrazovku „Byl jste odhlášen“.
 - **Karty** nahoře v liště; vpravo **+** (modré), **domeček**, **⋮**.
   Zavření karty křížkem (max. 8).
-- Nabídka **⋮**: zadat adresu, přenačíst, certifikáty, nastavení
-  odkazů; úplně dole červené **Odhlásit**.
+- Nabídka **⋮**: zadat adresu, přenačíst, certifikáty, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
-- **Jedno přihlášení pro *.psst.tudc.cz**: celostránkový formulář; další stránky
-  se přihlásí automaticky. **Odhlásit** smaže heslo, cookies i session a vrátí na
-  obrazovku „Byl jste odhlášen“.
-- **VPN brána**: bez Cisco AnyConnect ukáže přihlášení s červenou hláškou.
-  Když VPN vypadne během používání, stejná obrazovka; po opětovném připojení
-  se vrátí na otevřené karty.
+- **VPN brána**: bez Cisco AnyConnect jen varování. Po připojení se buď
+  zobrazí přihlášení, nebo se vrátí otevřené karty (když relace ještě platí).
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
 
 ## Jak appku dostat jako .apk (bez Android Studia)
@@ -115,30 +113,33 @@ připomínku pár měsíců předem.
 (Intune → trusted certificate profile). Pak ověřování v aplikaci není potřeba
 vůbec a fungovat bude i běžný prohlížeč.
 
-## HTTP autentizace (401)
+## Přihlášení a odhlášení
 
-Na firemním PC často stačí být přihlášený do Windows — prohlížeč pošle
-doménový účet sám (Integrated Windows Auth). Android to neumí stejně.
+Android neumí Windows Integrated Auth (Kerberos) jako firemní PC. Appka
+proto má vlastní přihlašovací obrazovku. Zkoušejte tvar `DOMÉNA\uživatel`
+(např. `SZDC\jnovak`) a firemní heslo.
 
-Appka proto při HTTP auth challenge zobrazí dialog. Zkoušejte tvar
-`DOMÉNA\uživatel` (např. `SZDC\jnovak`) a firemní heslo.
+Tok:
 
-Pro celou rodinu `*.psst.tudc.cz` se údaje ukládají **jednou** a sdílí se
-mezi kartami (spolu s cookies WebView). Odhlášení: **⋮ → Odhlásit**.
+1. Bez VPN → jen hláška Cisco AnyConnect. Žádný formulář, žádný home.
+2. VPN běží a **není relace** → formulář. Home se nenačte, dokud server
+   údaje nepřijme.
+3. Údaje sedí → uloží se do `Session` a otevře se home. Další karty i
+   další spuštění aplikace použijí stejné údaje (HTTP Basic / Digest / NTLM).
+4. **⋮ → Odhlásit** → prefs, cookies, HTTP auth cache i Chromium profil
+   se smažou a proces se restartuje (NTLM jinak v procesu přežije).
 
 | Typ na serveru | Šance ve WebView |
 | --- | --- |
-| Basic / Digest | Dobrá — dialog by se měl objevit |
-| NTLM | Někdy funguje (závisí na System WebView) |
-| Negotiate / Kerberos | Typicky **nefunguje** — uvidíte 401 bez dialogu |
+| Basic / Digest | Dobrá |
+| NTLM | Funguje (několik kol handshake) |
+| Negotiate / Kerberos | Typicky **nefunguje** — 401 bez výzvy k heslu |
 
-Pokud se dialog vůbec neobjeví a zůstane jen „401 Unauthorized“, server
-pravděpodobně vyžaduje Kerberos. Pak je potřeba na straně IIS/IT povolit
-NTLM (nebo Basic přes HTTPS), případně jiné SSO pro mobilní klienty —
-to aplikace sama nevyřeší.
+Pokud server vyžaduje Kerberos, je potřeba na IIS povolit NTLM (nebo Basic
+přes HTTPS). To aplikace sama nevyřeší.
 
-Údaje se ukládají jen lokálně v aplikaci (`HttpCredentials`), nikam se
-neodesílají. Smazání: **⋮ → Odhlásit**.
+Údaje se nikam neodesílají mimo cílový server. Záloha aplikace je vypnutá
+(`allowBackup=false`), aby se heslo nezkopírovalo z tabletu.
 
 ## Co ještě doladit
 

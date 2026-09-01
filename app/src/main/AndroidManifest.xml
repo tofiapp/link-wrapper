@@ -7,15 +7,15 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.LinkWrapper"
         android:usesCleartextTraffic="false">
 
         <!--
-          Hlavní obrazovka: rovnou WebView s výchozí PSST adresou.
-          Nahoře jen toolbar s nabídkou ⋮ (zadat adresu, přenačíst…).
+          Jediná activity: nejdřív VPN, pak přihlášení, teprve potom home.
+          Relace se drží v Session, dokud uživatel nestiskne Odhlásit.
         -->
         <activity
             android:name=".WebViewActivity"
@@ -62,11 +62,6 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-
-        <!-- Domovská / nastavení — už se nespouští z launcheru. -->
-        <activity
-            android:name=".HomeActivity"
-            android:exported="false" />
 
     </application>
 </manifest>
