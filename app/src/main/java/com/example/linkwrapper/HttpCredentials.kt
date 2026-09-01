@@ -43,17 +43,21 @@ object HttpCredentials {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val user = prefs.getString(PREFIX_USER + key, null) ?: return null
         val pass = prefs.getString(PREFIX_PASS + key, null) ?: return null
-        if (user.isEmpty()) return null
+        if (user.isEmpty() || pass.isEmpty()) return null
         return SavedCredentials(user, pass)
     }
 
     fun save(context: Context, host: String, username: String, password: String) {
+        if (username.isEmpty() || password.isEmpty()) {
+            clear(context, host)
+            return
+        }
         val key = authKey(host)
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(PREFIX_USER + key, username)
             .putString(PREFIX_PASS + key, password)
-            .apply()
+            .commit()
     }
 
     fun clear(context: Context, host: String) {
@@ -62,7 +66,7 @@ object HttpCredentials {
             .edit()
             .remove(PREFIX_USER + key)
             .remove(PREFIX_PASS + key)
-            .apply()
+            .commit()
     }
 
     fun clearAll(context: Context) {
