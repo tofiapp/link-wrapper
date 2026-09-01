@@ -39,17 +39,20 @@ Build jde spustit i ručně: **Actions** → **Build APK** → **Run workflow**.
 
 ## Automatické číslování verzí
 
-Každý GitHub Actions build dostane unikátní číslo z pořadí běhu workflow:
+Číslo verze se zvedne **jen při merge do `main`** (a ručním **Run workflow**).
+CI na pull requestu appku sestaví kvůli kontrole, ale **není to verze** —
+na tabletu se z něj neaktualizuje.
 
-| Co | Příklad | K čemu je |
+| Co | Příklad | Kdy |
 | --- | --- | --- |
-| `versionName` | `1.0.15` | Viditelná verze (domovská obrazovka appky, název APK, GitHub Release) |
-| `versionCode` | `15` | Interní číslo pro Android — musí růst, aby šla appka na tabletu aktualizovat |
+| `versionName` | `1.0.15` | merge do `main` → GitHub Release, název APK |
+| `versionCode` | `15` | totéž; musí růst, aby šla appka na tabletu přepsat |
+| PR artifact | `1.0.0-pr20` | jen Actions → Artifacts, versionCode `1` |
 
 Lokální sestavení v Android Studiu použije `1.0.0-local` (versionCode `1`).
 
 Major/minor (ta `1.0`) se mění ručně v `gradle.properties` (`versionMajor` /
-`versionMinor`). Patch doplní CI samo.
+`versionMinor`). Patch doplní CI samo z pořadí běhů workflow **Build APK**.
 
 Na tabletu se nainstalovaná verze ukáže dole na úvodní obrazovce. Novější APK
 ze stejného podpisu přepíše starší instalaci — není potřeba nejdřív odinstalovat.
