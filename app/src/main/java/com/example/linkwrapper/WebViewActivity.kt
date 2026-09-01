@@ -190,13 +190,13 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        WebView.resumeTimers()
+        (activeWebView ?: tabs.firstOrNull()?.webView)?.resumeTimers()
         activeWebView?.onResume()
     }
 
     override fun onPause() {
         tabs.forEach { it.webView.onPause() }
-        WebView.pauseTimers()
+        tabs.firstOrNull()?.webView?.pauseTimers()
         super.onPause()
     }
 
