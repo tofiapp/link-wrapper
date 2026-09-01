@@ -97,6 +97,7 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var vpnBanner: View
     private lateinit var usernameLayout: TextInputLayout
     private lateinit var usernameInput: TextInputEditText
+    private lateinit var passwordLayout: TextInputLayout
     private lateinit var passwordInput: TextInputEditText
     private lateinit var rememberCheck: MaterialCheckBox
     private lateinit var loginButton: MaterialButton
@@ -872,6 +873,7 @@ class WebViewActivity : AppCompatActivity() {
         vpnBanner = findViewById(R.id.vpnBanner)
         usernameLayout = findViewById(R.id.usernameLayout)
         usernameInput = findViewById(R.id.usernameInput)
+        passwordLayout = findViewById(R.id.passwordLayout)
         passwordInput = findViewById(R.id.passwordInput)
         rememberCheck = findViewById(R.id.rememberCheck)
         loginButton = findViewById(R.id.loginButton)
@@ -924,6 +926,7 @@ class WebViewActivity : AppCompatActivity() {
 
         rememberCheck.isChecked = true
         usernameLayout.error = null
+        passwordLayout.error = null
         if (clearFields) {
             usernameInput.setText("")
             passwordInput.setText("")
@@ -1110,9 +1113,16 @@ class WebViewActivity : AppCompatActivity() {
         val pass = passwordInput.text?.toString().orEmpty()
         if (user.isEmpty()) {
             usernameLayout.error = "Zadejte jméno"
+            usernameInput.requestFocus()
             return
         }
         usernameLayout.error = null
+        if (pass.isEmpty()) {
+            passwordLayout.error = "Zadejte heslo"
+            passwordInput.requestFocus()
+            return
+        }
+        passwordLayout.error = null
 
         // Hned schovej klávesnici — ještě před přechodem do WebView.
         hideKeyboard()
