@@ -11,7 +11,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - **Odhlásit** (⋮, dole, červeně) smaže jméno, heslo, cookies i NTLM relaci
   úplně a vrátí na obrazovku „Byl jste odhlášen“.
 - **Karty** nahoře v liště; vpravo **+** (modré), **domeček**, **⋮**.
-  Zavření karty křížkem (max. 8).
+  Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
+  na pozadí nesežerou tablet.
 - Nabídka **⋮**: zadat adresu, přenačíst, certifikáty, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
@@ -145,3 +146,5 @@ přes HTTPS). To aplikace sama nevyřeší.
 
 - **Ikona appky**: teď je jen jednoduchý placeholder (modrý čtverec se
   symbolem odkazu). Dá se snadno vyměnit za firemní logo.
+
+Celkový audit (přihlášení, sekání grafů, bezpečnost): [`AUDIT.md`](AUDIT.md).

@@ -37,6 +37,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -187,6 +188,18 @@ class WebViewActivity : AppCompatActivity() {
         scheduleVpnCheck()
     }
 
+    override fun onResume() {
+        super.onResume()
+        WebView.resumeTimers()
+        activeWebView?.onResume()
+    }
+
+    override fun onPause() {
+        tabs.forEach { it.webView.onPause() }
+        WebView.pauseTimers()
+        super.onPause()
+    }
+
     override fun onStop() {
         unregisterVpnMonitor()
         mainHandler.removeCallbacks(vpnCheckRunnable)
@@ -289,12 +302,19 @@ class WebViewActivity : AppCompatActivity() {
         gate = Gate.BROWSER
         showSignedOutBanner = false
         hideLoginOverlay()
-        if (tabs.isEmpty()) restoreSavedTabsOrStart()
+        if (tabs.isEmpty()) {
+            restoreSavedTabsOrStart()
+        } else {
+            activeWebView?.onResume()
+        }
     }
 
     private fun enterVpnGate() {
         dismissWarningDialog()
-        tabs.forEach { it.webView.stopLoading() }
+        tabs.forEach { tab ->
+            tab.webView.stopLoading()
+            tab.webView.onPause()
+        }
         if (gate == Gate.BROWSER && tabs.isNotEmpty()) {
             savedTabUrls = tabs.map { it.url }
             savedActiveTabIndex = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
@@ -350,14 +370,16 @@ class WebViewActivity : AppCompatActivity() {
         )
         selectTab(tab.id)
         webView.loadUrl(url)
-        refreshTabStrip()
     }
 
     private fun selectTab(tabId: Long) {
         if (tabId != activeTabId) hideKeyboard()
         activeTabId = tabId
         tabs.forEach { tab ->
-            tab.webView.visibility = if (tab.id == tabId) View.VISIBLE else View.GONE
+            val selected = tab.id == tabId
+            tab.webView.visibility = if (selected) View.VISIBLE else View.GONE
+            // Skrytá karta s grafem jinak pořád kreslí a žere GPU/CPU.
+            if (selected) tab.webView.onResume() else tab.webView.onPause()
         }
         activeTab?.let { applyChrome(it) }
         refreshTabStrip()
@@ -386,6 +408,7 @@ class WebViewActivity : AppCompatActivity() {
         authChallengeCounts.remove(tab.webView)
         webContainer.removeView(tab.webView)
         tab.webView.stopLoading()
+        tab.webView.onPause()
         tab.webView.webChromeClient = null
         tab.webView.destroy()
     }
@@ -463,14 +486,19 @@ class WebViewActivity : AppCompatActivity() {
             uri.getQueryParameter("dmid").isNullOrBlank()
     }
 
-    private fun updateTabMeta(webView: WebView, url: String?, title: String?) {
+    private fun updateTabMeta(webView: WebView, url: String?) {
         val tab = tabs.find { it.webView === webView } ?: return
+        var stripChanged = false
         if (!url.isNullOrBlank()) {
             tab.url = url
-            tab.title = tabLabel(url)
+            val label = tabLabel(url)
+            if (tab.title != label) {
+                tab.title = label
+                stripChanged = true
+            }
         }
         if (tab.id == activeTabId) applyChrome(tab)
-        refreshTabStrip()
+        if (stripChanged) refreshTabStrip()
     }
 
     // ── WebView ─────────────────────────────────────────────────────────
@@ -483,6 +511,19 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.setGeolocationEnabled(true)
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = true
+        webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
+        webView.settings.allowFileAccess = false
+        webView.settings.allowContentAccess = false
+        @Suppress("DEPRECATION")
+        webView.settings.allowFileAccessFromFileURLs = false
+        @Suppress("DEPRECATION")
+        webView.settings.allowUniversalAccessFromFileURLs = false
+        webView.settings.mediaPlaybackRequiresUserGesture = true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            webView.settings.offscreenPreRaster = true
+        }
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView.setOnLongClickListener { true }
 
@@ -601,7 +642,7 @@ class WebViewActivity : AppCompatActivity() {
                     }
                 }
                 if (view != null) authFailedViews.remove(view)
-                updateTabMeta(view ?: return, url, view.title)
+                updateTabMeta(view ?: return, url)
             }
         }
 
@@ -609,13 +650,15 @@ class WebViewActivity : AppCompatActivity() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 if (view !== activeWebView) return
                 if (gate != Gate.BROWSER && !verifyingLogin) return
-                progressBar.visibility = View.VISIBLE
-                progressBar.setProgressCompat(newProgress, true)
-                if (newProgress >= 100) progressBar.visibility = View.GONE
-            }
-
-            override fun onReceivedTitle(view: WebView?, title: String?) {
-                updateTabMeta(view ?: return, view.url, title)
+                // Overlay progress — bez animace a bez GONE/VISIBLE na každý procent.
+                if (newProgress in 1..99) {
+                    if (progressBar.visibility != View.VISIBLE) {
+                        progressBar.visibility = View.VISIBLE
+                    }
+                    progressBar.setProgressCompat(newProgress, false)
+                } else if (progressBar.visibility != View.GONE) {
+                    progressBar.visibility = View.GONE
+                }
             }
 
             override fun onGeolocationPermissionsShowPrompt(
@@ -667,9 +710,14 @@ class WebViewActivity : AppCompatActivity() {
         }
         dialogShown = false
         tab.url = url
-        tab.title = tabLabel(url)
-        applyChrome(tab)
-        refreshTabStrip()
+        val label = tabLabel(url)
+        if (tab.title != label) {
+            tab.title = label
+            applyChrome(tab)
+            refreshTabStrip()
+        } else {
+            applyChrome(tab)
+        }
         tab.webView.loadUrl(url)
     }
 
@@ -974,6 +1022,9 @@ class WebViewActivity : AppCompatActivity() {
                 .build()
         }
         root.viewTreeObserver.addOnGlobalLayoutListener {
+            // Při kreslení grafu WebView pořád mění layout. Padding kvůli
+            // klávesnici řešíme jen na přihlášení, ne na home.
+            if (gate == Gate.BROWSER && urlDialog?.isShowing != true) return@addOnGlobalLayoutListener
             applyVisibleFrameImePadding(root)
         }
         ViewCompat.requestApplyInsets(root)
@@ -1048,7 +1099,11 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.action == MotionEvent.ACTION_DOWN && isImeVisible() && urlDialog?.isShowing != true) {
+        if (ev.action == MotionEvent.ACTION_DOWN &&
+            gate != Gate.BROWSER &&
+            isImeVisible() &&
+            urlDialog?.isShowing != true
+        ) {
             val root = urlDialog?.window?.decorView ?: window.decorView
             if (!isTouchOnEditText(root, ev)) hideKeyboard()
         }
