@@ -42,7 +42,12 @@ class HistoryActivity : AppCompatActivity() {
             startActivity(
                 Intent(this, WebViewActivity::class.java)
                     .putExtra(WebViewActivity.EXTRA_URL, url)
+                    .addFlags(
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
             )
+            finish()
         }
     }
 }
