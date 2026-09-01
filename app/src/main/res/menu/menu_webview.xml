@@ -27,11 +27,6 @@
             android:icon="@drawable/ic_refresh"
             app:showAsAction="never" />
         <item
-            android:id="@+id/action_history"
-            android:title="Historie"
-            android:icon="@drawable/ic_history"
-            app:showAsAction="never" />
-        <item
             android:id="@+id/action_cert_info"
             android:title="Ověřování certifikátů"
             android:icon="@drawable/ic_shield"

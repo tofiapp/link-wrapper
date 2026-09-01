@@ -289,7 +289,6 @@ class WebViewActivity : AppCompatActivity() {
             )
         )
         selectTab(tab.id)
-        LinkHistory.addEntry(this, url)
         webView.loadUrl(url)
         refreshTabStrip()
     }
@@ -596,7 +595,6 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         dialogShown = false
-        LinkHistory.addEntry(this, url)
         tab.url = url
         tab.title = tabLabel(url)
         applyChrome(tab)
@@ -1281,35 +1279,24 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Odhlášení pro celou aplikaci: heslo + cookies + HTTP auth cache + všechny karty.
-     * Uživatel skončí na přihlášení s textem „Byl jste odhlášen“.
+     * Odhlášení pro celou aplikaci: heslo, cookies, HTTP auth cache, WebView i karty.
+     * Údaje musí zmizet hned — ne až později přes apply().
      */
     private fun performLogout() {
-        // Zruš případné čekající HTTP auth.
         pendingAuthHandler?.cancel()
         pendingAuthHandler = null
+        pendingResumeUrl = DEFAULT_URL
+        pendingStartUrl = DEFAULT_URL
+        pendingAuthHost = null
 
-        HttpCredentials.clearAll(this)
+        wipeSessionState()
+
         authChallengeCounts.clear()
         authFailedViews.clear()
         awaitingHttpAuth = false
         authDialogShowing = false
         dialogShown = false
 
-        try {
-            @Suppress("DEPRECATION")
-            WebViewDatabase.getInstance(this).clearHttpAuthUsernamePassword()
-        } catch (_: Exception) {
-            // API se liší podle verze WebView
-        }
-
-        try {
-            WebStorage.getInstance().deleteAllData()
-        } catch (_: Exception) {
-            // starší WebView — ignorovat
-        }
-
-        // Zničit všechny karty hned — heslo nesmí zůstat v paměti WebView.
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         activeTabId = -1L
@@ -1317,19 +1304,63 @@ class WebViewActivity : AppCompatActivity() {
         savedActiveTabIndex = 0
         refreshTabStrip()
 
-        // Hned ukaž přihlášení s „Byl jste odhlášen“ — cookies dočistíme na pozadí.
         showLoginScreen(
             host = "psst.tudc.cz",
             handler = null,
             loggedOut = true,
             resumeUrl = DEFAULT_URL,
             vpnMissing = !isVpnActive(),
-            gate = LoginGate.LOGOUT
+            gate = LoginGate.LOGOUT,
+            clearFields = true
         )
+    }
 
-        val cookieManager = CookieManager.getInstance()
-        cookieManager.removeSessionCookies(null)
-        cookieManager.removeAllCookies { _ -> cookieManager.flush() }
+    /** Smaže uložené heslo, cookies, HTTP auth i cache WebView. */
+    private fun wipeSessionState() {
+        HttpCredentials.clearAll(this)
+
+        tabs.forEach { tab ->
+            val wv = tab.webView
+            try {
+                wv.stopLoading()
+                wv.clearCache(true)
+                wv.clearHistory()
+                wv.clearFormData()
+                wv.clearSslPreferences()
+            } catch (_: Exception) {
+            }
+        }
+
+        try {
+            @Suppress("DEPRECATION")
+            val db = WebViewDatabase.getInstance(this)
+            db.clearHttpAuthUsernamePassword()
+            @Suppress("DEPRECATION")
+            db.clearFormData()
+            @Suppress("DEPRECATION")
+            db.clearUsernamePassword()
+        } catch (_: Exception) {
+        }
+
+        try {
+            WebStorage.getInstance().deleteAllData()
+        } catch (_: Exception) {
+        }
+
+        try {
+            val cookies = CookieManager.getInstance()
+            cookies.removeSessionCookies(null)
+            cookies.removeAllCookies(null)
+            cookies.flush()
+        } catch (_: Exception) {
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+                getSystemService(android.view.autofill.AutofillManager::class.java)?.cancel()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private fun showCertInfo() {
@@ -1393,7 +1424,6 @@ class WebViewActivity : AppCompatActivity() {
         listOf(
             R.id.action_open_url,
             R.id.action_reload,
-            R.id.action_history,
             R.id.action_cert_info,
             R.id.action_link_settings
         ).forEach { id ->
@@ -1436,10 +1466,6 @@ class WebViewActivity : AppCompatActivity() {
             R.id.action_reload -> {
                 dialogShown = false
                 activeWebView?.reload()
-                true
-            }
-            R.id.action_history -> {
-                startActivity(Intent(this, HistoryActivity::class.java))
                 true
             }
             R.id.action_logout -> {

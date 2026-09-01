@@ -141,23 +141,6 @@
             android:background="@color/line" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/historyButton"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="match_parent"
-            android:layout_height="56dp"
-            android:text="Historie odkazů"
-            android:textSize="15sp"
-            android:textAllCaps="false"
-            android:letterSpacing="0"
-            android:gravity="center_vertical|start"
-            android:paddingHorizontal="12dp"
-            app:icon="@drawable/ic_history"
-            app:iconGravity="start"
-            app:iconPadding="16dp"
-            app:iconTint="@color/ink_soft"
-            android:textColor="@color/ink" />
-
-        <com.google.android.material.button.MaterialButton
             android:id="@+id/certButton"
             style="@style/Widget.Material3.Button.TextButton"
             android:layout_width="match_parent"

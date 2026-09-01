@@ -9,18 +9,17 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   `https://test.psst.tudc.cz/HSI.Psst.Data` (bez úvodního menu).
 - **Karty** nahoře v liště; vpravo **+** (modré), **domeček**, **⋮**.
   Zavření karty křížkem (max. 8).
-- Nabídka **⋮**: zadat adresu, přenačíst, historie, certifikáty, nastavení
+- Nabídka **⋮**: zadat adresu, přenačíst, certifikáty, nastavení
   odkazů; úplně dole červené **Odhlásit**.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
 - **Jedno přihlášení pro *.psst.tudc.cz**: celostránkový formulář; další stránky
-  se přihlásí automaticky. **Odhlásit** platí pro všechny karty a vrátí na
+  se přihlásí automaticky. **Odhlásit** smaže heslo, cookies i session a vrátí na
   obrazovku „Byl jste odhlášen“.
 - **VPN brána**: bez Cisco AnyConnect ukáže přihlášení s červenou hláškou.
   Když VPN vypadne během používání, stejná obrazovka; po opětovném připojení
   se vrátí na otevřené karty.
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
-- **Historie** posledních 24 hodin (jen lokálně v appce).
 
 ## Jak appku dostat jako .apk (bez Android Studia)
 
@@ -139,7 +138,7 @@ NTLM (nebo Basic přes HTTPS), případně jiné SSO pro mobilní klienty —
 to aplikace sama nevyřeší.
 
 Údaje se ukládají jen lokálně v aplikaci (`HttpCredentials`), nikam se
-neodesílají. Smazání: v WebView menu → **Zapomenout přihlášení**.
+neodesílají. Smazání: **⋮ → Odhlásit**.
 
 ## Co ještě doladit
 
