@@ -36,8 +36,14 @@ se na heslo.
 | není VPN | jen AnyConnect |
 | VPN, není relace | formulář; home se nenačítá |
 | VPN, ověřují se údaje | formulář zůstane, dokud server neodsouhlasí |
+| VPN, špatné heslo | hláška na formuláři, jméno zůstane; proces se restartuje (NTLM cache) |
 | VPN, relace platí | home; HTTP auth z `Session` |
 | Odhlásit | prefs + cookies + Chromium profil pryč, nový proces |
+
+Špatné heslo Chromium uloží do NTLM cache procesu. Bez restartu by další
+pokus poslal znovu to špatné, i když uživatel napsal správné. Restart je
+stejný jako u Odhlásit, jen se na formuláři zachová jméno a chybová hláška.
+Heslo se znovu zadává.
 
 ---
 
@@ -84,22 +90,43 @@ uživatel přepne pryč z aplikace.
 
 **Úprava:** neaktivní karta `onPause()`, aktivní `onResume()`. Při odchodu
 z aplikace se zastaví timery. Po návratu VPN se aktivní karta zase spustí.
+Skrytá karta má `RENDERER_PRIORITY_WAIVED`, aktivní `IMPORTANT`.
 
-### 5. Další tření na UI vlákně
+### 5. Hardware vrstva kolem WebView (vráceno)
+
+Předchozí kolo zapnulo `LAYER_TYPE_HARDWARE` a `offscreenPreRaster`. To
+pomáhá u statického obsahu. U grafu, který se při posunu pořád kreslí,
+Android pokaždé nahraje celou texturu WebView na GPU. Chromium přitom má
+vlastní compositor — obalová vrstva mu škodí.
+
+**Úprava:** `LAYER_TYPE_NONE`, vypnutý `offscreenPreRaster`, vypnutý
+WebView zoom (ať se nepere s posunem grafu), vypnuté force-dark.
+
+### 6. Tooltip / hover při posunu grafu
+
+Highcharts ve výchozím stavu při tažení prstu sleduje tooltip
+(`followTouchMove`) a překresluje hover. Na tabletu to je každý snímek
+celý graf. Obálka po načtení stránky vypne animace, `followTouchMove`
+a na canvas dá `touch-action: none`, aby gesto dostal jen graf, ne
+současně skrolování stránky.
+
+### 7. Další tření na UI vlákně
 
 - `setProgressCompat(..., true)` animoval každý procento načtení.
 - `dispatchTouchEvent` procházel celý strom (včetně WebView) při každém
   klepnutí, i na home.
-- Nebyla zapnutá hardwarová vrstva WebView.
+- Padding kvůli klávesnici se v BROWSER režimu už neaplikuje.
 
 **Úprava:** progress bez animace, overlay; procházení stromu jen na
-přihlášení; `LAYER_TYPE_HARDWARE`, `offscreenPreRaster`.
+přihlášení; IME padding jen na přihlášení.
 
 ### Co obálka neovlivní
 
 Těžký graf (tisíce bodů, live refresh, SVG) bude na slabším tabletu
-cukat i v Chrome. To je stránka, ne obálka. Obálka jen nesmí při každém
-snímku sahat na layout.
+cukat i v Chrome. To je stránka, ne obálka. Obálka nesmí při každém
+snímku sahat na layout, nesmí graf obalit hardware vrstvou a může
+vypnout drahý hover při posunu. Další zrychlení (méně bodů, boost
+modul) už je změna `HSI.Psst.Data`.
 
 ---
 
@@ -142,8 +169,9 @@ snímku sahat na layout.
 
 ### Odhlášení
 
-- Restart procesu (`killProcess`) je u NTLM nutný. Uživatel uvidí krátké
-  bliknutí. Bez něj stará session v Chromiu přežije.
+- Restart procesu (`killProcess`) je u NTLM nutný po **Odhlásit** i po
+  **špatném hesle**. Uživatel uvidí krátké bliknutí. Bez něj stará
+  (nebo špatná) session v Chromiu přežije.
 - Stav karet se po Odhlásit záměrně zahazuje.
 
 ### Build / údržba
@@ -164,4 +192,5 @@ snímku sahat na layout.
 4. Zúžit catch-all `https` filtr, pokud vadí, že se appka nabízí u
    veřejného webu.
 5. Pokud grafy cukají i po těchto úpravách: měřit ve stránce (počet bodů,
-   refresh, SVG vs canvas). To už je změna `HSI.Psst.Data`, ne obálky.
+   refresh, SVG vs canvas, Highcharts boost). To už je změna `HSI.Psst.Data`,
+   ne obálky.

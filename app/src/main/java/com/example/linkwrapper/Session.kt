@@ -22,9 +22,13 @@ object Session {
     private const val KEY_USER = "username"
     private const val KEY_PASS = "password"
     private const val KEY_SIGNED_OUT = "show_signed_out"
+    private const val KEY_RETRY_USER = "retry_username"
+    private const val KEY_RETRY_ERROR = "retry_error"
 
     private const val LEGACY_AUTH_PREFS = "http_auth_prefs"
     private const val LEGACY_GATE_PREFS = "session_gate"
+
+    data class LoginRetry(val username: String, val error: String?)
 
     fun isActive(context: Context): Boolean = credentials(context) != null
 
@@ -43,6 +47,8 @@ object Session {
             .putString(KEY_USER, username)
             .putString(KEY_PASS, password)
             .putBoolean(KEY_SIGNED_OUT, false)
+            .remove(KEY_RETRY_USER)
+            .remove(KEY_RETRY_ERROR)
             .commit()
     }
 
@@ -63,6 +69,25 @@ object Session {
         if (!prefs.getBoolean(KEY_SIGNED_OUT, false)) return false
         prefs.edit().putBoolean(KEY_SIGNED_OUT, false).commit()
         return true
+    }
+
+    /**
+     * Přežije restart procesu po neúspěšném NTLM. Heslo se neschovává —
+     * Chromium by ho znovu uložilo do auth cache.
+     */
+    fun stashLoginRetry(context: Context, username: String, error: String?) {
+        prefs(context).edit()
+            .putString(KEY_RETRY_USER, username)
+            .putString(KEY_RETRY_ERROR, error ?: "")
+            .commit()
+    }
+
+    fun takeLoginRetry(context: Context): LoginRetry? {
+        val p = prefs(context)
+        val user = p.getString(KEY_RETRY_USER, null) ?: return null
+        val err = p.getString(KEY_RETRY_ERROR, null)?.takeIf { it.isNotEmpty() }
+        p.edit().remove(KEY_RETRY_USER).remove(KEY_RETRY_ERROR).commit()
+        return LoginRetry(user, err)
     }
 
     /**
