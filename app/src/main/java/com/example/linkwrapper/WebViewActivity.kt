@@ -55,6 +55,9 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -309,12 +312,14 @@ class WebViewActivity : AppCompatActivity() {
             if (usernameInput.text.isNullOrEmpty()) usernameInput.requestFocus()
             else passwordInput.requestFocus()
         }
+        attachImeLayoutListener(true)
     }
 
     private fun presentBrowser() {
         gate = Gate.BROWSER
         showSignedOutBanner = false
         hideLoginOverlay()
+        attachImeLayoutListener(false)
         if (tabs.isEmpty()) {
             restoreSavedTabsOrStart()
         } else {
@@ -346,6 +351,7 @@ class WebViewActivity : AppCompatActivity() {
         loginTitle.visibility = View.GONE
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
+        attachImeLayoutListener(true)
     }
 
     private fun restoreSavedTabsOrStart() {
@@ -374,13 +380,6 @@ class WebViewActivity : AppCompatActivity() {
             url = url
         )
         tabs.add(tab)
-        webContainer.addView(
-            webView,
-            FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        )
         selectTab(tab.id)
         webView.loadUrl(url)
     }
@@ -390,20 +389,30 @@ class WebViewActivity : AppCompatActivity() {
         activeTabId = tabId
         tabs.forEach { tab ->
             val selected = tab.id == tabId
-            tab.webView.visibility = if (selected) View.VISIBLE else View.GONE
-            // Skrytá karta s grafem jinak pořád kreslí a žere GPU/CPU.
             if (selected) {
+                if (tab.webView.parent == null) {
+                    webContainer.addView(
+                        tab.webView,
+                        FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT
+                        )
+                    )
+                }
+                tab.webView.visibility = View.VISIBLE
                 tab.webView.onResume()
                 tab.webView.setRendererPriorityPolicy(
                     WebView.RENDERER_PRIORITY_IMPORTANT,
                     false
                 )
             } else {
+                // Pryč z hierarchy — GONE WebView pořád drží compositor vrstvu.
                 tab.webView.onPause()
                 tab.webView.setRendererPriorityPolicy(
                     WebView.RENDERER_PRIORITY_WAIVED,
                     true
                 )
+                (tab.webView.parent as? ViewGroup)?.removeView(tab.webView)
             }
         }
         activeTab?.let { applyChrome(it) }
@@ -548,19 +557,40 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.setSupportZoom(false)
         webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
+        webView.settings.textZoom = 100
+        webView.settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            webView.settings.safeBrowsingEnabled = false
+        }
         // Chromium má vlastní compositor. Hardware vrstva kolem WebView
         // při posunu grafu pokaždé nahrává celou texturu → cukání.
         webView.setLayerType(View.LAYER_TYPE_NONE, null)
         webView.settings.offscreenPreRaster = false
         webView.overScrollMode = View.OVER_SCROLL_NEVER
         webView.isNestedScrollingEnabled = false
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
+        webView.importantForAccessibility =
+            View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+        webView.isHapticFeedbackEnabled = false
+        webView.isSoundEffectsEnabled = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             @Suppress("DEPRECATION")
             webView.settings.forceDark = WebSettings.FORCE_DARK_OFF
         }
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, false)
+        }
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView.setOnLongClickListener { true }
+        webView.setOnTouchListener { v, ev ->
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+                v.parent?.requestDisallowInterceptTouchEvent(true)
+            }
+            false
+        }
+        installChartPerfBootstrap(webView)
 
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(
@@ -658,6 +688,11 @@ class WebViewActivity : AppCompatActivity() {
                 showNetworkWarning(error?.errorCode, request.url)
             }
 
+            override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+                if (view != null) injectChartPerfFallback(view)
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
                 awaitingHttpAuth = false
@@ -677,9 +712,6 @@ class WebViewActivity : AppCompatActivity() {
                     }
                 }
                 if (view != null) authFailedViews.remove(view)
-                if (view != null && !failedAuth && url != "about:blank") {
-                    injectChartPerf(view)
-                }
                 updateTabMeta(view ?: return, url)
             }
         }
@@ -915,19 +947,27 @@ class WebViewActivity : AppCompatActivity() {
 
     // ── Přihlášení ──────────────────────────────────────────────────────
 
-    private fun injectChartPerf(webView: WebView) {
-        fun run() {
-            try {
-                if (webView.parent == null) return
-                webView.evaluateJavascript(ChartPerf.JS, null)
-            } catch (_: Exception) {
-            }
+    private fun installChartPerfBootstrap(webView: WebView) {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
+        try {
+            WebViewCompat.addDocumentStartJavaScript(
+                webView,
+                ChartPerf.BOOTSTRAP_JS,
+                setOf("*")
+            )
+            chartPerfInjected.add(webView)
+        } catch (_: Exception) {
         }
-        run()
+    }
+
+    /** Starší WebView bez document-start — stihne to jen další grafy, ne první canvas. */
+    private fun injectChartPerfFallback(webView: WebView) {
         if (webView in chartPerfInjected) return
-        chartPerfInjected.add(webView)
-        webView.postDelayed({ run() }, 800)
-        webView.postDelayed({ run() }, 2000)
+        try {
+            webView.evaluateJavascript(ChartPerf.BOOTSTRAP_JS, null)
+            chartPerfInjected.add(webView)
+        } catch (_: Exception) {
+        }
     }
 
     private fun bindLoginUi() {
@@ -1061,6 +1101,8 @@ class WebViewActivity : AppCompatActivity() {
     // ── IME ─────────────────────────────────────────────────────────────
 
     private val visibleFrame = Rect()
+    private var imeLayoutAttached = false
+    private var imeLayoutListener: android.view.ViewTreeObserver.OnGlobalLayoutListener? = null
 
     private fun bindImeInsets() {
         val root = findViewById<View>(R.id.root)
@@ -1077,13 +1119,24 @@ class WebViewActivity : AppCompatActivity() {
                 .setInsets(WindowInsetsCompat.Type.ime(), androidx.core.graphics.Insets.NONE)
                 .build()
         }
-        root.viewTreeObserver.addOnGlobalLayoutListener {
-            // Při kreslení grafu WebView pořád mění layout. Padding kvůli
-            // klávesnici řešíme jen na přihlášení, ne na home.
-            if (gate == Gate.BROWSER && urlDialog?.isShowing != true) return@addOnGlobalLayoutListener
+        imeLayoutListener = android.view.ViewTreeObserver.OnGlobalLayoutListener {
             applyVisibleFrameImePadding(root)
         }
+        attachImeLayoutListener(true)
         ViewCompat.requestApplyInsets(root)
+    }
+
+    private fun attachImeLayoutListener(attach: Boolean) {
+        val root = findViewById<View>(R.id.root) ?: return
+        val listener = imeLayoutListener ?: return
+        if (attach == imeLayoutAttached) return
+        if (attach) {
+            root.viewTreeObserver.addOnGlobalLayoutListener(listener)
+        } else {
+            root.viewTreeObserver.removeOnGlobalLayoutListener(listener)
+            setImePadding(root, 0)
+        }
+        imeLayoutAttached = attach
     }
 
     private fun applyVisibleFrameImePadding(root: View) {

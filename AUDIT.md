@@ -104,13 +104,16 @@ vlastní compositor — obalová vrstva mu škodí.
 **Úprava:** `LAYER_TYPE_NONE`, vypnutý `offscreenPreRaster`, vypnutý
 WebView zoom (ať se nepere s posunem grafu), vypnuté force-dark.
 
-### 6. Tooltip / hover při posunu grafu
+### 6. Tablet kreslí 4–9× víc pixelů než PC
 
-Highcharts ve výchozím stavu při tažení prstu sleduje tooltip
-(`followTouchMove`) a překresluje hover. Na tabletu to je každý snímek
-celý graf. Obálka po načtení stránky vypne animace, `followTouchMove`
-a na canvas dá `touch-action: none`, aby gesto dostal jen graf, ne
-současně skrolování stránky.
+Na PC je `devicePixelRatio` ~1. Na tabletu 2–3. Highcharts podle toho
+násobí canvas. Posun pak překresluje obří bitmapu — na PC plynulé,
+ve WebView cukavé. Obálka před skripty stránky stropne DPR na 1.25
+a vypne hover/tooltip při tažení. **Nepřekresluje** existující grafy
+(`update`/`redraw` by posun rozbilo).
+
+Skrytá karta se vyjme z view hierarchy. Layout listener klávesnice
+na home vůbec neběží.
 
 ### 7. Další tření na UI vlákně
 
@@ -124,11 +127,10 @@ přihlášení; IME padding jen na přihlášení.
 
 ### Co obálka neovlivní
 
-Těžký graf (tisíce bodů, live refresh, SVG) bude na slabším tabletu
-cukat i v Chrome. To je stránka, ne obálka. Obálka nesmí při každém
-snímku sahat na layout, nesmí graf obalit hardware vrstvou a může
-vypnout drahý hover při posunu. Další zrychlení (méně bodů, boost
-modul) už je změna `HSI.Psst.Data`.
+Těžký graf (desítky tisíc bodů, live refresh) může na slabém tabletu
+cukat i po těchto úpravách — backing store je menší, ale JS pořád běží
+na jednom vlákně. Další zrychlení (méně bodů, Highcharts boost) je
+změna `HSI.Psst.Data`.
 
 ---
 
