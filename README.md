@@ -133,8 +133,8 @@ Tok:
    další spuštění aplikace použijí stejné údaje (HTTP Basic / Digest / NTLM).
 4. **⋮ → Odhlásit** → prefs, cookies, HTTP auth cache i Chromium profil
    se smažou a proces se restartuje (NTLM jinak v procesu přežije).
-5. Špatné heslo → stejný restart NTLM, ale jméno a hláška zůstanou.
-   Správné heslo jde zadat hned znovu.
+5. Špatné heslo se ověří v odděleném procesu a do prohlížeče se nedostane.
+   Na formuláři zůstane hláška; správné heslo lze zadat hned znovu.
 
 | Typ na serveru | Šance ve WebView |
 | --- | --- |

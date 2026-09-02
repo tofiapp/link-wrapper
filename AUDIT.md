@@ -35,15 +35,17 @@ se na heslo.
 | --- | --- |
 | není VPN | jen AnyConnect |
 | VPN, není relace | formulář; home se nenačítá |
-| VPN, ověřují se údaje | formulář zůstane, dokud server neodsouhlasí |
-| VPN, špatné heslo | hláška na formuláři, jméno zůstane; proces se restartuje (NTLM cache) |
+| VPN, ověřují se údaje | formulář zůstane; ověření běží v odděleném procesu |
+| VPN, špatné heslo | hláška na formuláři, jméno i heslo zůstanou; lze hned opravit |
 | VPN, relace platí | home; HTTP auth z `Session` |
 | Odhlásit | prefs + cookies + Chromium profil pryč, nový proces |
 
-Špatné heslo Chromium uloží do NTLM cache procesu. Bez restartu by další
-pokus poslal znovu to špatné, i když uživatel napsal správné. Restart je
-stejný jako u Odhlásit, jen se na formuláři zachová jméno a chybová hláška.
-Heslo se znovu zadává.
+Špatné heslo se **do hlavního WebView nedostane**. Ověření běží v procesu
+`:authprobe` s vlastním datovým adresářem. Po výsledku se ten proces zabije.
+Další pokus je znovu čistý Chromium — správné heslo po překlepu funguje.
+
+Restart hlavního procesu po špatném hesle nestačil: `singleTask` + NTLM
+v Chromiu přežily. Proto je ověření mimo hlavní proces.
 
 ---
 
@@ -169,9 +171,9 @@ modul) už je změna `HSI.Psst.Data`.
 
 ### Odhlášení
 
-- Restart procesu (`killProcess`) je u NTLM nutný po **Odhlásit** i po
-  **špatném hesle**. Uživatel uvidí krátké bliknutí. Bez něj stará
-  (nebo špatná) session v Chromiu přežije.
+- Restart procesu (`killProcess`) je u NTLM nutný po **Odhlásit**. Špatné
+  heslo se ověřuje v procesu `:authprobe` a ten se po pokusu zabije — hlavní
+  Chromium špatné údaje nikdy nedostane.
 - Stav karet se po Odhlásit záměrně zahazuje.
 
 ### Build / údržba

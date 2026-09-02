@@ -81,8 +81,6 @@ class WebViewActivity : AppCompatActivity() {
         private const val MAX_TABS = 8
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
-        private const val EXTRA_LOGIN_USER = "extra_login_user"
-        private const val EXTRA_LOGIN_ERROR = "extra_login_error"
     }
 
     private enum class Gate { BROWSER, LOGIN, VPN }
@@ -146,9 +144,6 @@ class WebViewActivity : AppCompatActivity() {
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
     private val chartPerfInjected = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
 
-    /** Restart procesu po špatném NTLM, ať se callbacky z umírající relace neperou. */
-    private var recyclingAuth = false
-
     private var currentHostForUi: String? = null
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
@@ -159,6 +154,17 @@ class WebViewActivity : AppCompatActivity() {
         val allowed = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         finishGeolocationRequest(allowed)
+    }
+
+    private val authProbeLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (!verifyingLogin) return@registerForActivityResult
+        if (result.resultCode == RESULT_OK) {
+            succeedLogin()
+        } else {
+            failLogin(result.data?.getStringExtra(AuthProbeActivity.EXTRA_ERROR))
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -180,7 +186,6 @@ class WebViewActivity : AppCompatActivity() {
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
         bindImeInsets()
-        restoreLoginRetry()
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -260,6 +265,7 @@ class WebViewActivity : AppCompatActivity() {
         unregisterVpnMonitor()
         mainHandler.removeCallbacks(vpnCheckRunnable)
         mainHandler.removeCallbacks(loginTimeoutRunnable)
+        AuthProbe.kill(this)
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         super.onDestroy()
@@ -270,7 +276,7 @@ class WebViewActivity : AppCompatActivity() {
      * jinak home. Home se nenačte, dokud [Session] neexistuje.
      */
     private fun refreshGate() {
-        if (isFinishing || recyclingAuth) return
+        if (isFinishing) return
         if (!isVpnActive()) {
             enterVpnGate()
             return
@@ -909,24 +915,6 @@ class WebViewActivity : AppCompatActivity() {
 
     // ── Přihlášení ──────────────────────────────────────────────────────
 
-    private fun restoreLoginRetry() {
-        val retry = Session.takeLoginRetry(this)
-            ?: run {
-                val user = intent.getStringExtra(EXTRA_LOGIN_USER)
-                val err = intent.getStringExtra(EXTRA_LOGIN_ERROR)
-                if (user.isNullOrEmpty() && err.isNullOrEmpty()) return
-                Session.LoginRetry(user.orEmpty(), err)
-            }
-        if (retry.username.isNotEmpty()) {
-            usernameInput.setText(retry.username)
-            usernameInput.setSelection(retry.username.length)
-        }
-        if (retry.error != null) {
-            passwordLayout.error = retry.error
-            passwordInput.requestFocus()
-        }
-    }
-
     private fun injectChartPerf(webView: WebView) {
         fun run() {
             try {
@@ -992,7 +980,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun submitLogin() {
-        if (verifyingLogin || recyclingAuth) return
+        if (verifyingLogin) return
         if (!isVpnActive()) {
             vpnBanner.visibility = View.VISIBLE
             Toast.makeText(this, "Nejdřív připojte VPN (Cisco AnyConnect)", Toast.LENGTH_SHORT)
@@ -1020,23 +1008,23 @@ class WebViewActivity : AppCompatActivity() {
         verifyingLogin = true
         authChallengeCounts.clear()
         authFailedViews.clear()
+        pendingAuthHandler = null
+        if (!Session.isActive(this)) destroyAllTabs()
         updateLoginButton()
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         mainHandler.postDelayed(loginTimeoutRunnable, LOGIN_TIMEOUT_MS)
 
-        val handler = pendingAuthHandler
-        pendingAuthHandler = null
-        if (handler != null) {
-            awaitingHttpAuth = true
-            handler.proceed(user, pass)
-        } else {
-            val url = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
-            if (tabs.isEmpty()) openInNewTab(url) else loadInActiveTab(url)
-        }
+        val url = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
+        AuthProbe.kill(this)
+        val probeIntent = AuthProbeActivity.intent(this, user, pass, url)
+        mainHandler.postDelayed({
+            if (!verifyingLogin) return@postDelayed
+            authProbeLauncher.launch(probeIntent)
+        }, 150)
     }
 
     private fun succeedLogin() {
-        if (!verifyingLogin || recyclingAuth) return
+        if (!verifyingLogin) return
         val creds = pendingCredentials ?: return
         verifyingLogin = false
         mainHandler.removeCallbacks(loginTimeoutRunnable)
@@ -1045,62 +1033,29 @@ class WebViewActivity : AppCompatActivity() {
         showSignedOutBanner = false
         usernameLayout.error = null
         passwordLayout.error = null
+        AuthProbe.kill(this)
         refreshGate()
     }
 
     private fun failLogin(message: String?) {
-        if (recyclingAuth || isFinishing) return
+        if (isFinishing) return
         if (!verifyingLogin && pendingCredentials == null) {
             if (message != null) passwordLayout.error = message
             return
         }
-        val username = usernameInput.text?.toString()?.trim().orEmpty()
         verifyingLogin = false
         pendingCredentials = null
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         awaitingHttpAuth = false
-        // handler.cancel() by Chromiu označil realm jako odmítnutý.
-        // Handler zahodíme s WebView; NTLM pool vyčistí restart procesu.
         pendingAuthHandler = null
-        recycleAuthProcess(username, message)
-    }
-
-    /**
-     * Špatné heslo se uloží do NTLM cache procesu Chromium. Další pokus
-     * se správným heslem by znovu poslal to staré. Stejný restart jako
-     * u Odhlásit, ale jméno a hláška zůstanou na formuláři.
-     */
-    private fun recycleAuthProcess(username: String, error: String?) {
-        if (recyclingAuth) return
-        recyclingAuth = true
-        Session.stashLoginRetry(this, username, error)
-        Session.wipeBrowser(this, tabs.map { it.webView })
-        destroyAllTabs()
-        Session.deleteChromiumProfile(this)
-
-        val intent = Intent(this, WebViewActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            putExtra(EXTRA_LOGIN_USER, username)
-            if (error != null) putExtra(EXTRA_LOGIN_ERROR, error)
-            (pendingResumeUrl ?: pendingStartUrl)?.let { putExtra(EXTRA_URL, it) }
+        AuthProbe.kill(this)
+        updateLoginButton()
+        if (message != null) {
+            passwordLayout.error = message
+            passwordInput.requestFocus()
+            passwordInput.setSelection(passwordInput.text?.length ?: 0)
         }
-        try {
-            startActivity(intent)
-        } catch (_: Exception) {
-            recyclingAuth = false
-            usernameInput.setText(username)
-            passwordInput.text?.clear()
-            updateLoginButton()
-            if (error != null) {
-                passwordLayout.error = error
-                passwordInput.requestFocus()
-            }
-            if (isVpnActive()) presentLogin()
-            return
-        }
-        finishAffinity()
-        android.os.Process.killProcess(android.os.Process.myPid())
-        exitProcess(0)
+        if (isVpnActive()) presentLogin()
     }
 
     // ── IME ─────────────────────────────────────────────────────────────
@@ -1373,6 +1328,7 @@ class WebViewActivity : AppCompatActivity() {
         savedTabUrls = emptyList()
         savedActiveTabIndex = 0
         mainHandler.removeCallbacks(loginTimeoutRunnable)
+        AuthProbe.kill(this)
 
         Session.end(this)
         Session.wipeBrowser(this, tabs.map { it.webView })
