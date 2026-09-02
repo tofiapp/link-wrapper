@@ -64,5 +64,17 @@
             </intent-filter>
         </activity>
 
+        <!--
+          Ověření hesla v odděleném procesu. Špatné NTLM údaje zůstanou
+          v tomto procesu a s ním zmizí — hlavní WebView je nikdy nedostane.
+        -->
+        <activity
+            android:name=".AuthProbeActivity"
+            android:exported="false"
+            android:process=":authprobe"
+            android:theme="@style/Theme.LinkWrapper.Probe"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout" />
+
     </application>
 </manifest>
