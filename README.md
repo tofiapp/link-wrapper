@@ -12,8 +12,9 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   úplně a vrátí na obrazovku „Byl jste odhlášen“.
 - **Karty** nahoře v liště; vpravo **+** (modré), **domeček**, **⋮**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
-  na pozadí nesežerou tablet. Posun grafu obálka nezalamuje do hardware
-  vrstvy a vypne drahý hover/tooltip při tažení.
+  na pozadí nesežerou tablet. Posun grafu: WebView bez hardware vrstvy,
+  stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
+  hover/tooltip při tažení.
 - Nabídka **⋮**: zadat adresu, přenačíst, certifikáty, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
