@@ -948,7 +948,7 @@ class WebViewActivity : AppCompatActivity() {
     // ── Přihlášení ──────────────────────────────────────────────────────
 
     private fun installChartPerfBootstrap(webView: WebView) {
-        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_JAVASCRIPT)) return
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) return
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
