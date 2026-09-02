@@ -81,6 +81,8 @@ class WebViewActivity : AppCompatActivity() {
         private const val MAX_TABS = 8
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
+        private const val EXTRA_LOGIN_USER = "extra_login_user"
+        private const val EXTRA_LOGIN_ERROR = "extra_login_error"
     }
 
     private enum class Gate { BROWSER, LOGIN, VPN }
@@ -142,6 +144,10 @@ class WebViewActivity : AppCompatActivity() {
 
     private val authChallengeCounts = IdentityHashMap<WebView, MutableMap<String, Int>>()
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
+    private val chartPerfInjected = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
+
+    /** Restart procesu po špatném NTLM, ať se callbacky z umírající relace neperou. */
+    private var recyclingAuth = false
 
     private var currentHostForUi: String? = null
     private var pendingGeoOrigin: String? = null
@@ -174,6 +180,7 @@ class WebViewActivity : AppCompatActivity() {
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
         bindImeInsets()
+        restoreLoginRetry()
 
         CookieManager.getInstance().setAcceptCookie(true)
 
@@ -263,7 +270,7 @@ class WebViewActivity : AppCompatActivity() {
      * jinak home. Home se nenačte, dokud [Session] neexistuje.
      */
     private fun refreshGate() {
-        if (isFinishing) return
+        if (isFinishing || recyclingAuth) return
         if (!isVpnActive()) {
             enterVpnGate()
             return
@@ -379,7 +386,19 @@ class WebViewActivity : AppCompatActivity() {
             val selected = tab.id == tabId
             tab.webView.visibility = if (selected) View.VISIBLE else View.GONE
             // Skrytá karta s grafem jinak pořád kreslí a žere GPU/CPU.
-            if (selected) tab.webView.onResume() else tab.webView.onPause()
+            if (selected) {
+                tab.webView.onResume()
+                tab.webView.setRendererPriorityPolicy(
+                    WebView.RENDERER_PRIORITY_IMPORTANT,
+                    false
+                )
+            } else {
+                tab.webView.onPause()
+                tab.webView.setRendererPriorityPolicy(
+                    WebView.RENDERER_PRIORITY_WAIVED,
+                    true
+                )
+            }
         }
         activeTab?.let { applyChrome(it) }
         refreshTabStrip()
@@ -406,6 +425,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun destroyTab(tab: BrowserTab) {
         authFailedViews.remove(tab.webView)
         authChallengeCounts.remove(tab.webView)
+        chartPerfInjected.remove(tab.webView)
         webContainer.removeView(tab.webView)
         tab.webView.stopLoading()
         tab.webView.onPause()
@@ -519,11 +539,20 @@ class WebViewActivity : AppCompatActivity() {
         @Suppress("DEPRECATION")
         webView.settings.allowUniversalAccessFromFileURLs = false
         webView.settings.mediaPlaybackRequiresUserGesture = true
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            webView.settings.offscreenPreRaster = true
-        }
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
+        webView.settings.setSupportZoom(false)
+        webView.settings.builtInZoomControls = false
+        webView.settings.displayZoomControls = false
+        // Chromium má vlastní compositor. Hardware vrstva kolem WebView
+        // při posunu grafu pokaždé nahrává celou texturu → cukání.
+        webView.setLayerType(View.LAYER_TYPE_NONE, null)
+        webView.settings.offscreenPreRaster = false
         webView.overScrollMode = View.OVER_SCROLL_NEVER
+        webView.isNestedScrollingEnabled = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            @Suppress("DEPRECATION")
+            webView.settings.forceDark = WebSettings.FORCE_DARK_OFF
+        }
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
         webView.setOnLongClickListener { true }
 
@@ -642,6 +671,9 @@ class WebViewActivity : AppCompatActivity() {
                     }
                 }
                 if (view != null) authFailedViews.remove(view)
+                if (view != null && !failedAuth && url != "about:blank") {
+                    injectChartPerf(view)
+                }
                 updateTabMeta(view ?: return, url)
             }
         }
@@ -877,6 +909,39 @@ class WebViewActivity : AppCompatActivity() {
 
     // ── Přihlášení ──────────────────────────────────────────────────────
 
+    private fun restoreLoginRetry() {
+        val retry = Session.takeLoginRetry(this)
+            ?: run {
+                val user = intent.getStringExtra(EXTRA_LOGIN_USER)
+                val err = intent.getStringExtra(EXTRA_LOGIN_ERROR)
+                if (user.isNullOrEmpty() && err.isNullOrEmpty()) return
+                Session.LoginRetry(user.orEmpty(), err)
+            }
+        if (retry.username.isNotEmpty()) {
+            usernameInput.setText(retry.username)
+            usernameInput.setSelection(retry.username.length)
+        }
+        if (retry.error != null) {
+            passwordLayout.error = retry.error
+            passwordInput.requestFocus()
+        }
+    }
+
+    private fun injectChartPerf(webView: WebView) {
+        fun run() {
+            try {
+                if (webView.parent == null) return
+                webView.evaluateJavascript(ChartPerf.JS, null)
+            } catch (_: Exception) {
+            }
+        }
+        run()
+        if (webView in chartPerfInjected) return
+        chartPerfInjected.add(webView)
+        webView.postDelayed({ run() }, 800)
+        webView.postDelayed({ run() }, 2000)
+    }
+
     private fun bindLoginUi() {
         loginOverlay = findViewById(R.id.loginOverlay)
         loginTitle = findViewById(R.id.loginTitle)
@@ -927,7 +992,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun submitLogin() {
-        if (verifyingLogin) return
+        if (verifyingLogin || recyclingAuth) return
         if (!isVpnActive()) {
             vpnBanner.visibility = View.VISIBLE
             Toast.makeText(this, "Nejdřív připojte VPN (Cisco AnyConnect)", Toast.LENGTH_SHORT)
@@ -971,7 +1036,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun succeedLogin() {
-        if (!verifyingLogin) return
+        if (!verifyingLogin || recyclingAuth) return
         val creds = pendingCredentials ?: return
         verifyingLogin = false
         mainHandler.removeCallbacks(loginTimeoutRunnable)
@@ -984,24 +1049,58 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun failLogin(message: String?) {
+        if (recyclingAuth || isFinishing) return
         if (!verifyingLogin && pendingCredentials == null) {
             if (message != null) passwordLayout.error = message
             return
         }
+        val username = usernameInput.text?.toString()?.trim().orEmpty()
         verifyingLogin = false
         pendingCredentials = null
         mainHandler.removeCallbacks(loginTimeoutRunnable)
-        pendingAuthHandler?.cancel()
-        pendingAuthHandler = null
         awaitingHttpAuth = false
+        // handler.cancel() by Chromiu označil realm jako odmítnutý.
+        // Handler zahodíme s WebView; NTLM pool vyčistí restart procesu.
+        pendingAuthHandler = null
+        recycleAuthProcess(username, message)
+    }
+
+    /**
+     * Špatné heslo se uloží do NTLM cache procesu Chromium. Další pokus
+     * se správným heslem by znovu poslal to staré. Stejný restart jako
+     * u Odhlásit, ale jméno a hláška zůstanou na formuláři.
+     */
+    private fun recycleAuthProcess(username: String, error: String?) {
+        if (recyclingAuth) return
+        recyclingAuth = true
+        Session.stashLoginRetry(this, username, error)
+        Session.wipeBrowser(this, tabs.map { it.webView })
         destroyAllTabs()
-        updateLoginButton()
-        if (message != null) {
-            passwordLayout.error = message
-            passwordInput.requestFocus()
-            passwordInput.setSelection(passwordInput.text?.length ?: 0)
+        Session.deleteChromiumProfile(this)
+
+        val intent = Intent(this, WebViewActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            putExtra(EXTRA_LOGIN_USER, username)
+            if (error != null) putExtra(EXTRA_LOGIN_ERROR, error)
+            (pendingResumeUrl ?: pendingStartUrl)?.let { putExtra(EXTRA_URL, it) }
         }
-        if (isVpnActive()) presentLogin()
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            recyclingAuth = false
+            usernameInput.setText(username)
+            passwordInput.text?.clear()
+            updateLoginButton()
+            if (error != null) {
+                passwordLayout.error = error
+                passwordInput.requestFocus()
+            }
+            if (isVpnActive()) presentLogin()
+            return
+        }
+        finishAffinity()
+        android.os.Process.killProcess(android.os.Process.myPid())
+        exitProcess(0)
     }
 
     // ── IME ─────────────────────────────────────────────────────────────
@@ -1012,7 +1111,9 @@ class WebViewActivity : AppCompatActivity() {
         val root = findViewById<View>(R.id.root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            if (urlDialog?.isShowing == true) {
+            if (gate == Gate.BROWSER && urlDialog?.isShowing != true) {
+                setImePadding(v, 0)
+            } else if (urlDialog?.isShowing == true) {
                 setImePadding(v, 0)
             } else {
                 setImePadding(v, imeBottom)
