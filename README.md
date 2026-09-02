@@ -155,3 +155,5 @@ přes HTTPS). To aplikace sama nevyřeší.
   symbolem odkazu). Dá se snadno vyměnit za firemní logo.
 
 Celkový audit (přihlášení, sekání grafů, bezpečnost): [`AUDIT.md`](AUDIT.md).
+
+Vysvětlení celého projektu pro člověka bez Kotlinu (co který soubor dělá a proč): [`VYSVETLENI.md`](VYSVETLENI.md).
