@@ -21,6 +21,10 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - **VPN brána**: bez Cisco AnyConnect jen varování. Po připojení se buď
   zobrazí přihlášení, nebo se vrátí otevřené karty (když relace ještě platí).
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
+- **Bez prohlížeče na tabletu**: Chrome ani jiný prohlížeč appka
+  nepotřebuje a neotevírá. Musí zůstat systémové **Android System WebView**
+  (někde ho dodává Chrome — ten pak nesmí zmizet) a **Cisco AnyConnect**.
+  Podrobněji v [`VYSVETLENI.md`](VYSVETLENI.md).
 
 ## Jak appku dostat jako .apk (bez Android Studia)
 

@@ -37,6 +37,39 @@ Domovská adresa:
 https://test.psst.tudc.cz/HSI.Psst.Data
 ```
 
+### Tablety bez prohlížeče (Chrome / Samsung Internet / Firefox)
+
+**Ano — appka žádný nainstalovaný prohlížeč nepotřebuje a nikam ho
+neotevírá.** Stránku kreslí sama, vestavěným motorem Androidu (WebView).
+V kódu není jediný příkaz „otevři to v Chrome“. `startActivity` se používá
+jen na restart po Odhlásit a na systémové Nastavení (otevírání odkazů).
+
+To ale neznamená „tablet může být úplně holý“. Musí zůstat tři věci:
+
+| musí být na tabletu | proč |
+| --- | --- |
+| **Android System WebView** (systémová komponenta, ne ikona prohlížeče) | to je ten motor. Bez něj appka při otevření webu spadne. |
+| **síť + Cisco AnyConnect** | home je interní HTTPS; bez VPN se nenačte. „Bez prohlížeče“ ≠ „bez internetu“. |
+| **tahle APK** | samotná obálka |
+
+WebView je součást Androidu, ne „prohlížeč na ploše“. Na většině firemních
+tabletů ho IT nechává, i když Chrome smaže.
+
+**Jedna past, na kterou si IT musí dát pozor:** na některých tabletech
+s Google Play *je* poskytovatelem WebView právě Chrome. Když se Chrome
+odinstaluje a zároveň se nevypne / nenainstaluje balíček
+**Android System WebView**, WebView přestane existovat a appka spadne
+ve chvíli, kdy má otevřít stránku (včetně neviditelného ověření hesla).
+
+Kontrola na tabletu: Nastavení → Aplikace → **Android System WebView**
+má být nainstalovaný a zapnutý. Pokud tam je jen Chrome jako „WebView
+implementation“, Chrome nesmí zmizet, nebo se musí přepnout poskytovatel
+na System WebView.
+
+Outlook / e-mail na tabletu taky není nutný ke spuštění. Bez něj jen
+nebude cesta „klepni na odkaz v mailu → otevři v appce“. Ikona PSST Data
+stačí.
+
 ---
 
 ## 2. Kotlin za minutu (jen to, co v projektu potkáte)
@@ -458,7 +491,9 @@ tam není). Drobná neshoda dokumentace a kódu.
 
 **Proč WebView a ne Chrome?**
 Chrome na tabletu nevěří firemní CA, neumí tenhle NTLM tok a nejde mu
-přikázat „bez VPN ani náhodou“. Obálka je schválený kanál.
+přikázat „bez VPN ani náhodou“. Obálka je schválený kanál. Na tabletech
+bez ikony prohlížeče to proto **funguje** — dokud zůstane systémové
+WebView (viz § 1, tablety bez prohlížeče).
 
 **Proč ne Windows přihlášení jako na PC?**
 Android nemá Kerberos/Negotiate jako firemní notebook. IIS musí pustit
