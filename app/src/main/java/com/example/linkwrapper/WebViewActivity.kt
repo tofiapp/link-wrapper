@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
@@ -101,6 +102,7 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var loginFormScroll: View
     private lateinit var loggedOutBanner: View
     private lateinit var vpnBanner: View
+    private lateinit var certBanner: View
     private lateinit var usernameLayout: TextInputLayout
     private lateinit var usernameInput: TextInputEditText
     private lateinit var passwordLayout: TextInputLayout
@@ -137,6 +139,10 @@ class WebViewActivity : AppCompatActivity() {
     private var savedActiveTabIndex: Int = 0
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var trustProbeSeq = 0
+    private var trustProbeInFlight = false
+    private var lastTrustProbeAt = 0L
+    private var lastTrustResult: DeviceTrust.Result? = null
     private val mainHandler = Handler(Looper.getMainLooper())
     private val vpnCheckRunnable = Runnable { refreshGate() }
     private val loginTimeoutRunnable = Runnable {
@@ -269,6 +275,8 @@ class WebViewActivity : AppCompatActivity() {
         unregisterVpnMonitor()
         mainHandler.removeCallbacks(vpnCheckRunnable)
         mainHandler.removeCallbacks(loginTimeoutRunnable)
+        trustProbeSeq++
+        trustProbeInFlight = false
         AuthProbe.kill(this)
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
@@ -308,6 +316,7 @@ class WebViewActivity : AppCompatActivity() {
         loginTitle.visibility = View.VISIBLE
         loggedOutBanner.visibility = if (showSignedOutBanner) View.VISIBLE else View.GONE
         vpnBanner.visibility = if (!isVpnActive()) View.VISIBLE else View.GONE
+        refreshCertBanner()
         updateLoginButton()
         if (!verifyingLogin && loginButton.isEnabled) {
             if (usernameInput.text.isNullOrEmpty()) usernameInput.requestFocus()
@@ -354,6 +363,7 @@ class WebViewActivity : AppCompatActivity() {
         loginTitle.visibility = View.GONE
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
+        setCertBannerVisible(false)
         attachImeLayoutListener(true)
         setSensitiveScreen(true)
     }
@@ -1020,6 +1030,7 @@ class WebViewActivity : AppCompatActivity() {
         loginFormScroll = findViewById(R.id.loginFormScroll)
         loggedOutBanner = findViewById(R.id.loggedOutBanner)
         vpnBanner = findViewById(R.id.vpnBanner)
+        certBanner = findViewById(R.id.certBanner)
         usernameLayout = findViewById(R.id.usernameLayout)
         usernameInput = findViewById(R.id.usernameInput)
         passwordLayout = findViewById(R.id.passwordLayout)
@@ -1057,6 +1068,7 @@ class WebViewActivity : AppCompatActivity() {
         loginFormScroll.visibility = View.GONE
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
+        setCertBannerVisible(false)
         pendingAuthHandler = null
         updateLoginButton()
     }
@@ -1130,8 +1142,13 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun failLogin(message: String?) {
         if (isFinishing) return
+        val missingCerts = SslMessages.isMissingDeviceCerts(message)
+        if (missingCerts) {
+            lastTrustResult = DeviceTrust.Result.Untrusted
+            setCertBannerVisible(true)
+        }
         if (!verifyingLogin && pendingCredentials == null) {
-            if (message != null) passwordLayout.error = message
+            if (message != null && !missingCerts) passwordLayout.error = message
             return
         }
         verifyingLogin = false
@@ -1141,19 +1158,58 @@ class WebViewActivity : AppCompatActivity() {
         pendingAuthHandler = null
         AuthProbe.kill(this)
         updateLoginButton()
-        if (message != null) {
+        if (message != null && !missingCerts) {
             passwordLayout.error = message
             passwordInput.requestFocus()
             passwordInput.setSelection(passwordInput.text?.length ?: 0)
-            if (SslMessages.isMissingDeviceCerts(message)) {
-                MaterialAlertDialogBuilder(this)
-                    .setTitle("Chybí certifikáty")
-                    .setMessage(message)
-                    .setPositiveButton("Zavřít", null)
-                    .show()
-            }
+        } else if (missingCerts) {
+            passwordLayout.error = null
         }
         if (isVpnActive()) presentLogin()
+    }
+
+    private fun setCertBannerVisible(visible: Boolean) {
+        if (!::certBanner.isInitialized) return
+        certBanner.visibility = if (visible) View.VISIBLE else View.GONE
+    }
+
+    /**
+     * Před přihlášením zkusí HTTPS proti systémovým CA. Když tablet
+     * serveru nedůvěřuje, banner se objeví u nápisu Přihlášení.
+     */
+    private fun refreshCertBanner() {
+        if (!::certBanner.isInitialized) return
+        if (!isVpnActive()) {
+            setCertBannerVisible(false)
+            return
+        }
+        when (lastTrustResult) {
+            DeviceTrust.Result.Untrusted -> setCertBannerVisible(true)
+            DeviceTrust.Result.Trusted -> setCertBannerVisible(false)
+            else -> Unit
+        }
+        if (verifyingLogin || trustProbeInFlight) return
+        val now = SystemClock.elapsedRealtime()
+        if (lastTrustResult != null && now - lastTrustProbeAt < 4_000L) return
+
+        trustProbeInFlight = true
+        val seq = ++trustProbeSeq
+        val url = pendingStartUrl ?: DEFAULT_URL
+        Thread({
+            val result = DeviceTrust.probe(url)
+            mainHandler.post {
+                if (seq != trustProbeSeq) return@post
+                trustProbeInFlight = false
+                lastTrustProbeAt = SystemClock.elapsedRealtime()
+                lastTrustResult = result
+                if (gate != Gate.LOGIN || loginOverlay.visibility != View.VISIBLE) return@post
+                when (result) {
+                    DeviceTrust.Result.Untrusted -> setCertBannerVisible(true)
+                    DeviceTrust.Result.Trusted -> setCertBannerVisible(false)
+                    DeviceTrust.Result.Unknown -> Unit
+                }
+            }
+        }, "os-trust-probe").start()
     }
 
     // ── IME ─────────────────────────────────────────────────────────────
