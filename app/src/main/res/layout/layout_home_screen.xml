@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Nativní Domů po přihlášení. Není to web — jen odkazy do WebView.
+  Nativní Domů pod lištou. Není to web — jen odkazy do WebView.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/homeOverlay"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -23,7 +22,7 @@
             android:fontFamily="sans-serif-medium"
             android:letterSpacing="-0.02"
             android:paddingHorizontal="28dp"
-            android:paddingTop="40dp"
+            android:paddingTop="24dp"
             android:paddingBottom="8dp"
             android:text="Domů"
             android:textColor="@color/ink"
@@ -56,18 +55,6 @@
                 android:paddingHorizontal="28dp"
                 android:paddingBottom="16dp" />
         </ScrollView>
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/homeLogout"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal"
-            android:text="Odhlásit"
-            android:textAllCaps="false"
-            android:textColor="@color/alert"
-            android:textSize="15sp"
-            app:rippleColor="@color/alert_wash" />
 
         <TextView
             android:id="@+id/homeVersion"

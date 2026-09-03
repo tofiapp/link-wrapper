@@ -30,7 +30,7 @@
         android:fontFamily="sans-serif-medium"
         android:gravity="center_horizontal"
         android:letterSpacing="-0.02"
-        android:text="Odhlásit se?"
+        android:text="Smazat uložené údaje?"
         android:textColor="@color/ink"
         android:textSize="20sp" />
 
@@ -40,7 +40,7 @@
         android:layout_marginTop="6dp"
         android:gravity="center_horizontal"
         android:lineSpacingMultiplier="1.25"
-        android:text="Smaže se uložené přihlášení i relace."
+        android:text="Smažou se cookies, přihlášení k PSST i relace na otevřených stránkách."
         android:textColor="@color/ink_soft"
         android:textSize="14sp" />
 </LinearLayout>

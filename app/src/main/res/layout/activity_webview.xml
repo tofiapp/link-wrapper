@@ -111,6 +111,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent" />
 
+            <include layout="@layout/layout_home_screen" />
+            <include layout="@layout/layout_login_screen" />
+
             <com.google.android.material.progressindicator.LinearProgressIndicator
                 android:id="@+id/progressBar"
                 android:layout_width="match_parent"
@@ -123,8 +126,5 @@
                 app:trackThickness="2dp" />
         </FrameLayout>
     </LinearLayout>
-
-    <include layout="@layout/layout_home_screen" />
-    <include layout="@layout/layout_login_screen" />
 
 </FrameLayout>

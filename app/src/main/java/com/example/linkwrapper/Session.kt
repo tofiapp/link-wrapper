@@ -11,11 +11,10 @@ import java.io.File
 data class Credentials(val username: String, val password: String)
 
 /**
- * Jedna relace přihlášení pro celou aplikaci.
+ * Přihlášení k PSST (NTLM). DSD si drží vlastní relaci v cookies.
  *
- * Údaje se uloží až po úspěšném ověření na serveru, šifrované klíčem
- * z Android Keystore. Na disku není čitelné heslo. Relace platí, dokud
- * uživatel nestiskne Odhlásit.
+ * Údaje se uloží až po ověření na PSST, šifrované klíčem z Android
+ * Keystore. Platí, dokud uživatel v nabídce nesmaže uložené údaje.
  */
 object Session {
 
@@ -24,7 +23,6 @@ object Session {
     private const val KEY_PASS = "password"
     private const val KEY_USER_ENC = "username_enc"
     private const val KEY_PASS_ENC = "password_enc"
-    private const val KEY_SIGNED_OUT = "show_signed_out"
 
     private const val LEGACY_AUTH_PREFS = "http_auth_prefs"
     private const val LEGACY_GATE_PREFS = "session_gate"
@@ -55,7 +53,6 @@ object Session {
         val editor = prefs(context).edit()
             .remove(KEY_USER)
             .remove(KEY_PASS)
-            .putBoolean(KEY_SIGNED_OUT, false)
         if (encUser != null && encPass != null) {
             editor.putString(KEY_USER_ENC, encUser)
                 .putString(KEY_PASS_ENC, encPass)
@@ -69,10 +66,7 @@ object Session {
     fun end(context: Context) {
         memoryOnly = null
         AuthHandoff.clear(context)
-        prefs(context).edit()
-            .clear()
-            .putBoolean(KEY_SIGNED_OUT, true)
-            .commit()
+        prefs(context).edit().clear().commit()
         context.getSharedPreferences(LEGACY_AUTH_PREFS, Context.MODE_PRIVATE)
             .edit().clear().commit()
         context.getSharedPreferences(LEGACY_GATE_PREFS, Context.MODE_PRIVATE)
@@ -80,17 +74,10 @@ object Session {
         SecretStore.deleteKey()
     }
 
-    fun consumeSignedOutBanner(context: Context): Boolean {
-        val prefs = prefs(context)
-        if (!prefs.getBoolean(KEY_SIGNED_OUT, false)) return false
-        prefs.edit().putBoolean(KEY_SIGNED_OUT, false).commit()
-        return true
-    }
-
     /**
      * Vyčistí cookies, HTTP auth cache a data otevřených WebView.
-     * NTLM relace v procesu Chromium tím ještě nemusí zmizet — po odhlášení
-     * je potřeba smazat profil a restartovat proces.
+     * NTLM relace v procesu Chromium tím ještě nemusí zmizet — po smazání
+     * údajů je potřeba smazat profil a restartovat proces.
      */
     fun wipeBrowser(context: Context, webViews: Collection<WebView>) {
         webViews.forEach { wv ->

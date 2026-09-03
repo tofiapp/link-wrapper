@@ -10,8 +10,7 @@ internal object AuthHosts {
 
     private val exact = setOf(
         "psst.tudc.cz",
-        "test.psst.tudc.cz",
-        "dsd.tudc.cz"
+        "test.psst.tudc.cz"
     )
 
     fun allows(host: String?): Boolean {

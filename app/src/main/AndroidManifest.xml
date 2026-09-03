@@ -18,8 +18,8 @@
         android:usesCleartextTraffic="false">
 
         <!--
-          Jediná activity: nejdřív VPN, pak přihlášení, nativní Domů, teprve web.
-          Relace se drží v Session, dokud uživatel nestiskne Odhlásit.
+          Jediná activity: VPN, nativní Domů, web. Přihlášení k PSST
+          až po klepnutí na dlaždici. Relace PSST v Session do smazání údajů.
         -->
         <activity
             android:name=".WebViewActivity"
