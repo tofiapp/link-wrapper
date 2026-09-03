@@ -81,13 +81,13 @@ class WebViewActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_URL = "extra_url"
-        const val DEFAULT_URL = "https://test.psst.tudc.cz/HSI.Psst.Data"
+        const val DEFAULT_URL = Destinations.PSST_URL
         private const val MAX_TABS = 8
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
     }
 
-    private enum class Gate { BROWSER, LOGIN, VPN }
+    private enum class Gate { BROWSER, HOME, LOGIN, VPN }
 
     private lateinit var toolbar: MaterialToolbar
     private lateinit var progressBar: LinearProgressIndicator
@@ -109,6 +109,11 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var passwordInput: TextInputEditText
     private lateinit var loginButton: MaterialButton
 
+    private lateinit var homeOverlay: View
+    private lateinit var homeAppList: LinearLayout
+    private lateinit var homeLogout: MaterialButton
+    private lateinit var homeVersion: TextView
+
     private val tabs = mutableListOf<BrowserTab>()
     private var activeTabId: Long = -1L
     private var nextTabId = 1L
@@ -120,6 +125,7 @@ class WebViewActivity : AppCompatActivity() {
         get() = activeTab?.webView
 
     private var gate = Gate.LOGIN
+    private var lastContentGate = Gate.HOME
     private var showSignedOutBanner = false
     private var dialogShown = false
     private var urlDialog: AlertDialog? = null
@@ -194,12 +200,13 @@ class WebViewActivity : AppCompatActivity() {
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
+        bindHomeUi()
         bindImeInsets()
 
         CookieManager.getInstance().setAcceptCookie(true)
         WebView.setWebContentsDebuggingEnabled(false)
 
-        pendingStartUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
+        pendingStartUrl = explicitUrlFromIntent(intent)
         showSignedOutBanner = Session.consumeSignedOutBanner(this)
         refreshGate()
     }
@@ -236,16 +243,16 @@ class WebViewActivity : AppCompatActivity() {
         val url = explicitUrlFromIntent(intent)
         if (url == null) {
             if (tabs.isEmpty() && gate == Gate.BROWSER && isVpnActive() && Session.isActive(this)) {
-                openInNewTab(DEFAULT_URL)
+                presentHome()
             }
             return
         }
-        if (gate != Gate.BROWSER) {
-            pendingResumeUrl = url
-            pendingStartUrl = url
+        pendingResumeUrl = url
+        pendingStartUrl = url
+        if (!isVpnActive() || !Session.isActive(this) || verifyingLogin) {
             return
         }
-        openUrlFromExternal(url)
+        refreshGate()
     }
 
     private fun openUrlFromExternal(url: String) {
@@ -285,7 +292,7 @@ class WebViewActivity : AppCompatActivity() {
 
     /**
      * Jediná brána: bez VPN → VPN obrazovka; bez relace → přihlášení;
-     * jinak home. Home se nenačte, dokud [Session] neexistuje.
+     * po přihlášení nativní Domů, web až po výběru odkazu.
      */
     private fun refreshGate() {
         if (isFinishing) return
@@ -302,12 +309,28 @@ class WebViewActivity : AppCompatActivity() {
             presentLogin()
             return
         }
-        presentBrowser()
+        val open = pendingResumeUrl ?: pendingStartUrl
+        pendingResumeUrl = null
+        if (open != null) {
+            pendingStartUrl = null
+            enterBrowser()
+            if (tabs.isEmpty() && savedTabUrls.isNotEmpty()) {
+                restoreSavedTabsOrStart()
+            }
+            openUrlFromExternal(open)
+            return
+        }
+        if (lastContentGate == Gate.BROWSER || savedTabUrls.isNotEmpty()) {
+            presentBrowser()
+            return
+        }
+        presentHome()
     }
 
     private fun presentLogin() {
         gate = Gate.LOGIN
         progressBar.visibility = View.GONE
+        hideHomeOverlay()
         loginOverlay.visibility = View.VISIBLE
         loginOverlay.bringToFront()
         vpnOnlyPanel.visibility = View.GONE
@@ -326,17 +349,39 @@ class WebViewActivity : AppCompatActivity() {
         setSensitiveScreen(true)
     }
 
-    private fun presentBrowser() {
-        gate = Gate.BROWSER
+    private fun presentHome() {
+        gate = Gate.HOME
+        lastContentGate = Gate.HOME
         showSignedOutBanner = false
         hideLoginOverlay()
+        hideKeyboard()
+        progressBar.visibility = View.GONE
+        if (::homeOverlay.isInitialized) {
+            homeOverlay.visibility = View.VISIBLE
+        }
+        tabs.forEach { it.webView.onPause() }
         attachImeLayoutListener(false)
         setSensitiveScreen(false)
+    }
+
+    private fun enterBrowser() {
+        gate = Gate.BROWSER
+        lastContentGate = Gate.BROWSER
+        showSignedOutBanner = false
+        hideLoginOverlay()
+        hideHomeOverlay()
+        attachImeLayoutListener(false)
+        setSensitiveScreen(false)
+    }
+
+    private fun presentBrowser() {
+        enterBrowser()
         if (tabs.isEmpty()) {
             restoreSavedTabsOrStart()
         } else {
             activeWebView?.onResume()
         }
+        if (tabs.isEmpty()) presentHome()
     }
 
     private fun enterVpnGate() {
@@ -354,6 +399,7 @@ class WebViewActivity : AppCompatActivity() {
         }
         gate = Gate.VPN
         hideKeyboard()
+        hideHomeOverlay()
         loginOverlay.visibility = View.VISIBLE
         loginOverlay.bringToFront()
         progressBar.visibility = View.GONE
@@ -370,12 +416,18 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun restoreSavedTabsOrStart() {
         val urls = savedTabUrls
+        savedTabUrls = emptyList()
         if (urls.isNotEmpty()) {
             urls.forEach { openInNewTab(it) }
             val idx = savedActiveTabIndex.coerceIn(0, tabs.lastIndex)
             selectTab(tabs[idx].id)
-        } else {
-            openInNewTab(pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL)
+            return
+        }
+        val open = pendingResumeUrl ?: pendingStartUrl
+        pendingResumeUrl = null
+        pendingStartUrl = null
+        if (!open.isNullOrBlank()) {
+            openInNewTab(open)
         }
     }
 
@@ -440,7 +492,7 @@ class WebViewActivity : AppCompatActivity() {
         destroyTab(closing)
 
         if (tabs.isEmpty()) {
-            openInNewTab(DEFAULT_URL)
+            presentHome()
             return
         }
         if (activeTabId == tabId) {
@@ -517,7 +569,9 @@ class WebViewActivity : AppCompatActivity() {
     private fun tabLabel(url: String): String {
         return runCatching {
             val uri = Uri.parse(url)
-            if (isHomeUrl(uri)) return@runCatching "Home"
+            Destinations.forHost(uri.host)?.let { app ->
+                if (isEntryUrl(uri, app)) return@runCatching app.title
+            }
             uri.getQueryParameter("dmId")
                 ?.takeIf { it.isNotBlank() }
                 ?: uri.getQueryParameter("dmid")
@@ -526,11 +580,11 @@ class WebViewActivity : AppCompatActivity() {
         }.getOrNull() ?: "Karta"
     }
 
-    private fun isHomeUrl(uri: Uri): Boolean {
-        val host = uri.host?.lowercase() ?: return false
-        if (host != "test.psst.tudc.cz" && host != "psst.tudc.cz") return false
+    private fun isEntryUrl(uri: Uri, app: Destinations.AppLink): Boolean {
+        val entry = Uri.parse(app.url)
         val path = uri.path?.trimEnd('/') ?: ""
-        return path.equals("/HSI.Psst.Data", ignoreCase = true) &&
+        val entryPath = entry.path?.trimEnd('/') ?: ""
+        return path.equals(entryPath, ignoreCase = true) &&
             uri.getQueryParameter("dmId").isNullOrBlank() &&
             uri.getQueryParameter("dmid").isNullOrBlank()
     }
@@ -1046,6 +1100,52 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun bindHomeUi() {
+        homeOverlay = findViewById(R.id.homeOverlay)
+        homeAppList = findViewById(R.id.homeAppList)
+        homeLogout = findViewById(R.id.homeLogout)
+        homeVersion = findViewById(R.id.homeVersion)
+        homeLogout.setOnClickListener { confirmLogout() }
+        val version = try {
+            packageManager.getPackageInfo(packageName, 0).versionName
+        } catch (_: Exception) {
+            null
+        }
+        homeVersion.text = getString(R.string.version_label, version ?: "—")
+        populateHomeApps()
+    }
+
+    private fun populateHomeApps() {
+        homeAppList.removeAllViews()
+        val inflater = LayoutInflater.from(this)
+        Destinations.apps.forEach { app ->
+            val item = inflater.inflate(R.layout.item_home_app, homeAppList, false)
+            item.findViewById<TextView>(R.id.homeAppTitle).text = app.title
+            item.findViewById<TextView>(R.id.homeAppHost).text = app.hostLabel
+            item.setOnClickListener { openDestination(app.url) }
+            homeAppList.addView(item)
+        }
+    }
+
+    private fun hideHomeOverlay() {
+        if (!::homeOverlay.isInitialized) return
+        homeOverlay.visibility = View.GONE
+    }
+
+    private fun openDestination(url: String) {
+        if (!isVpnActive()) {
+            enterVpnGate()
+            return
+        }
+        enterBrowser()
+        val existing = tabs.find { Destinations.sameApp(it.url, url) }
+        if (existing != null) {
+            selectTab(existing.id)
+            return
+        }
+        openInNewTab(url)
+    }
+
     private fun updateLoginButton() {
         if (!::loginButton.isInitialized) return
         if (verifyingLogin) {
@@ -1108,7 +1208,7 @@ class WebViewActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         mainHandler.postDelayed(loginTimeoutRunnable, LOGIN_TIMEOUT_MS)
 
-        val url = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
+        val url = Destinations.LOGIN_URL
         AuthProbe.kill(this)
         if (!AuthHandoff.put(this, user, pass, url)) {
             failLogin("Přihlášení se nepodařilo připravit. Zkuste to znovu.")
@@ -1194,7 +1294,7 @@ class WebViewActivity : AppCompatActivity() {
 
         trustProbeInFlight = true
         val seq = ++trustProbeSeq
-        val url = pendingStartUrl ?: DEFAULT_URL
+        val url = Destinations.LOGIN_URL
         Thread({
             val result = DeviceTrust.probe(url)
             mainHandler.post {
@@ -1304,7 +1404,9 @@ class WebViewActivity : AppCompatActivity() {
         if (::passwordInput.isInitialized) passwordInput.clearFocus()
         from?.clearFocus()
         activeWebView?.clearFocus()
-        if (gate != Gate.BROWSER) {
+        if (gate == Gate.HOME) {
+            if (::homeOverlay.isInitialized) homeOverlay.requestFocus()
+        } else if (gate != Gate.BROWSER) {
             if (::loginOverlay.isInitialized) loginOverlay.requestFocus()
         } else if (::webContainer.isInitialized) {
             webContainer.isFocusableInTouchMode = true
@@ -1455,8 +1557,8 @@ class WebViewActivity : AppCompatActivity() {
         pendingCredentials = null
         verifyingLogin = false
         showSignedOutBanner = true
-        pendingResumeUrl = DEFAULT_URL
-        pendingStartUrl = DEFAULT_URL
+        pendingResumeUrl = null
+        pendingStartUrl = null
         savedTabUrls = emptyList()
         savedActiveTabIndex = 0
         mainHandler.removeCallbacks(loginTimeoutRunnable)
@@ -1487,8 +1589,8 @@ class WebViewActivity : AppCompatActivity() {
         val steps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             "1. Klepni na „Otevírání odkazů\"\n" +
                 "2. Zapni „Otevírat podporované odkazy\"\n" +
-                "3. V „Podporované webové adresy\" zaškrtni psst.tudc.cz " +
-                "a test.psst.tudc.cz"
+                "3. V „Podporované webové adresy\" zaškrtni psst.tudc.cz, " +
+                "test.psst.tudc.cz a dsd.tudc.cz"
         } else {
             "1. Klepni na „Otevírat ve výchozím nastavení\"\n" +
                 "2. Zvol „Otevírat v této aplikaci\""
@@ -1568,11 +1670,12 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_new_tab -> {
-                openInNewTab(DEFAULT_URL)
+                val url = Destinations.forUrl(activeTab?.url)?.url ?: Destinations.PSST_URL
+                openInNewTab(url)
                 true
             }
             R.id.action_home -> {
-                loadInActiveTab(DEFAULT_URL)
+                presentHome()
                 true
             }
             R.id.action_reload -> {
@@ -1602,6 +1705,10 @@ class WebViewActivity : AppCompatActivity() {
             hideKeyboard()
             return
         }
+        if (gate == Gate.HOME) {
+            super.onBackPressed()
+            return
+        }
         if (gate != Gate.BROWSER) {
             if (verifyingLogin) failLogin(null)
             return
@@ -1609,10 +1716,8 @@ class WebViewActivity : AppCompatActivity() {
         val wv = activeWebView
         if (wv != null && wv.canGoBack()) {
             wv.goBack()
-        } else if (tabs.size > 1) {
-            closeTab(activeTabId)
         } else {
-            super.onBackPressed()
+            presentHome()
         }
     }
 }
