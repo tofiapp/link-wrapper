@@ -617,10 +617,7 @@ class WebViewActivity : AppCompatActivity() {
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                if (CertPinning.shouldProceed(this@WebViewActivity, error)) {
-                    handler?.proceed()
-                } else {
-                    handler?.cancel()
+                SslPolicy.handleSslError(this@WebViewActivity, handler, error) {
                     if (view === activeWebView && !shouldSuppressPageErrorDialogs()) {
                         showCertWarning(error)
                     }
@@ -1322,44 +1319,14 @@ class WebViewActivity : AppCompatActivity() {
     private fun showCertWarning(error: SslError?) {
         if (dialogShown) return
         if (shouldSuppressPageErrorDialogs()) return
+        if (!SslPolicy.SHOW_CERT_MENU) {
+            val url = error?.url?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            showNetworkWarning(null, url)
+            return
+        }
         dialogShown = true
         progressBar.visibility = View.GONE
-
-        val detail = when (error?.primaryError) {
-            SslError.SSL_UNTRUSTED ->
-                "Certifikát stránky nevydala firemní certifikační autorita " +
-                    "(SZT Root BAU ECC CA) ani jiná autorita, které zařízení důvěřuje."
-            SslError.SSL_EXPIRED -> "Certifikát stránky vypršel."
-            SslError.SSL_IDMISMATCH ->
-                "Certifikát patří jiné adrese, než na kterou se připojujete."
-            SslError.SSL_NOTYETVALID -> "Certifikát zatím není platný."
-            SslError.SSL_DATE_INVALID -> "Certifikát má neplatné datum."
-            else -> "Certifikát stránky se nepodařilo ověřit."
-        }
-
-        val loadIssue = CertPinning.loadError()
-        val diag = buildString {
-            append("\n\nDetail: kód ")
-            append(error?.primaryError ?: -1)
-            error?.url?.let { append(", ").append(Uri.parse(it).host ?: it) }
-            if (loadIssue != null) append("\n").append(loadIssue)
-        }
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Spojení nebylo ověřeno")
-            .setMessage(
-                detail +
-                    "\n\nStránka nebyla načtena. Pokud je to očekávané (např. byla " +
-                    "vyměněna firemní CA), obraťte se na IT — do aplikace je potřeba " +
-                    "doplnit nový certifikát." +
-                    "\n\nPokud jste tuto hlášku nečekali, nepokračujte a nezadávejte " +
-                    "na této stránce žádné přihlašovací údaje." +
-                    diag
-            )
-            .setPositiveButton("Zavřít", null)
-            .setCancelable(true)
-            .setOnDismissListener { dialogShown = false }
-            .show()
+        SslPolicy.showSslRejected(this, error) { dialogShown = false }
     }
 
     private fun showNetworkWarning(code: Int?, url: Uri?) {
@@ -1458,14 +1425,6 @@ class WebViewActivity : AppCompatActivity() {
         exitProcess(0)
     }
 
-    private fun showCertInfo() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Ověřování certifikátů")
-            .setMessage(CertPinning.describeChain(this))
-            .setPositiveButton("Zavřít", null)
-            .show()
-    }
-
     private fun openLinkSettings() {
         val steps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             "1. Klepni na „Otevírání odkazů\"\n" +
@@ -1518,11 +1477,11 @@ class WebViewActivity : AppCompatActivity() {
         listOf(
             R.id.action_open_url,
             R.id.action_reload,
-            R.id.action_cert_info,
             R.id.action_link_settings
         ).forEach { id ->
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
         }
+        menu?.findItem(R.id.action_cert_info)?.icon?.mutate()?.setTint(inkSoft)
 
         menu?.findItem(R.id.action_logout)?.let { item ->
             val title = SpannableString("Odhlásit")
@@ -1568,7 +1527,7 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_cert_info -> {
-                showCertInfo()
+                SslPolicy.showInfo(this)
                 true
             }
             R.id.action_link_settings -> {

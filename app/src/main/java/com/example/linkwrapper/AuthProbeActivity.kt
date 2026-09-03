@@ -171,11 +171,8 @@ class AuthProbeActivity : AppCompatActivity() {
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                if (CertPinning.shouldProceed(this@AuthProbeActivity, error)) {
-                    handler?.proceed()
-                } else {
-                    handler?.cancel()
-                    finishProbe(false, "Spojení nebylo ověřeno. Zkontrolujte VPN a certifikát.")
+                SslPolicy.handleSslError(this@AuthProbeActivity, handler, error) {
+                    finishProbe(false, SslPolicy.PROBE_SSL_FAILURE)
                 }
             }
 

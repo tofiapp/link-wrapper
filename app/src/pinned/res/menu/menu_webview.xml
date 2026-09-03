@@ -2,7 +2,6 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Pořadí vpravo: + , domeček , ⋮ -->
     <item
         android:id="@+id/action_new_tab"
         android:title="Nová karta"
@@ -27,13 +26,17 @@
             android:icon="@drawable/ic_refresh"
             app:showAsAction="never" />
         <item
+            android:id="@id/action_cert_info"
+            android:title="Ověřování certifikátů"
+            android:icon="@drawable/ic_shield"
+            app:showAsAction="never" />
+        <item
             android:id="@+id/action_link_settings"
             android:title="Nastavení odkazů"
             android:icon="@drawable/ic_settings_alert"
             app:showAsAction="never" />
     </group>
 
-    <!-- Oddělené úplně dole, zvýrazněné v kódu červeně -->
     <group
         android:id="@+id/group_logout"
         android:orderInCategory="200">

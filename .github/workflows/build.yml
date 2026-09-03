@@ -31,23 +31,29 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build release APK
-        run: ./gradlew assembleRelease printVersion --stacktrace
+      - name: Build release APKs
+        run: ./gradlew assemblePinnedRelease assembleSystemtrustRelease printVersion --stacktrace
 
-      - name: Resolve versioned APK
+      - name: Resolve versioned APKs
         id: version
         run: |
-          APK=$(ls app/build/outputs/apk/release/LinkWrapper-*.apk)
-          NAME=$(basename "$APK" .apk | sed 's/^LinkWrapper-//')
-          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          PINNED=$(ls app/build/outputs/apk/pinned/release/LinkWrapper-*.apk)
+          SYSTEM=$(ls app/build/outputs/apk/systemtrust/release/LinkWrapper-*.apk)
+          NAME=$(basename "$PINNED" .apk | sed 's/^LinkWrapper-pinned-//')
+          echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
+          echo "system=$SYSTEM" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "APK: $APK"
+          echo "PINNED: $PINNED"
+          echo "SYSTEM: $SYSTEM"
 
-      - name: Upload APK artifact
+      - name: Upload APK artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: LinkWrapper-${{ steps.version.outputs.name }}
-          path: ${{ steps.version.outputs.apk }}
+          path: |
+            ${{ steps.version.outputs.pinned }}
+            ${{ steps.version.outputs.system }}
           if-no-files-found: error
 
       - name: Create GitHub Release
@@ -56,6 +62,8 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.name }}
           name: Link Wrapper ${{ steps.version.outputs.name }}
-          files: ${{ steps.version.outputs.apk }}
+          files: |
+            ${{ steps.version.outputs.pinned }}
+            ${{ steps.version.outputs.system }}
           generate_release_notes: true
           make_latest: true

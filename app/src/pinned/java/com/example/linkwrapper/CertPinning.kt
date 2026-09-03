@@ -99,10 +99,6 @@ object CertPinning {
         if (error.hasError(SslError.SSL_NOTYETVALID)) return false
         if (error.hasError(SslError.SSL_DATE_INVALID)) return false
         if (!error.hasError(SslError.SSL_UNTRUSTED)) return false
-        val host = android.net.Uri.parse(error.url ?: return false).host
-            ?: return false
-        val cn = error.certificate?.issuedTo?.cName
-        if (!cn.isNullOrBlank() && !AuthHosts.hostnameMatches(cn, host)) return false
         return isIssuedByCorporateCa(context, error.certificate)
     }
 

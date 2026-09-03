@@ -367,7 +367,8 @@ To je **druhý proces**, vlastní WebView, vlastní datová složka
 5. proces se zabije (`AuthProbe.kill`)
 
 Hlavní prohlížeč špatné heslo **nikdy nedostane**. Další pokus je znovu
-čistý Chromium.
+čistý Chromium. Údaje do probe nejdou Intentem (to by skončilo v logu),
+ale šifrovaným souborem, který se po přečtení smaže.
 
 Timeout 14 s (probe) / 15 s (hlavní obrazovka), max 16 auth kol — stejná
 logika jako v hlavním WebView.
