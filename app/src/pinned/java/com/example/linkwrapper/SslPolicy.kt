@@ -25,10 +25,6 @@ internal object SslPolicy {
         }
     }
 
-    fun describeChain(context: Context): String = CertPinning.describeChain(context)
-
-    fun loadError(): String? = CertPinning.loadError()
-
     fun probeFailure(error: SslError?): String = SslMessages.probeFailure(error)
 
     fun showSslRejected(activity: AppCompatActivity, error: SslError?, onDismiss: () -> Unit) {

@@ -5,7 +5,9 @@ Po dočtení by mělo být jasné: **co appka je, kudy teče uživatel, co kter�
 dělá, a proč je tohle řešení a ne Chrome / běžné přihlášení / „prostě to
 ignoruj“ u certifikátů.**
 
-Technický seznam oprav (sekání grafů, stará brána přihlášení) je v [`AUDIT.md`](AUDIT.md).
+Technický seznam oprav a **aktuální** tok (Domů bez loginu, karty, VPN)
+je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (login před home,
+názvy karet z `dmId`) už neplatí — když se liší, platí AUDIT a README.
 Bezpečnost uložených údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
 Návod na instalaci APK je v [`README.md`](README.md).
 

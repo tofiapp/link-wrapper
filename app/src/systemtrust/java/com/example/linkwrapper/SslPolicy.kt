@@ -22,11 +22,6 @@ internal object SslPolicy {
         onRejected()
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    fun describeChain(context: Context): String = ""
-
-    fun loadError(): String? = null
-
     fun probeFailure(error: SslError?): String = SslMessages.probeFailure(error)
 
     fun showSslRejected(

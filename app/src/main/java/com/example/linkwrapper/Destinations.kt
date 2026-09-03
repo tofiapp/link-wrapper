@@ -17,14 +17,13 @@ internal object Destinations {
     data class AppLink(
         val id: String,
         val title: String,
-        val hostLabel: String,
         val url: String,
         val requiresAppLogin: Boolean
     )
 
     val apps: List<AppLink> = listOf(
-        AppLink("psst", "PSST Data", "test.psst.tudc.cz", PSST_URL, requiresAppLogin = true),
-        AppLink("dsd", "DSD", "dsd.tudc.cz", DSD_URL, requiresAppLogin = false)
+        AppLink("psst", "PSST Data", PSST_URL, requiresAppLogin = true),
+        AppLink("dsd", "DSD", DSD_URL, requiresAppLogin = false)
     )
 
     fun forHost(host: String?): AppLink? {
@@ -45,12 +44,6 @@ internal object Destinations {
         if (url == HOME_URL) return "Domů"
         forUrl(url)?.let { return it.title }
         return hostOf(url) ?: "Karta"
-    }
-
-    fun sameApp(urlA: String, urlB: String): Boolean {
-        val a = forUrl(urlA) ?: return false
-        val b = forUrl(urlB) ?: return false
-        return a.id == b.id
     }
 
     private fun hostOf(url: String?): String? {

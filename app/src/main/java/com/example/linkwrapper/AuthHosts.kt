@@ -18,14 +18,4 @@ internal object AuthHosts {
         if (h in exact) return true
         return exact.any { h.endsWith(".$it") }
     }
-
-    fun hostnameMatches(cn: String, host: String): Boolean {
-        val name = cn.lowercase().trim()
-        val h = host.lowercase().trim().trim('.')
-        if (name.startsWith("*.")) {
-            val suffix = name.substring(1)
-            return h.endsWith(suffix) && h != suffix.trimStart('.')
-        }
-        return h == name
-    }
 }
