@@ -72,10 +72,10 @@ import kotlin.system.exitProcess
 /** Jedna karta — WebView, nebo nativní Domů bez WebView. */
 private class BrowserTab(
     val id: Long,
-    val webView: WebView?,
+    var webView: WebView?,
     var title: String,
     var url: String,
-    val isHome: Boolean = false
+    var isHome: Boolean = false
 )
 
 class WebViewActivity : AppCompatActivity() {
@@ -86,6 +86,18 @@ class WebViewActivity : AppCompatActivity() {
         private const val MAX_TABS = 8
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
+        /** Stránky ve WebView jsou moc velké; 67 % ≈ 1,5× víc viditelného obsahu. */
+        private const val PAGE_ZOOM_JS = """
+(function(){
+  var z = '67%';
+  function apply(){
+    try { document.documentElement.style.zoom = z; } catch (e) {}
+    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
+  }
+  apply();
+  document.addEventListener('DOMContentLoaded', apply);
+})();
+"""
     }
 
     private enum class Gate { BROWSER, HOME, LOGIN, VPN }
@@ -238,7 +250,7 @@ class WebViewActivity : AppCompatActivity() {
 
         val url = explicitUrlFromIntent(intent)
         if (url == null) {
-            if (webTabs().isEmpty() && gate == Gate.BROWSER && isVpnActive()) {
+            if (tabs.isEmpty() && gate == Gate.BROWSER && isVpnActive()) {
                 presentHome()
             }
             return
@@ -309,7 +321,7 @@ class WebViewActivity : AppCompatActivity() {
         if (open != null) {
             pendingStartUrl = null
             enterBrowser()
-            if (webTabs().isEmpty() && savedTabUrls.isNotEmpty()) {
+            if (tabs.isEmpty() && savedTabUrls.isNotEmpty()) {
                 restoreSavedTabsOrStart()
             }
             openUrlFromExternal(open)
@@ -346,9 +358,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun presentHome() {
-        ensureHomeTab()
-        val home = tabs.first { it.isHome }
-        selectTab(home.id)
+        convertActiveTabToHome()
     }
 
     private fun enterBrowser() {
@@ -361,14 +371,14 @@ class WebViewActivity : AppCompatActivity() {
         hideLoginOverlay()
         attachImeLayoutListener(false)
         setSensitiveScreen(false)
-        if (webTabs().isEmpty()) {
+        if (tabs.isEmpty()) {
             restoreSavedTabsOrStart()
         }
-        if (webTabs().isEmpty()) {
-            presentHome()
+        if (tabs.isEmpty()) {
+            openNewHomeTab()
             return
         }
-        val target = activeTab?.takeUnless { it.isHome } ?: webTabs().last()
+        val target = activeTab ?: tabs.last()
         selectTab(target.id)
     }
 
@@ -378,10 +388,9 @@ class WebViewActivity : AppCompatActivity() {
             tab.webView?.stopLoading()
             tab.webView?.onPause()
         }
-        val web = webTabs()
-        if (gate == Gate.BROWSER && web.isNotEmpty()) {
-            savedTabUrls = web.map { it.url }
-            savedActiveTabIndex = web.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
+        if ((gate == Gate.BROWSER || gate == Gate.HOME) && tabs.isNotEmpty()) {
+            savedTabUrls = tabs.map { it.url }
+            savedActiveTabIndex = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
         }
         if (verifyingLogin) {
             failLogin(null, stayOnForm = false)
@@ -402,14 +411,15 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun restoreSavedTabsOrStart() {
-        ensureHomeTab()
-        val urls = savedTabUrls.filter { it != Destinations.HOME_URL }
+        val urls = savedTabUrls
         savedTabUrls = emptyList()
         if (urls.isNotEmpty()) {
-            urls.forEach { openInNewTab(it) }
-            val web = webTabs()
-            val idx = savedActiveTabIndex.coerceIn(0, web.lastIndex)
-            selectTab(web[idx].id)
+            urls.forEach { url ->
+                if (url == Destinations.HOME_URL) openNewHomeTab()
+                else openInNewTab(url)
+            }
+            val idx = savedActiveTabIndex.coerceIn(0, tabs.lastIndex)
+            selectTab(tabs[idx].id)
             return
         }
         val open = pendingResumeUrl ?: pendingStartUrl
@@ -417,31 +427,52 @@ class WebViewActivity : AppCompatActivity() {
         pendingStartUrl = null
         if (!open.isNullOrBlank() && open != Destinations.HOME_URL) {
             openInNewTab(open)
+        } else if (tabs.isEmpty()) {
+            openNewHomeTab()
         }
     }
 
-    private fun webTabs(): List<BrowserTab> = tabs.filter { !it.isHome }
+    /** Domeček: aktuální karta se změní na Domů. Může jich být víc. */
+    private fun convertActiveTabToHome() {
+        val tab = activeTab
+        if (tab == null) {
+            openNewHomeTab()
+            return
+        }
+        if (tab.isHome) {
+            selectTab(tab.id)
+            return
+        }
+        destroyWebView(tab)
+        tab.isHome = true
+        tab.title = "Domů"
+        tab.url = Destinations.HOME_URL
+        selectTab(tab.id)
+    }
 
-    private fun ensureHomeTab() {
-        if (tabs.any { it.isHome }) return
-        val home = BrowserTab(
+    private fun openNewHomeTab() {
+        if (tabs.size >= MAX_TABS) {
+            Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val tab = BrowserTab(
             id = nextTabId++,
             webView = null,
             title = "Domů",
             url = Destinations.HOME_URL,
             isHome = true
         )
-        tabs.add(0, home)
+        tabs.add(tab)
+        selectTab(tab.id)
     }
 
     // ── Karty ───────────────────────────────────────────────────────────
 
     private fun openInNewTab(url: String) {
         if (url == Destinations.HOME_URL) {
-            presentHome()
+            openNewHomeTab()
             return
         }
-        ensureHomeTab()
         if (tabs.size >= MAX_TABS) {
             Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
             return
@@ -468,7 +499,10 @@ class WebViewActivity : AppCompatActivity() {
             hideLoginOverlay()
             hideKeyboard()
             progressBar.visibility = View.GONE
-            if (::homeOverlay.isInitialized) homeOverlay.visibility = View.VISIBLE
+            if (::homeOverlay.isInitialized) {
+                homeOverlay.visibility = View.VISIBLE
+                homeOverlay.bringToFront()
+            }
             tabs.forEach { tab ->
                 val wv = tab.webView ?: return@forEach
                 wv.onPause()
@@ -514,15 +548,15 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun closeTab(tabId: Long) {
+        if (tabs.size <= 1) return
         val index = tabs.indexOfFirst { it.id == tabId }
         if (index < 0) return
         val closing = tabs[index]
-        if (closing.isHome) return
         tabs.removeAt(index)
         destroyTab(closing)
 
-        if (webTabs().isEmpty()) {
-            presentHome()
+        if (tabs.isEmpty()) {
+            openNewHomeTab()
             return
         }
         if (activeTabId == tabId) {
@@ -533,7 +567,7 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun destroyTab(tab: BrowserTab) {
+    private fun destroyWebView(tab: BrowserTab) {
         val wv = tab.webView ?: return
         authFailedViews.remove(wv)
         authChallengeCounts.remove(wv)
@@ -543,14 +577,17 @@ class WebViewActivity : AppCompatActivity() {
         wv.onPause()
         wv.webChromeClient = null
         wv.destroy()
+        tab.webView = null
+    }
+
+    private fun destroyTab(tab: BrowserTab) {
+        destroyWebView(tab)
     }
 
     private fun destroyAllTabs() {
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         activeTabId = -1L
-        ensureHomeTab()
-        refreshTabStrip()
     }
 
     private fun bumpAuthCount(webView: WebView): Int {
@@ -582,8 +619,10 @@ class WebViewActivity : AppCompatActivity() {
                 if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
             )
             root.setOnClickListener { selectTab(tab.id) }
-            val showClose = tabs.size > 1 && !tab.isHome
+            val showClose = tabs.size > 1
             close.visibility = if (showClose) View.VISIBLE else View.GONE
+            val padEnd = ((if (showClose) 4 else 14) * resources.displayMetrics.density).toInt()
+            root.setPaddingRelative(root.paddingStart, root.paddingTop, padEnd, root.paddingBottom)
             if (showClose) {
                 close.setOnClickListener { closeTab(tab.id) }
             } else {
@@ -605,29 +644,7 @@ class WebViewActivity : AppCompatActivity() {
         else runCatching { Uri.parse(tab.url).host }.getOrNull()
     }
 
-    private fun tabLabel(url: String): String {
-        if (url == Destinations.HOME_URL) return "Domů"
-        return runCatching {
-            val uri = Uri.parse(url)
-            Destinations.forHost(uri.host)?.let { app ->
-                if (isEntryUrl(uri, app)) return@runCatching app.title
-            }
-            uri.getQueryParameter("dmId")
-                ?.takeIf { it.isNotBlank() }
-                ?: uri.getQueryParameter("dmid")
-                    ?.takeIf { it.isNotBlank() }
-                ?: uri.host
-        }.getOrNull() ?: "Karta"
-    }
-
-    private fun isEntryUrl(uri: Uri, app: Destinations.AppLink): Boolean {
-        val entry = Uri.parse(app.url)
-        val path = uri.path?.trimEnd('/') ?: ""
-        val entryPath = entry.path?.trimEnd('/') ?: ""
-        return path.equals(entryPath, ignoreCase = true) &&
-            uri.getQueryParameter("dmId").isNullOrBlank() &&
-            uri.getQueryParameter("dmid").isNullOrBlank()
-    }
+    private fun tabLabel(url: String): String = Destinations.tabTitle(url)
 
     private fun updateTabMeta(webView: WebView, url: String?) {
         val tab = tabs.find { it.webView === webView } ?: return
@@ -887,20 +904,20 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun loadInActiveTab(url: String) {
         val tab = activeTab
-        if (tab == null || tab.isHome) {
+        if (tab == null) {
             openInNewTab(url)
             return
         }
         dialogShown = false
-        tab.url = url
-        val label = tabLabel(url)
-        if (tab.title != label) {
-            tab.title = label
-            applyChrome(tab)
-            refreshTabStrip()
-        } else {
-            applyChrome(tab)
+        if (tab.isHome) {
+            val webView = createWebView()
+            tab.webView = webView
+            tab.isHome = false
         }
+        tab.url = url
+        tab.title = tabLabel(url)
+        applyChrome(tab)
+        selectTab(tab.id)
         tab.webView?.loadUrl(url)
     }
 
@@ -1096,7 +1113,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                ChartPerf.BOOTSTRAP_JS,
+                PAGE_ZOOM_JS + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1108,7 +1125,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartPerfFallback(webView: WebView) {
         if (webView in chartPerfInjected) return
         try {
-            webView.evaluateJavascript(ChartPerf.BOOTSTRAP_JS, null)
+            webView.evaluateJavascript(PAGE_ZOOM_JS + ChartPerf.BOOTSTRAP_JS, null)
             chartPerfInjected.add(webView)
         } catch (_: Exception) {
         }
@@ -1152,10 +1169,16 @@ class WebViewActivity : AppCompatActivity() {
     private fun populateHomeApps() {
         homeAppList.removeAllViews()
         val inflater = LayoutInflater.from(this)
-        Destinations.apps.forEach { app ->
+        val gap = (10 * resources.displayMetrics.density).toInt()
+        Destinations.apps.forEachIndexed { index, app ->
             val item = inflater.inflate(R.layout.item_home_app, homeAppList, false)
             item.findViewById<TextView>(R.id.homeAppTitle).text = app.title
-            item.findViewById<TextView>(R.id.homeAppHost).text = app.hostLabel
+            item.isLongClickable = false
+            item.setOnLongClickListener { true }
+            item.findViewById<TextView>(R.id.homeAppTitle).setOnLongClickListener { true }
+            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+            if (index > 0) lp.marginStart = gap
+            item.layoutParams = lp
             item.setOnClickListener { openDestination(app) }
             homeAppList.addView(item)
         }
@@ -1182,12 +1205,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun showSite(url: String) {
         enterBrowser()
-        val existing = tabs.find { Destinations.sameApp(it.url, url) }
-        if (existing != null) {
-            selectTab(existing.id)
-            return
-        }
-        openInNewTab(url)
+        loadInActiveTab(url)
     }
 
     private fun updateLoginButton() {
@@ -1278,10 +1296,8 @@ class WebViewActivity : AppCompatActivity() {
         pendingStartUrl = null
         pendingResumeUrl = null
         enterBrowser()
-        val existing = tabs.find { Destinations.sameApp(it.url, url) }
-        if (existing != null) {
-            selectTab(existing.id)
-            existing.webView?.reload()
+        if (activeTab?.isHome == true) {
+            loadInActiveTab(url)
         } else {
             openInNewTab(url)
         }
@@ -1705,6 +1721,10 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_new_tab -> {
+                if (gate == Gate.HOME || activeTab?.isHome == true) {
+                    openNewHomeTab()
+                    return true
+                }
                 if (gate != Gate.BROWSER) return true
                 val url = Destinations.forUrl(activeTab?.url)?.url ?: return true
                 if (needsPsstLogin(url)) {

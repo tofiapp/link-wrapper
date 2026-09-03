@@ -46,4 +46,14 @@ class DestinationsTest {
         assertNull(Destinations.forUrl(Destinations.HOME_URL))
         assertFalse(Destinations.sameApp(Destinations.HOME_URL, Destinations.DSD_URL))
     }
+
+    @Test
+    fun tabTitleUsesAppNameNotHost() {
+        assertEquals("Domů", Destinations.tabTitle(Destinations.HOME_URL))
+        assertEquals("DSD", Destinations.tabTitle(Destinations.DSD_URL))
+        assertEquals("DSD", Destinations.tabTitle("https://dsd.tudc.cz/foo?x=1"))
+        assertEquals("PSST Data", Destinations.tabTitle(Destinations.PSST_URL))
+        assertEquals("PSST Data", Destinations.tabTitle("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12"))
+        assertEquals("example.com", Destinations.tabTitle("https://example.com/path"))
+    }
 }
