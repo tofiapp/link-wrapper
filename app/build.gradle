@@ -53,13 +53,19 @@ android {
         pinned {
             dimension "trust"
             isDefault true
+            buildConfigField "boolean", "TRIAL_HOME_LOGIN", "false"
         }
         systemtrust {
             dimension "trust"
             applicationIdSuffix ".systemtrust"
             versionNameSuffix "-system"
-            resValue "string", "app_name", "PSST Data (systém)"
+            buildConfigField "boolean", "TRIAL_HOME_LOGIN", "true"
+            resValue "string", "app_name", "PSST Data (zkušební)"
         }
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     signingConfigs {

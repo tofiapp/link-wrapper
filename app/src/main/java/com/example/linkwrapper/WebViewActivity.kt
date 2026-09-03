@@ -292,8 +292,9 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Bez VPN → varování; jinak Domů. Přihlášení k PSST až po klepnutí
-     * na dlaždici. Web až po výběru odkazu (u PSST po ověření údajů).
+     * Bez VPN → varování.
+     * Běžná APK: Domů i bez relace; přihlášení k PSST až po dlaždici.
+     * Zkušební APK: nejdřív přihlášení (údaje pro celé tudc.cz), pak Domů.
      */
     private fun refreshGate() {
         if (isFinishing) return
@@ -305,8 +306,12 @@ class WebViewActivity : AppCompatActivity() {
             presentLogin()
             return
         }
+        if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this)) {
+            presentLogin()
+            return
+        }
         val open = pendingResumeUrl ?: pendingStartUrl
-        if (open != null && needsPsstLogin(open)) {
+        if (open != null && needsAppLogin(open)) {
             presentLogin()
             return
         }
@@ -327,8 +332,13 @@ class WebViewActivity : AppCompatActivity() {
         presentHome()
     }
 
-    private fun needsPsstLogin(url: String): Boolean {
-        return Destinations.forUrl(url)?.requiresAppLogin == true && !Session.isActive(this)
+    private fun needsAppLogin(url: String): Boolean {
+        if (Session.isActive(this)) return false
+        if (BuildConfig.TRIAL_HOME_LOGIN) {
+            val host = runCatching { Uri.parse(url).host }.getOrNull()
+            return AuthHosts.allows(host, allTudc = true)
+        }
+        return Destinations.forUrl(url)?.requiresAppLogin == true
     }
 
     private fun presentLogin() {
@@ -351,6 +361,10 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun presentHome() {
+        if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this) && !verifyingLogin) {
+            presentLogin()
+            return
+        }
         if (tabs.isEmpty() || activeTab == null) {
             openNewHomeTab()
             return
@@ -435,6 +449,10 @@ class WebViewActivity : AppCompatActivity() {
 
     /** Domeček: otevře kartu Domů, aktuální stránku nechá. */
     private fun openHomeWindow() {
+        if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this) && !verifyingLogin) {
+            presentLogin()
+            return
+        }
         if (activeTab?.isHome == true) {
             selectTab(activeTab!!.id)
             return
@@ -936,7 +954,7 @@ class WebViewActivity : AppCompatActivity() {
             hideKeyboard(urlInput)
             dialog.dismiss()
             dialogShown = false
-            if (needsPsstLogin(normalized)) {
+            if (needsAppLogin(normalized)) {
                 pendingStartUrl = normalized
                 presentLogin()
             } else {
@@ -1195,7 +1213,7 @@ class WebViewActivity : AppCompatActivity() {
             enterVpnGate()
             return
         }
-        if (app.requiresAppLogin && !Session.isActive(this)) {
+        if ((BuildConfig.TRIAL_HOME_LOGIN || app.requiresAppLogin) && !Session.isActive(this)) {
             pendingStartUrl = app.url
             presentLogin()
             return
@@ -1292,9 +1310,13 @@ class WebViewActivity : AppCompatActivity() {
         usernameInput.setText("")
         passwordInput.setText("")
         AuthProbe.kill(this)
-        val url = pendingStartUrl ?: Destinations.PSST_URL
+        val url = pendingStartUrl
         pendingStartUrl = null
         pendingResumeUrl = null
+        if (url.isNullOrBlank() || url == Destinations.HOME_URL) {
+            presentHome()
+            return
+        }
         enterBrowser()
         if (activeTab?.isHome == true) {
             loadInActiveTab(url)
@@ -1677,7 +1699,6 @@ class WebViewActivity : AppCompatActivity() {
         ).forEach { id ->
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
         }
-        menu?.findItem(R.id.action_cert_info)?.icon?.mutate()?.setTint(inkSoft)
 
         menu?.findItem(R.id.action_logout)?.let { item ->
             val title = SpannableString("Vymazat údaje")
@@ -1709,9 +1730,7 @@ class WebViewActivity : AppCompatActivity() {
             return true
         }
         if (gate == Gate.VPN) return true
-        if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings &&
-            item.itemId != R.id.action_cert_info
-        ) {
+        if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings) {
             return true
         }
         return when (item.itemId) {
@@ -1722,6 +1741,10 @@ class WebViewActivity : AppCompatActivity() {
             R.id.action_new_tab -> {
                 if (gate == Gate.VPN) return true
                 if (verifyingLogin) failLogin(null, stayOnForm = false)
+                if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this)) {
+                    presentLogin()
+                    return true
+                }
                 openNewHomeTab()
                 true
             }
@@ -1729,10 +1752,6 @@ class WebViewActivity : AppCompatActivity() {
                 if (gate != Gate.BROWSER) return true
                 dialogShown = false
                 activeWebView?.reload()
-                true
-            }
-            R.id.action_cert_info -> {
-                SslPolicy.showInfo(this)
                 true
             }
             R.id.action_link_settings -> {

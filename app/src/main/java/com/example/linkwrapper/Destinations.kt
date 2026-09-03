@@ -5,7 +5,8 @@ import java.net.URI
 /**
  * Dlaždice na nativní obrazovce Domů.
  *
- * PSST používá aplikační přihlášení (NTLM). DSD má vlastní formulář na webu.
+ * PSST používá aplikační přihlášení (NTLM). DSD má ve běžné APK
+ * vlastní formulář; ve zkušební platí stejné údaje pro celé tudc.cz.
  */
 internal object Destinations {
 

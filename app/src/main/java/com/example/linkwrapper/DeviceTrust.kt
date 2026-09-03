@@ -9,11 +9,10 @@ import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 
 /**
- * Důvěra tabletu k HTTPS — bez firemní CA v APK.
+ * Důvěra tabletu k HTTPS.
  *
- * [HttpsURLConnection] používá systémové (a uživatelské) CA. Varianta
- * s přibaleným certifikátem se tak může přihlásit i když banner svítí:
- * WebView si řetěz doplní z APK, tablet ale pořád CA nemá.
+ * [HttpsURLConnection] používá systémové (a uživatelské) CA.
+ * Banner u přihlášení svítí, když tablet serveru nedůvěřuje.
  */
 internal object DeviceTrust {
 

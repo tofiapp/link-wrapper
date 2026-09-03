@@ -1,53 +1,52 @@
 # Audit aplikace PSST Data (Link Wrapper)
 
-Stav kódu po úklidu slepých větví (září 2026). Obálka nad WebView.
-Přihlášení, karty, VPN a certifikáty řeší Android. Grafy kreslí stránka
-uvnitř WebView.
+Stav kódu po sjednocení důvěry tabletu a zkušebním přihlášení (září 2026).
+Obálka nad WebView. Přihlášení, karty, VPN a HTTPS řeší Android. Grafy
+kreslí stránka uvnitř WebView.
 
-Prohlídka souborů bez Kotlinu: [`VYSVETLENI.md`](VYSVETLENI.md)
-(starší pasáže o „nejdřív login, pak home“ a názvech karet z `dmId`
-už neplatí — platí tahle tabulka a [`README.md`](README.md)).
+Prohlídka souborů bez Kotlinu: [`VYSVETLENI.md`](VYSVETLENI.md).
 Bezpečnost hesla: [`BEZPECNOST.md`](BEZPECNOST.md).
+Instalace APK: [`README.md`](README.md).
 
 ---
 
 ## A. Co platí teď (tok)
 
-| stav | co vidí uživatel |
-| --- | --- |
-| není VPN | hláška **přes celou obrazovku**; karty ani lišta nefungují |
-| VPN, bez relace PSST | nativní **Domů** (dlaždice PSST Data a DSD) |
-| klepnutí na PSST Data bez relace | formulář, ověření v procesu `:authprobe`, pak web v té kartě |
-| klepnutí na DSD | web s vlastním přihlášením; údaje z PSST se **neposílají** |
-| **+** nebo **domeček** | nová karta **Domů**; aktuální web zůstane |
-| dočasný HTTP 401 u DSD | žádný dialog |
-| Vymazat údaje | prefs, cookies, Chromium profil pryč, nový proces, znovu Domů |
+HTTPS v **obou** APK ověřuje jen Android podle CA na tabletu (systém +
+uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 
-Špatné heslo k PSST se **do hlavního WebView nedostane**.
+| stav | běžná APK (`pinned`) | zkušební APK (`systemtrust`) |
+| --- | --- | --- |
+| není VPN | hláška **přes celou obrazovku** | stejně |
+| VPN, bez relace | nativní **Domů** | **přihlášení** (ne Domů) |
+| relace | Domů / otevřené karty | totéž |
+| klepnutí na PSST Data bez relace | formulář, ověření v `:authprobe`, pak web | na Domů se bez relace nedostanete |
+| klepnutí na DSD | web s vlastním formulářem; údaje z PSST se **neposílají** | stejné údaje jako na Domů (NTLM na `tudc.cz`) |
+| komu jde HTTP auth | jen `psst.tudc.cz` / `test.psst.tudc.cz` | celé `tudc.cz` |
+| **+** nebo **domeček** | nová karta **Domů**; aktuální web zůstane | bez relace znovu přihlášení |
+| dočasný HTTP 401 u DSD | žádný dialog | stejně |
+| Vymazat údaje | prefs, cookies, profil pryč, nový proces, znovu Domů | totéž, pak znovu přihlášení |
+
+Špatné heslo se **do hlavního WebView nedostane**.
 
 ---
 
 ## B. Úklid v tomto kole
 
-Našli jsme zbytky staršího UX (login-před-home, kopírování karty plusem,
-popisek hostitele na dlaždici, prázdné `applyChrome`). Pryč:
+Cíl: žádná APK už nepoužívá starý pinning v APK. Zkušební verze má
+přihlášení na Domů pro celé `tudc.cz`.
 
 | co | proč |
 | --- | --- |
-| `Destinations.hostLabel`, `sameApp()` | dlaždice mají jen název; deduplikace karet se nepoužívá |
-| `AuthHosts.hostnameMatches()` | žilo jen v testu, SSL ho nevolá |
-| `currentHostForUi` / `applyChrome()` | zapisovalo se, nikdo to nečetl |
-| `SslPolicy.loadError()` / `describeChain()` | obal nic nevolal; dialog bere `CertPinning` přímo |
-| `showOpenUrlDialog(openAsNewTab)` | vždy `false` |
-| `showSite()` | jeden řádek navíc |
-| duplicitní `action_logout` ve `when` a mrtvá větev v `onBackPressed` | po VPN/HOME/LOGIN zbývá jen BROWSER |
-| barvy `ok` / `warn` | nikde v UI |
-| nepoužité id `browserChrome`, `loginFormPanel` | |
-| veřejné `AuthProbe.deleteProfile`, `CertPinning.isIssuedByCorporateCa`, `loadError()` | stačí private |
+| `CertPinning.kt`, `corporate_ca.pem`, `corporate_sub_ca.pem` | starý způsob — ověření teď jen tablet |
+| flavor `SslPolicy` + flavor `network_security_config` | jedno společné pravidlo v `main` |
+| menu „info o certifikátech“, `ic_shield`, `action_cert_info` | patřilo k pinningu v APK |
+| `TRIAL_HOME_LOGIN` | běžná = false, zkušební = true |
+| `AuthHosts.allows(host, allTudc)` | zkušební smí poslat údaje na `*.tudc.cz` |
 
-**Ponecháno schválně:** `Session` pořád jednorázově smaže staré `session_gate`
-prefs (upgrade ze staré APK). Pinning CA, `AuthHosts.allows`, Keystore,
-VPN brána, dva flavor APK.
+**Ponecháno schválně:** názvy flavorů `pinned` / `systemtrust` (CI a
+názvy APK). `Session` pořád maže stará `session_gate` prefs. Keystore,
+VPN brána, dva APK vedle sebe.
 
 ---
 
@@ -55,15 +54,15 @@ VPN brána, dva flavor APK.
 
 | soubor | role |
 | --- | --- |
-| `WebViewActivity.kt` | jediná obrazovka: VPN, Domů, karty, web, login PSST |
+| `WebViewActivity.kt` | jediná obrazovka: VPN, Domů / login, karty, web |
 | `Destinations.kt` | PSST / DSD / Domů, popisek karty |
 | `PageZoom.kt` | 88 % na výšku, 80 % na šířku |
-| `Session.kt` + `SecretStore.kt` | šifrované údaje PSST, Keystore AES-256-GCM |
+| `Session.kt` + `SecretStore.kt` | šifrované údaje, Keystore AES-256-GCM |
 | `AuthProbeActivity.kt` + `AuthHandoff.kt` | ověření hesla v jiném procesu |
-| `AuthHosts.kt` | heslo jen na `psst.tudc.cz` / `test.psst.tudc.cz` |
-| `DeviceTrust.kt` | banner „tablet nemá CA“ před loginem |
+| `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
+| `DeviceTrust.kt` | banner „tablet nemá CA“ u přihlášení |
+| `SslPolicy.kt` + `network_security_config.xml` | HTTPS jen podle CA na tabletu |
 | `ChartPerf.kt` | strop `devicePixelRatio` kvůli grafům |
-| `SslPolicy` / `CertPinning` | pinned = firemní CA v APK; systemtrust = jen tablet |
 | `layout_vpn_gate.xml` | celoobrazovková hláška bez VPN |
 | `layout_home_screen.xml` | dlaždice jen s názvem |
 
@@ -73,8 +72,10 @@ Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`, `PageZoomTest`.
 
 ## D. Přihlášení a údaje (stále platí)
 
-Ověření mimo hlavní proces, Keystore, `allowBackup=false`, heslo jen na
-PSST hosty, `FLAG_SECURE` na formuláři. Podrobnosti v `BEZPECNOST.md`.
+Ověření mimo hlavní proces, Keystore, `allowBackup=false`, `FLAG_SECURE`
+na formuláři. Běžná APK posílá heslo jen na PSST hosty. Zkušební APK
+na celé `tudc.cz` — proto je to jen zkušební build, ne výchozí.
+Podrobnosti v `BEZPECNOST.md`.
 
 Reverse engineering APK **heslo nedá** — klíč je v čipu tabletu, ne v APK.
 
@@ -95,8 +96,10 @@ vrstva kolem WebView je vypnutá.
 | Root / MDM / dump RAM u přihlášené appky | heslo jde získat; Keystore to na rootnutém tabletu neochrání |
 | Max. 8 karet | žerou RAM; stav karet se po zabití procesu neukládá |
 | `mailto:` / `tel:` | nenačtou se (jen `https` / `about`) |
-| Catch-all `https` filtr | appka se nabídne i u cizího webu; **heslo tam nejde** |
+| Catch-all `https` filtr | appka se nabídne i u cizího webu; **běžná APK heslo tam nepošle** |
+| Zkušební APK + cizí `*.tudc.cz` | HTTP 401 na podvrženém `tudc.cz` hostu dostane stejné údaje |
 | VPN detekce | `TRANSPORT_VPN`; split-tunnel umí lhát |
+| Tablety bez firemní CA | weby `tudc.cz` se nenačtou (pinning v APK už není) |
 | `values-night` | appka je světlá; systémový tmavý režim může rozházet systémové dialogy |
 
 ---

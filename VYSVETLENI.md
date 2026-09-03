@@ -5,8 +5,9 @@ Po dočtení by mělo být jasné: **co appka je, kudy teče uživatel, co kter�
 dělá, a proč je tohle řešení a ne Chrome / běžné přihlášení / „prostě to
 ignoruj“ u certifikátů.**
 
-Technický seznam oprav a **aktuální** tok (Domů bez loginu, karty, VPN)
-je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (login před home,
+Technický seznam oprav a **aktuální** tok (běžná APK: Domů bez loginu;
+zkušební: login na Domů; karty; VPN; HTTPS podle CA na tabletu)
+je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (pinning CA v APK,
 názvy karet z `dmId`) už neplatí — když se liší, platí AUDIT a README.
 Bezpečnost uložených údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
 Návod na instalaci APK je v [`README.md`](README.md).
@@ -25,7 +26,7 @@ tabletu neumí nebo nesmí:
 
 | problém tabletu | co obálka dodá |
 | --- | --- |
-| Chrome hlásí `NET::ERR_CERT_AUTHORITY_INVALID` | vlastní ověření firemní CA |
+| Chrome hlásí `NET::ERR_CERT_AUTHORITY_INVALID` | CA musí být na tabletu (Intune); appka spojení sama nepřekročí |
 | Windows přihlášení (NTLM) v Chrome skoro nejde | vlastní formulář + HTTP auth |
 | Interní síť je jen za VPN | bez Cisco AnyConnect se web vůbec nenačte |
 | Odkaz z Outlooku má otevřít „ten správný“ prohlížeč | appka se nabídne v „Otevřít pomocí“ |
@@ -111,26 +112,27 @@ link-wrapper/
 ├── .github/workflows/                   robot na GitHubu, který z kódu udělá APK
 └── app/src/main/
     ├── AndroidManifest.xml              občanka appky (oprávnění, obrazovky, odkazy)
-    ├── java/com/example/linkwrapper/    VEŠKERÁ logika (5 souborů Kotlin)
+    ├── java/com/example/linkwrapper/    VEŠKERÁ logika (Kotlin)
     └── res/
         ├── layout/                      vzhled obrazovek
         ├── menu/                        nabídka ⋮
         ├── values/                      barvy, texty, styly
-        ├── drawable/                    ikony (+, domeček, štít, …)
-        └── raw/                         firemní certifikáty CA
+        ├── drawable/                    ikony (+, domeček, …)
+        └── xml/                         network security (CA na tabletu)
 ```
 
 Balíček se jmenuje `com.example.linkwrapper` — to je historický název z šablony.
-Na tabletu se appka jmenuje **PSST Data** (`strings.xml` → `app_name`).
+Na tabletu se běžná APK jmenuje **PSST Data**, zkušební **PSST Data (zkušební)**.
 
-**Pět Kotlin souborů, nic víc:**
+**Hlavní Kotlin soubory:**
 
 | soubor | role jednou větou |
 | --- | --- |
 | `WebViewActivity.kt` | celá appka: brána, karty, menu, VPN, dialogy |
 | `Session.kt` | uložené jméno a heslo + mazání po Odhlásit |
 | `AuthProbeActivity.kt` | „zkus heslo v jiném procesu, ať nezkazí prohlížeč“ |
-| `CertPinning.kt` | „je ten certifikát od Správy železnic?“ |
+| `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
+| `SslPolicy.kt` | HTTPS jen podle CA na tabletu; žádný pinning v APK |
 | `ChartPerf.kt` | JavaScript, který Highcharts na tabletu zklidní |
 
 Žádný druhý jazyk v appce není. XML je vzhled, YAML v `.github` je sestavení.
@@ -151,17 +153,21 @@ Všechno se rozhoduje v jedné funkci: `refreshGate()` v `WebViewActivity.kt`.
                      /                \
                    NE                  ANO
                    ▼                    ▼
-            obrazovka              Máme uloženou relaci?
-         „VPN není připojená“        /              \
+            obrazovka              Běžná APK → Domů
+         „VPN není připojená“      (PSST login až po dlaždici)
+
+                                   Zkušební APK
+                                   Máme uloženou relaci?
+                                     /              \
                                    NE                ANO
                                    ▼                  ▼
-                            přihlašovací          karty + web
-                             formulář            (home / odkaz)
+                            přihlášení            karty + Domů
+                            (údaje = tudc.cz)
 ```
 
-Důležité pravidlo: **home se nenačte, dokud relace neexistuje.** Dřív appka
-otevřela web a teprve na chybě 401 se zeptala na heslo. To bylo špatně — viz
-`AUDIT.md` část A.
+**Běžná APK:** Domů i bez přihlášení. Údaje jen pro PSST.
+**Zkušební APK:** nejdřív přihlášení, údaje pro celé `tudc.cz`.
+Dřív appka pinovala firemní CA v APK — to už není, viz `AUDIT.md`.
 
 ---
 
@@ -229,10 +235,7 @@ Callback sítě (`onAvailable` / `onLost`) nespouští bránu hned — počká
 obrazovky dokola.
 
 Bez VPN: karty se pozastaví, URL se schovají do `savedTabUrls`. Až VPN
-naskočí a relace pořád platí, karty se obnoví. Bez relace je zase formulář.
-
-**Proč ne „vždycky otevři home“ po VPN:** to byl starý bug. Teď `presentBrowser()`
-home otevře, jen když `Session.isActive`.
+naskočí, karty se obnoví. Ve zkušební APK bez relace je zase formulář.
 
 ### 6.3 Přihlášení (`submitLogin` → `succeedLogin` / `failLogin`)
 
@@ -256,11 +259,8 @@ Devátá se neotevře (toast). Externí odkaz při plném limitu přepíše akti
 kartu.
 
 Název karty **není** `document.title` z webu. Graf by pořád přepisoval
-titulek na „graf“ a lišta by se skládala dokola (sekání). Místo toho:
-
-- home URL → `Home`
-- jinak query `dmId` / `dmid`
-- jinak název serveru
+titulek na „graf“ a lišta by se skládala dokola (sekání). Místo toho
+`Destinations.tabTitle`: Domů / PSST Data / DSD, jinak název serveru.
 
 Neaktivní karta se **vyjme z obrazovky** (`removeView`) a dostane
 `onPause()` + `RENDERER_PRIORITY_WAIVED`. `View.GONE` nestačí — Chromium by
@@ -286,9 +286,8 @@ doplní údaje z `Session`. NTLM má *několik kol* 401 za sebou — to není
 „špatné heslo“, to je handshake. Proto je strop `MAX_AUTH_ROUNDS = 16`.
 Až po vyčerpání kol se to bere jako odmítnutí.
 
-SSL chybu WebView **neignoruje plošně**. Buď `CertPinning` řekne „to je naše
-CA“ a spojení projde, nebo se stránka nenačte. Tlačítko „pokračovat i tak“
-v dialogu **není a nemá být**.
+SSL chybu WebView **vždy zruší** (`SslPolicy`). Ověření nechává Android
+podle CA na tabletu. Tlačítko „pokračovat i tak“ v dialogu **není**.
 
 ### 6.6 Klávesnice (IME)
 
@@ -302,14 +301,13 @@ pak teprve opustí appku. Na přihlášení Zpět **neobejde bránu**.
 
 ### 6.7 Menu ⋮
 
-XML: `menu_webview.xml`. Vpravo viditelně **+** (nová karta = home) a
-**domeček** (načti home v téhle kartě). V ⋮:
+XML: `menu_webview.xml`. Vpravo viditelně **+** a **domeček** — obojí
+otevře **novou** kartu Domů (aktuální web zůstane). V ⋮:
 
 - zadat URL
 - přenačíst
-- info o certifikátech
 - návod na „otevírání odkazů“ v nastavení Androidu
-- **Odhlásit** (červeně, dole)
+- **Vymazat údaje** (červeně, dole)
 
 Na VPN/login obrazovce menu nic kromě Odhlásit neotevře.
 
@@ -377,40 +375,18 @@ logika jako v hlavním WebView.
 
 ---
 
-## 9. CertPinning.kt — proč vlastní certifikáty
+## 9. SslPolicy.kt — HTTPS podle tabletu
 
-Tablety **nemají** v systému certifikační autoritu Správy železnic
-(SZT Root BAU ECC CA). Chrome proto křičí, že spojení je nedůvěryhodné.
+Firemní CA už **nejsou v APK**. Obě verze (běžná i zkušební) věří jen
+tomu, čemu věří tablet: systémové CA a certifikáty, které nainstalovalo
+IT / uživatel (Intune → trusted certificate profile).
 
-Obálka má v `res/raw/` dva soubory:
+`SslPolicy.handleSslError` spojení **vždy zruší**. Dialog „pokračovat i
+tak“ není. Když tablet autoritě nedůvěřuje, stránka se nenačte a u
+přihlášení svítí banner „Chybí certifikáty“.
 
-```
-SZT Root BAU ECC CA          (corporate_ca.pem)      do 4. 4. 2039
-  └─ SZT Sub BAU ECC CA1     (corporate_sub_ca.pem)  do 22. 5. 2028
-       └─ psst.tudc.cz       (obnovuje se ~1× ročně, v appce NENÍ)
-```
-
-Ověření:
-
-1. Kořen musí sedět na zapsaný SHA-256 otisk (`EXPECTED_ROOT_SHA256`) —
-   pojistka, že někdo v projektu nevyměnil soubor za cizí.
-2. Kořen je self-signed (sám sebe podepsal) — tak kořen vypadá.
-3. Mezilehlá CA je podepsaná kořenem (vlastní otisk nemá — při výměně
-   stačí vyměnit soubor).
-4. Certifikát *stránky* je podepsaný mezilehlou CA.
-5. Všechny tři jsou časově platné, obě CA mají příznak „jsem autorita“.
-
-Cokoliv jiného → `handler.cancel()`, stránka se nenačte.
-
-**Proč nepinovat certifikát webu:** ten se mění každý rok. Pinuje se jen
-kořen. Obnova `psst.tudc.cz` appku nemění.
-
-Porovnání otisku je `constantTimeEquals` — aby útočník z doby porovnání
-neuhodl, kde se řetězce liší. U otisku CA v APK je to spíš správný
-návyk než reálný útok z tabletu.
-
-Květen 2028 / duben 2039: viz README. Dlouhodobě má IT nasadit obě CA na
-tablety přes Intune — pak tahle třída není potřeba.
+Starý pinning (`CertPinning.kt`, `corporate_ca.pem`) je smazaný. Bez CA
+na tabletu weby `tudc.cz` nepůjdou.
 
 ---
 
@@ -549,13 +525,13 @@ tím, než Highcharts nastartuje.
 | téma | stav |
 | --- | --- |
 | Heslo v plaintext prefs | ne — AES-GCM, klíč v Keystore |
-| Heslo na cizí server | ne; HTTP auth jen PSST hostitelé |
+| Heslo na cizí server | běžná APK: jen PSST; zkušební: celé `tudc.cz` |
 | Pokračovat přes špatný certifikát | ne |
 | HTTP bez TLS | ne |
 | Přístup na `file://` | vypnutý |
 | JS ve WebView | nutný; souborový přístup vypnutý |
 | Probe activity zvenku | ne (`exported=false`) |
-| Hlavní activity zvenku | ano (odkazy); bez relace ale není home |
+| Hlavní activity zvenku | ano (odkazy); zkušební bez relace zůstane na přihlášení |
 | Keystore v soukromém gitu | ano, kvůli aktualizacím; heslo k úložišti je v `keystore.properties` |
 
 ---
@@ -569,7 +545,7 @@ Začněte v tomto pořadí:
 3. `submitLogin()` → `AuthProbeActivity` → `succeedLogin()`
 4. `Session.kt` celé (je krátké)
 5. `createWebView()` — nastavení + SSL + HTTP auth
-6. `CertPinning.isIssuedByCorporateCa`
+6. `SslPolicy.handleSslError` / `AuthHosts.allows`
 7. `ChartPerf.BOOTSTRAP_JS` jen komentář nahoře; JS je „šeptání Highcharts“
 8. `performLogout()` nakonec — ukáže, co všechno relace znamená
 
@@ -582,7 +558,8 @@ k souborům.
 
 ## 17. Shrnutí jednou větou
 
-**Kotlin tady není „program PSST“.** Je to vrátný: pustí vás jen s VPN a
-ověřeným firemním účtem, otevře web ve WebView, které věří SZT CA, drží
-až osm karet aniž by pozadí sežralo tablet, a při Odhlásit smaže relaci
-tak důkladně, že umře i proces — protože jinak NTLM v Chromiu přežije.
+**Kotlin tady není „program PSST“.** Je to vrátný: pustí vás jen s VPN
+(u zkušební i s přihlášením), otevře web ve WebView, které věří CA na
+tabletu, drží až osm karet aniž by pozadí sežralo tablet, a při Vymazat
+údaje smaže relaci tak důkladně, že umře i proces — protože jinak NTLM
+v Chromiu přežije.

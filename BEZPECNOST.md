@@ -18,7 +18,7 @@ způsobem, který tenhle kód dřív dovoloval.
 | Přečte ho záloha Google / USB? | **Ne.** Záloha je vypnutá, citlivé soubory jsou vyloučené. |
 | Je na disku čitelným textem? | **Ne** (po této úpravě). Je zašifrované klíčem v Android Keystore. |
 | Objeví se v logu při přihlášení? | **Ne.** Do Intentu se už nedává. |
-| Odešle ho appka na cizí web (odkaz, phishing)? | **Ne.** Heslo jde jen na `psst.tudc.cz` / `test.psst.tudc.cz`. |
+| Odešle ho appka na cizí web (odkaz, phishing)? | **Běžná APK: ne** — jen `psst.tudc.cz` / `test.psst.tudc.cz`. **Zkušební APK: ano na celé `tudc.cz`.** |
 | Půjde screenshot přihlášení z recents? | **Ne.** Obrazovka s heslem má `FLAG_SECURE`. |
 | Přečte ho root / firemní MDM s plným přístupem? | **Ano, to nejde zastavit v appce.** Tablet by neměl být rootnutý. |
 
@@ -63,20 +63,23 @@ Cesta útoku: e-mail / „Otevřít pomocí“ / `⋮ → zadat URL` na
 `https://attacker.example`. Server odpoví 401. Appka by odeslala
 `SZDC\jnovak` a heslo.
 
-Teď se údaje posílají jen na `psst.tudc.cz` a `test.psst.tudc.cz`
-(a jejich subdomény). Cizí 401 heslo nedostane.
+V **běžné APK** se údaje posílají jen na `psst.tudc.cz` a
+`test.psst.tudc.cz` (a jejich subdomény). Cizí 401 heslo nedostane.
 
-### 4. SSL „pokračuj“, i když jméno nesedí (vysoké)
+Ve **zkušební APK** platí totéž pro celé `tudc.cz` (včetně DSD). Cizí
+host mimo `tudc.cz` heslo pořád nedostane. Podvržený `něco.tudc.cz` ano —
+proto je to jen zkušební build.
 
-`onReceivedSslError` pouštělo spojení, jakmile certifikát podepsala
-firemní CA. **Nesedící jméno serveru** (`SSL_IDMISMATCH`) se nehlídalo.
+### 4. SSL „pokračuj“ / pinning v APK (vysoké, odstraněno)
 
-Útočník s jakýmkoli certifikátem od SZT Sub CA (třeba pro jiný interní
-web) mohl podvrhnout `psst.tudc.cz`.
+Dřív `onReceivedSslError` pouštělo spojení, když řetězec podepsala
+přibalená firemní CA. Nesedící jméno serveru se nehlídalo. Později
+pinning v APK kontroloval řetězec sám.
 
-Teď se pokračuje jen při `SSL_UNTRUSTED` (tablety nemají CA v systému),
-řetězec musí být náš, a CN musí sedět na hostitele. Expirace / mismatch
-spojení zruší.
+Teď **žádná APK** přibalené CA nemá. WebView SSL chybu **vždy zruší**.
+Ověření nechává Android podle CA nainstalovaných na tabletu (systém +
+uživatel / MDM). Dialog „pokračovat i tak“ není. Bez firemní CA na
+tabletu se `tudc.cz` nenačte.
 
 ### 5. Screenshot hesla (střední)
 
@@ -161,8 +164,8 @@ jen v paměti do vypnutí appky. Další spuštění chce znovu přihlášení.
 1. Tablety bez rootu, se zámkem obrazovky a šifrováním úložiště.
 2. USB ladění (ADB) na ostrých tabletech vypnout.
 3. Přístup k GitHub repozitáři (a k podpisovému klíči) jen kdo musí.
-4. Až to půjde: CA nainstalovat na tablety přes Intune — pak vlastní
-   pinning v appce není potřeba.
+4. Firemní CA **musí** být na tabletech (Intune → trusted certificate
+   profile). Pinning v APK už není — bez CA na tabletu weby nepůjdou.
 5. Hesla účtů otáčet, když tablet zmizí.
 
 ---
@@ -174,8 +177,8 @@ jen v paměti do vypnutí appky. Další spuštění chce znovu přihlášení.
 | `SecretStore.kt` | AES-GCM + Android Keystore |
 | `Session.kt` | šifrované uložení, migrace plaintextu pryč |
 | `AuthHandoff.kt` | předání do probe bez Intent extras |
-| `AuthHosts.kt` | komu smí jít HTTP auth |
-| `CertPinning.kt` | `shouldProceed` — ne mismatch / expirace |
+| `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
+| `SslPolicy.kt` | SSL chybu vždy zrušit; žádný pinning v APK |
 | `WebViewActivity.kt` | auth allowlist, FLAG_SECURE, blok `intent:` |
 | `AuthProbeActivity.kt` | čte handoff, stejná SSL pravidla |
 | `AndroidManifest.xml` | backup / network security XML |
