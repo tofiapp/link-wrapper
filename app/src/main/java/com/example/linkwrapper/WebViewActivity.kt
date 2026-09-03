@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.net.ConnectivityManager
@@ -86,18 +87,6 @@ class WebViewActivity : AppCompatActivity() {
         private const val MAX_TABS = 8
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
-        /** Stránky ve WebView: mezi výchozími 100 % a předchozími 67 %. */
-        private const val PAGE_ZOOM_JS = """
-(function(){
-  var z = '84%';
-  function apply(){
-    try { document.documentElement.style.zoom = z; } catch (e) {}
-    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
-  }
-  apply();
-  document.addEventListener('DOMContentLoaded', apply);
-})();
-"""
     }
 
     private enum class Gate { BROWSER, HOME, LOGIN, VPN }
@@ -168,7 +157,6 @@ class WebViewActivity : AppCompatActivity() {
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
     private val chartPerfInjected = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
 
-    private var currentHostForUi: String? = null
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
 
@@ -229,6 +217,11 @@ class WebViewActivity : AppCompatActivity() {
         super.onResume()
         (activeWebView ?: tabs.firstNotNullOfOrNull { it.webView })?.resumeTimers()
         activeWebView?.onResume()
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyPageZoomToAllTabs()
     }
 
     override fun onPause() {
@@ -547,7 +540,6 @@ class WebViewActivity : AppCompatActivity() {
                 (wv.parent as? ViewGroup)?.removeView(wv)
             }
         }
-        applyChrome(target)
         refreshTabStrip()
     }
 
@@ -643,11 +635,6 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun applyChrome(tab: BrowserTab) {
-        currentHostForUi = if (tab.isHome) null
-        else runCatching { Uri.parse(tab.url).host }.getOrNull()
-    }
-
     private fun tabLabel(url: String): String = Destinations.tabTitle(url)
 
     private fun updateTabMeta(webView: WebView, url: String?) {
@@ -661,7 +648,6 @@ class WebViewActivity : AppCompatActivity() {
                 stripChanged = true
             }
         }
-        if (tab.id == activeTabId) applyChrome(tab)
         if (stripChanged) refreshTabStrip()
     }
 
@@ -920,12 +906,11 @@ class WebViewActivity : AppCompatActivity() {
         }
         tab.url = url
         tab.title = tabLabel(url)
-        applyChrome(tab)
         selectTab(tab.id)
         tab.webView?.loadUrl(url)
     }
 
-    private fun showOpenUrlDialog(openAsNewTab: Boolean = false) {
+    private fun showOpenUrlDialog() {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_open_url, null)
         val urlLayout = view.findViewById<TextInputLayout>(R.id.urlLayout)
         val urlInput = view.findViewById<TextInputEditText>(R.id.urlInput)
@@ -934,9 +919,9 @@ class WebViewActivity : AppCompatActivity() {
         urlInput.setSelection(urlInput.text?.length ?: 0)
 
         val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(if (openAsNewTab) "Nová karta" else "Otevřít URL adresu")
+            .setTitle("Otevřít URL adresu")
             .setView(view)
-            .setPositiveButton(if (openAsNewTab) "Otevřít URL v kartě" else "Otevřít URL", null)
+            .setPositiveButton("Otevřít URL", null)
             .setNegativeButton("Zrušit", null)
             .create()
         urlDialog = dialog
@@ -954,9 +939,6 @@ class WebViewActivity : AppCompatActivity() {
             if (needsPsstLogin(normalized)) {
                 pendingStartUrl = normalized
                 presentLogin()
-            } else if (openAsNewTab) {
-                enterBrowser()
-                openInNewTab(normalized)
             } else {
                 enterBrowser()
                 loadInActiveTab(normalized)
@@ -1117,7 +1099,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                PAGE_ZOOM_JS + ChartPerf.BOOTSTRAP_JS,
+                pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1129,9 +1111,23 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartPerfFallback(webView: WebView) {
         if (webView in chartPerfInjected) return
         try {
-            webView.evaluateJavascript(PAGE_ZOOM_JS + ChartPerf.BOOTSTRAP_JS, null)
+            webView.evaluateJavascript(pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
             chartPerfInjected.add(webView)
         } catch (_: Exception) {
+        }
+    }
+
+    private fun pageZoomPercent(): Int {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        return PageZoom.percent(landscape)
+    }
+
+    private fun pageZoomJs(): String = PageZoom.applyJs(pageZoomPercent())
+
+    private fun applyPageZoomToAllTabs() {
+        val js = PageZoom.setJs(pageZoomPercent())
+        tabs.forEach { tab ->
+            tab.webView?.evaluateJavascript(js, null)
         }
     }
 
@@ -1204,12 +1200,8 @@ class WebViewActivity : AppCompatActivity() {
             presentLogin()
             return
         }
-        showSite(app.url)
-    }
-
-    private fun showSite(url: String) {
         enterBrowser()
-        loadInActiveTab(url)
+        loadInActiveTab(app.url)
     }
 
     private fun updateLoginButton() {
@@ -1393,9 +1385,7 @@ class WebViewActivity : AppCompatActivity() {
         val root = findViewById<View>(R.id.root)
         ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
-            if (gate == Gate.BROWSER && urlDialog?.isShowing != true) {
-                setImePadding(v, 0)
-            } else if (urlDialog?.isShowing == true) {
+            if (gate == Gate.BROWSER || urlDialog?.isShowing == true) {
                 setImePadding(v, 0)
             } else {
                 setImePadding(v, imeBottom)
@@ -1726,32 +1716,19 @@ class WebViewActivity : AppCompatActivity() {
         }
         return when (item.itemId) {
             R.id.action_open_url -> {
-                showOpenUrlDialog(openAsNewTab = false)
+                showOpenUrlDialog()
                 true
             }
             R.id.action_new_tab -> {
-                if (gate == Gate.HOME || activeTab?.isHome == true) {
-                    openNewHomeTab()
-                    return true
-                }
-                if (gate != Gate.BROWSER) return true
-                val url = Destinations.forUrl(activeTab?.url)?.url ?: return true
-                if (needsPsstLogin(url)) {
-                    pendingStartUrl = url
-                    presentLogin()
-                } else {
-                    openInNewTab(url)
-                }
+                if (gate == Gate.VPN) return true
+                if (verifyingLogin) failLogin(null, stayOnForm = false)
+                openNewHomeTab()
                 true
             }
             R.id.action_reload -> {
                 if (gate != Gate.BROWSER) return true
                 dialogShown = false
                 activeWebView?.reload()
-                true
-            }
-            R.id.action_logout -> {
-                confirmLogout()
                 true
             }
             R.id.action_cert_info -> {
@@ -1783,10 +1760,6 @@ class WebViewActivity : AppCompatActivity() {
         if (gate == Gate.LOGIN) {
             if (verifyingLogin) failLogin(null, stayOnForm = false)
             presentHome()
-            return
-        }
-        if (gate != Gate.BROWSER) {
-            if (verifyingLogin) failLogin(null, stayOnForm = false)
             return
         }
         val wv = activeWebView

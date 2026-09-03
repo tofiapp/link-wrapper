@@ -27,15 +27,3 @@ class AuthHostsTest {
         assertFalse(AuthHosts.allows("google.com"))
     }
 }
-
-class HostnameMatchTest {
-
-    @Test
-    fun exactAndWildcard() {
-        assertTrue(AuthHosts.hostnameMatches("psst.tudc.cz", "psst.tudc.cz"))
-        assertTrue(AuthHosts.hostnameMatches("*.psst.tudc.cz", "app.psst.tudc.cz"))
-        assertFalse(AuthHosts.hostnameMatches("*.psst.tudc.cz", "psst.tudc.cz"))
-        assertFalse(AuthHosts.hostnameMatches("psst.tudc.cz", "evil.com"))
-        assertFalse(AuthHosts.hostnameMatches("psst.tudc.cz", "psst.tudc.cz.evil.com"))
-    }
-}

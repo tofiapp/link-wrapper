@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Overlay v oblasti pod lištou: přihlášení k PSST, nebo varování VPN.
+  Overlay pod lištou: přihlášení k PSST.
 -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -90,7 +90,6 @@
             android:scrollbars="none">
 
             <LinearLayout
-                android:id="@+id/loginFormPanel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:gravity="center_horizontal"

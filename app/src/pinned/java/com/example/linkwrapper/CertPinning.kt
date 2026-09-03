@@ -44,9 +44,6 @@ object CertPinning {
     @Volatile
     private var lastLoadError: String? = null
 
-    /** Popis poslední chyby při načítání CA, pro diagnostiku v dialogu. */
-    fun loadError(): String? = lastLoadError
-
     private fun loadChain(context: Context): Chain? {
         cached?.let { return it }
         return try {
@@ -106,7 +103,7 @@ object CertPinning {
      * Vrátí true, pokud certifikát serveru pochází z firemního řetězce
      * a všechny články jsou platné. Při jakékoliv nejistotě vrací false.
      */
-    fun isIssuedByCorporateCa(context: Context, sslCertificate: SslCertificate?): Boolean {
+    private fun isIssuedByCorporateCa(context: Context, sslCertificate: SslCertificate?): Boolean {
         val server = extractX509(sslCertificate) ?: return false
         val chain = loadChain(context) ?: return false
         return try {

@@ -25,7 +25,6 @@ object Session {
     private const val KEY_PASS_ENC = "password_enc"
 
     private const val LEGACY_AUTH_PREFS = "http_auth_prefs"
-    private const val LEGACY_GATE_PREFS = "session_gate"
 
     @Volatile
     private var memoryOnly: Credentials? = null
@@ -69,7 +68,7 @@ object Session {
         prefs(context).edit().clear().commit()
         context.getSharedPreferences(LEGACY_AUTH_PREFS, Context.MODE_PRIVATE)
             .edit().clear().commit()
-        context.getSharedPreferences(LEGACY_GATE_PREFS, Context.MODE_PRIVATE)
+        context.getSharedPreferences("session_gate", Context.MODE_PRIVATE)
             .edit().clear().commit()
         SecretStore.deleteKey()
     }

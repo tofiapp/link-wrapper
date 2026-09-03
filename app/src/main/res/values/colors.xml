@@ -12,8 +12,4 @@
     <color name="accent_wash">#FFE8F1F8</color>
     <color name="alert">#FFB3261E</color>
     <color name="alert_wash">#FFFCEEEC</color>
-    <color name="ok">#FF1E7A4B</color>
-    <color name="ok_wash">#FFEAF5EF</color>
-    <color name="warn">#FF8A5A00</color>
-    <color name="warn_wash">#FFFCF3E4</color>
 </resources>

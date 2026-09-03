@@ -63,7 +63,7 @@ object AuthProbe {
         AuthHandoff.clear(context)
     }
 
-    fun deleteProfile(context: Context) {
+    private fun deleteProfile(context: Context) {
         val dataDir = context.applicationInfo.dataDir
         listOf(
             File(dataDir, "app_webview_$DATA_DIR_SUFFIX"),
