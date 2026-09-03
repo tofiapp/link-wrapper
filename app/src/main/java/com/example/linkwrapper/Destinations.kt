@@ -40,6 +40,13 @@ internal object Destinations {
 
     fun forUrl(url: String?): AppLink? = forHost(hostOf(url))
 
+    /** Popisek karty: u známé appky jen název (DSD, PSST Data), ne host. */
+    fun tabTitle(url: String): String {
+        if (url == HOME_URL) return "Domů"
+        forUrl(url)?.let { return it.title }
+        return hostOf(url) ?: "Karta"
+    }
+
     fun sameApp(urlA: String, urlB: String): Boolean {
         val a = forUrl(urlA) ?: return false
         val b = forUrl(urlB) ?: return false
