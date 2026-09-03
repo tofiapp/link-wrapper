@@ -100,8 +100,6 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var loginFormColumn: View
     private lateinit var vpnOnlyPanel: View
     private lateinit var loginFormScroll: View
-    private lateinit var loggedOutBanner: View
-    private lateinit var vpnBanner: View
     private lateinit var certBanner: View
     private lateinit var usernameLayout: TextInputLayout
     private lateinit var usernameInput: TextInputEditText
@@ -111,7 +109,6 @@ class WebViewActivity : AppCompatActivity() {
 
     private lateinit var homeOverlay: View
     private lateinit var homeAppList: LinearLayout
-    private lateinit var homeLogout: MaterialButton
     private lateinit var homeVersion: TextView
 
     private val tabs = mutableListOf<BrowserTab>()
@@ -124,9 +121,8 @@ class WebViewActivity : AppCompatActivity() {
     private val activeWebView: WebView?
         get() = activeTab?.webView
 
-    private var gate = Gate.LOGIN
+    private var gate = Gate.HOME
     private var lastContentGate = Gate.HOME
-    private var showSignedOutBanner = false
     private var dialogShown = false
     private var urlDialog: AlertDialog? = null
     private var warningDialog: AlertDialog? = null
@@ -207,7 +203,6 @@ class WebViewActivity : AppCompatActivity() {
         WebView.setWebContentsDebuggingEnabled(false)
 
         pendingStartUrl = explicitUrlFromIntent(intent)
-        showSignedOutBanner = Session.consumeSignedOutBanner(this)
         refreshGate()
     }
 
@@ -242,14 +237,14 @@ class WebViewActivity : AppCompatActivity() {
 
         val url = explicitUrlFromIntent(intent)
         if (url == null) {
-            if (tabs.isEmpty() && gate == Gate.BROWSER && isVpnActive() && Session.isActive(this)) {
+            if (tabs.isEmpty() && gate == Gate.BROWSER && isVpnActive()) {
                 presentHome()
             }
             return
         }
         pendingResumeUrl = url
         pendingStartUrl = url
-        if (!isVpnActive() || !Session.isActive(this) || verifyingLogin) {
+        if (!isVpnActive() || verifyingLogin) {
             return
         }
         refreshGate()
@@ -291,8 +286,8 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Jediná brána: bez VPN → VPN obrazovka; bez relace → přihlášení;
-     * po přihlášení nativní Domů, web až po výběru odkazu.
+     * Bez VPN → varování; jinak Domů. Přihlášení k PSST až po klepnutí
+     * na dlaždici. Web až po výběru odkazu (u PSST po ověření údajů).
      */
     private fun refreshGate() {
         if (isFinishing) return
@@ -300,16 +295,15 @@ class WebViewActivity : AppCompatActivity() {
             enterVpnGate()
             return
         }
-        vpnBanner.visibility = View.GONE
         if (verifyingLogin) {
             presentLogin()
             return
         }
-        if (!Session.isActive(this)) {
+        val open = pendingResumeUrl ?: pendingStartUrl
+        if (open != null && needsPsstLogin(open)) {
             presentLogin()
             return
         }
-        val open = pendingResumeUrl ?: pendingStartUrl
         pendingResumeUrl = null
         if (open != null) {
             pendingStartUrl = null
@@ -327,18 +321,19 @@ class WebViewActivity : AppCompatActivity() {
         presentHome()
     }
 
+    private fun needsPsstLogin(url: String): Boolean {
+        return Destinations.forUrl(url)?.requiresAppLogin == true && !Session.isActive(this)
+    }
+
     private fun presentLogin() {
         gate = Gate.LOGIN
         progressBar.visibility = View.GONE
-        hideHomeOverlay()
         loginOverlay.visibility = View.VISIBLE
         loginOverlay.bringToFront()
         vpnOnlyPanel.visibility = View.GONE
         loginFormColumn.visibility = View.VISIBLE
         loginFormScroll.visibility = View.VISIBLE
         loginTitle.visibility = View.VISIBLE
-        loggedOutBanner.visibility = if (showSignedOutBanner) View.VISIBLE else View.GONE
-        vpnBanner.visibility = if (!isVpnActive()) View.VISIBLE else View.GONE
         refreshCertBanner()
         updateLoginButton()
         if (!verifyingLogin && loginButton.isEnabled) {
@@ -352,7 +347,6 @@ class WebViewActivity : AppCompatActivity() {
     private fun presentHome() {
         gate = Gate.HOME
         lastContentGate = Gate.HOME
-        showSignedOutBanner = false
         hideLoginOverlay()
         hideKeyboard()
         progressBar.visibility = View.GONE
@@ -367,7 +361,6 @@ class WebViewActivity : AppCompatActivity() {
     private fun enterBrowser() {
         gate = Gate.BROWSER
         lastContentGate = Gate.BROWSER
-        showSignedOutBanner = false
         hideLoginOverlay()
         hideHomeOverlay()
         attachImeLayoutListener(false)
@@ -395,7 +388,7 @@ class WebViewActivity : AppCompatActivity() {
             savedActiveTabIndex = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
         }
         if (verifyingLogin) {
-            failLogin(null)
+            failLogin(null, stayOnForm = false)
         }
         gate = Gate.VPN
         hideKeyboard()
@@ -407,11 +400,9 @@ class WebViewActivity : AppCompatActivity() {
         loginFormColumn.visibility = View.GONE
         loginFormScroll.visibility = View.GONE
         loginTitle.visibility = View.GONE
-        loggedOutBanner.visibility = View.GONE
-        vpnBanner.visibility = View.GONE
         setCertBannerVisible(false)
         attachImeLayoutListener(true)
-        setSensitiveScreen(true)
+        setSensitiveScreen(false)
     }
 
     private fun restoreSavedTabsOrStart() {
@@ -727,7 +718,7 @@ class WebViewActivity : AppCompatActivity() {
                         failLogin("Neplatné jméno nebo heslo")
                         return
                     }
-                    // Relace zůstává, dokud uživatel nestiskne Odhlásit.
+                    // Relace PSST platí, dokud uživatel nesmaže údaje.
                     handler.cancel()
                     awaitingHttpAuth = false
                     return
@@ -735,6 +726,7 @@ class WebViewActivity : AppCompatActivity() {
 
                 pendingAuthHandler = handler
                 if (!verifyingLogin && !Session.isActive(this@WebViewActivity)) {
+                    pendingStartUrl = webView.url ?: Destinations.PSST_URL
                     presentLogin()
                 }
             }
@@ -829,12 +821,6 @@ class WebViewActivity : AppCompatActivity() {
 
     // ── URL ─────────────────────────────────────────────────────────────
 
-    private fun resolveUrlFromIntent(intent: Intent?): String? {
-        explicitUrlFromIntent(intent)?.let { return it }
-        if (intent?.action == Intent.ACTION_MAIN) return DEFAULT_URL
-        return null
-    }
-
     private fun explicitUrlFromIntent(intent: Intent?): String? {
         intent?.data?.toString()?.let { return it }
         intent?.getStringExtra(EXTRA_URL)?.let { return it }
@@ -901,7 +887,16 @@ class WebViewActivity : AppCompatActivity() {
             hideKeyboard(urlInput)
             dialog.dismiss()
             dialogShown = false
-            if (openAsNewTab) openInNewTab(normalized) else loadInActiveTab(normalized)
+            if (needsPsstLogin(normalized)) {
+                pendingStartUrl = normalized
+                presentLogin()
+            } else if (openAsNewTab) {
+                enterBrowser()
+                openInNewTab(normalized)
+            } else {
+                enterBrowser()
+                loadInActiveTab(normalized)
+            }
         }
 
         urlInput.setOnEditorActionListener { _, actionId, _ ->
@@ -935,7 +930,7 @@ class WebViewActivity : AppCompatActivity() {
     ) {
         if (callback == null) return
         val originHost = origin?.let { runCatching { Uri.parse(it).host }.getOrNull() }
-        if (!AuthHosts.allows(originHost)) {
+        if (Destinations.forHost(originHost) == null) {
             callback.invoke(origin, false, false)
             return
         }
@@ -1082,8 +1077,6 @@ class WebViewActivity : AppCompatActivity() {
         loginFormColumn = findViewById(R.id.loginFormColumn)
         vpnOnlyPanel = findViewById(R.id.vpnOnlyPanel)
         loginFormScroll = findViewById(R.id.loginFormScroll)
-        loggedOutBanner = findViewById(R.id.loggedOutBanner)
-        vpnBanner = findViewById(R.id.vpnBanner)
         certBanner = findViewById(R.id.certBanner)
         usernameLayout = findViewById(R.id.usernameLayout)
         usernameInput = findViewById(R.id.usernameInput)
@@ -1103,9 +1096,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun bindHomeUi() {
         homeOverlay = findViewById(R.id.homeOverlay)
         homeAppList = findViewById(R.id.homeAppList)
-        homeLogout = findViewById(R.id.homeLogout)
         homeVersion = findViewById(R.id.homeVersion)
-        homeLogout.setOnClickListener { confirmLogout() }
         val version = try {
             packageManager.getPackageInfo(packageName, 0).versionName
         } catch (_: Exception) {
@@ -1122,7 +1113,7 @@ class WebViewActivity : AppCompatActivity() {
             val item = inflater.inflate(R.layout.item_home_app, homeAppList, false)
             item.findViewById<TextView>(R.id.homeAppTitle).text = app.title
             item.findViewById<TextView>(R.id.homeAppHost).text = app.hostLabel
-            item.setOnClickListener { openDestination(app.url) }
+            item.setOnClickListener { openDestination(app) }
             homeAppList.addView(item)
         }
     }
@@ -1132,11 +1123,21 @@ class WebViewActivity : AppCompatActivity() {
         homeOverlay.visibility = View.GONE
     }
 
-    private fun openDestination(url: String) {
+    private fun openDestination(app: Destinations.AppLink) {
         if (!isVpnActive()) {
+            pendingStartUrl = app.url
             enterVpnGate()
             return
         }
+        if (app.requiresAppLogin && !Session.isActive(this)) {
+            pendingStartUrl = app.url
+            presentLogin()
+            return
+        }
+        showSite(app.url)
+    }
+
+    private fun showSite(url: String) {
         enterBrowser()
         val existing = tabs.find { Destinations.sameApp(it.url, url) }
         if (existing != null) {
@@ -1154,9 +1155,8 @@ class WebViewActivity : AppCompatActivity() {
             loginButton.text = "Přihlašuji…"
             return
         }
-        val vpnOn = isVpnActive()
-        loginButton.isEnabled = vpnOn
-        loginButton.alpha = if (vpnOn) 1f else 0.45f
+        loginButton.isEnabled = true
+        loginButton.alpha = 1f
         loginButton.text = "Přihlásit"
     }
 
@@ -1166,8 +1166,6 @@ class WebViewActivity : AppCompatActivity() {
         vpnOnlyPanel.visibility = View.GONE
         loginFormColumn.visibility = View.GONE
         loginFormScroll.visibility = View.GONE
-        loggedOutBanner.visibility = View.GONE
-        vpnBanner.visibility = View.GONE
         setCertBannerVisible(false)
         pendingAuthHandler = null
         updateLoginButton()
@@ -1176,9 +1174,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun submitLogin() {
         if (verifyingLogin) return
         if (!isVpnActive()) {
-            vpnBanner.visibility = View.VISIBLE
-            Toast.makeText(this, "Nejdřív připojte VPN (Cisco AnyConnect)", Toast.LENGTH_SHORT)
-                .show()
+            enterVpnGate()
             return
         }
 
@@ -1203,7 +1199,6 @@ class WebViewActivity : AppCompatActivity() {
         authChallengeCounts.clear()
         authFailedViews.clear()
         pendingAuthHandler = null
-        if (!Session.isActive(this)) destroyAllTabs()
         updateLoginButton()
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         mainHandler.postDelayed(loginTimeoutRunnable, LOGIN_TIMEOUT_MS)
@@ -1231,16 +1226,25 @@ class WebViewActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         Session.start(this, creds.username, creds.password)
         pendingCredentials = null
-        showSignedOutBanner = false
         usernameLayout.error = null
         passwordLayout.error = null
         usernameInput.setText("")
         passwordInput.setText("")
         AuthProbe.kill(this)
-        refreshGate()
+        val url = pendingStartUrl ?: Destinations.PSST_URL
+        pendingStartUrl = null
+        pendingResumeUrl = null
+        enterBrowser()
+        val existing = tabs.find { Destinations.sameApp(it.url, url) }
+        if (existing != null) {
+            selectTab(existing.id)
+            existing.webView.reload()
+        } else {
+            openInNewTab(url)
+        }
     }
 
-    private fun failLogin(message: String?) {
+    private fun failLogin(message: String?, stayOnForm: Boolean = true) {
         if (isFinishing) return
         val missingCerts = SslMessages.isMissingDeviceCerts(message)
         if (missingCerts) {
@@ -1265,7 +1269,7 @@ class WebViewActivity : AppCompatActivity() {
         } else if (missingCerts) {
             passwordLayout.error = null
         }
-        if (isVpnActive()) presentLogin()
+        if (stayOnForm && isVpnActive()) presentLogin()
     }
 
     private fun setCertBannerVisible(visible: Boolean) {
@@ -1467,8 +1471,8 @@ class WebViewActivity : AppCompatActivity() {
             .setTitle("Přístup odepřen (401)")
             .setMessage(
                 "Server $host odmítl přihlášení.\n\n" +
-                    "Uložené údaje zůstávají, dokud se neodhlásíte. " +
-                    "Zkuste stránku znovu, nebo se odhlaste a zadejte jiné jméno a heslo."
+                    "Uložené údaje zůstávají, dokud v nabídce nesmažete údaje. " +
+                    "Zkuste stránku znovu, nebo smažte údaje a přihlaste se jinak."
             )
             .setPositiveButton("Zkusit znovu") { _, _ ->
                 dialogShown = false
@@ -1541,22 +1545,20 @@ class WebViewActivity : AppCompatActivity() {
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_confirm_logout, null)
         MaterialAlertDialogBuilder(this, R.style.LogoutDialog)
             .setView(view)
-            .setPositiveButton("Odhlásit") { _, _ -> performLogout() }
+            .setPositiveButton("Smazat") { _, _ -> clearStoredData() }
             .setNegativeButton("Zrušit", null)
             .show()
     }
 
     /**
-     * Odhlásit = smazat relaci úplně a restartovat proces.
-     * Chromium drží NTLM v connection poolu procesu; bez restartu by
-     * další uživatel (nebo totéž špatné heslo) pořád viděl starou session.
+     * Smaže cookies, PSST údaje i Chromium profil a restartuje proces.
+     * NTLM jinak zůstane v connection poolu a stránky by zůstaly přihlášené.
      */
-    private fun performLogout() {
+    private fun clearStoredData() {
         pendingAuthHandler?.cancel()
         pendingAuthHandler = null
         pendingCredentials = null
         verifyingLogin = false
-        showSignedOutBanner = true
         pendingResumeUrl = null
         pendingStartUrl = null
         savedTabUrls = emptyList()
@@ -1577,6 +1579,7 @@ class WebViewActivity : AppCompatActivity() {
         } catch (_: Exception) {
             usernameInput.setText("")
             passwordInput.setText("")
+            lastContentGate = Gate.HOME
             refreshGate()
             return
         }
@@ -1644,7 +1647,7 @@ class WebViewActivity : AppCompatActivity() {
         menu?.findItem(R.id.action_cert_info)?.icon?.mutate()?.setTint(inkSoft)
 
         menu?.findItem(R.id.action_logout)?.let { item ->
-            val title = SpannableString("Odhlásit")
+            val title = SpannableString("Vymazat údaje")
             title.setSpan(ForegroundColorSpan(alert), 0, title.length, 0)
             item.title = title
             item.icon?.mutate()?.setTint(alert)
@@ -1661,7 +1664,20 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         hideKeyboard()
-        if (gate != Gate.BROWSER && item.itemId != R.id.action_logout) {
+        if (item.itemId == R.id.action_logout) {
+            confirmLogout()
+            return true
+        }
+        if (item.itemId == R.id.action_home) {
+            if (gate == Gate.VPN) return true
+            if (verifyingLogin) failLogin(null, stayOnForm = false)
+            presentHome()
+            return true
+        }
+        if (gate == Gate.VPN) return true
+        if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings &&
+            item.itemId != R.id.action_cert_info
+        ) {
             return true
         }
         return when (item.itemId) {
@@ -1670,15 +1686,18 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_new_tab -> {
-                val url = Destinations.forUrl(activeTab?.url)?.url ?: Destinations.PSST_URL
-                openInNewTab(url)
-                true
-            }
-            R.id.action_home -> {
-                presentHome()
+                if (gate != Gate.BROWSER) return true
+                val url = Destinations.forUrl(activeTab?.url)?.url ?: return true
+                if (needsPsstLogin(url)) {
+                    pendingStartUrl = url
+                    presentLogin()
+                } else {
+                    openInNewTab(url)
+                }
                 true
             }
             R.id.action_reload -> {
+                if (gate != Gate.BROWSER) return true
                 dialogShown = false
                 activeWebView?.reload()
                 true
@@ -1709,8 +1728,13 @@ class WebViewActivity : AppCompatActivity() {
             super.onBackPressed()
             return
         }
+        if (gate == Gate.LOGIN) {
+            if (verifyingLogin) failLogin(null, stayOnForm = false)
+            presentHome()
+            return
+        }
         if (gate != Gate.BROWSER) {
-            if (verifyingLogin) failLogin(null)
+            if (verifyingLogin) failLogin(null, stayOnForm = false)
             return
         }
         val wv = activeWebView

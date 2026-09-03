@@ -42,7 +42,7 @@
         android:orderInCategory="200">
         <item
             android:id="@+id/action_logout"
-            android:title="Odhlásit"
+            android:title="Vymazat údaje"
             android:icon="@drawable/ic_logout"
             app:showAsAction="never" />
     </group>

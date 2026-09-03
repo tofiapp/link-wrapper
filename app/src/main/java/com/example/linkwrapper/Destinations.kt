@@ -3,27 +3,27 @@ package com.example.linkwrapper
 import java.net.URI
 
 /**
- * Aplikace, které jde po přihlášení otevřít z nativní obrazovky Domů.
- * Přihlášení se pořád ověřuje na PSST; DSD použije stejnou relaci.
+ * Dlaždice na nativní obrazovce Domů.
+ *
+ * PSST používá aplikační přihlášení (NTLM). DSD má vlastní formulář na webu.
  */
 internal object Destinations {
 
     const val PSST_URL = "https://test.psst.tudc.cz/HSI.Psst.Data"
     const val DSD_URL = "https://dsd.tudc.cz/"
-
-    /** Server, na kterém se ověřuje jméno a heslo. */
     const val LOGIN_URL = PSST_URL
 
     data class AppLink(
         val id: String,
         val title: String,
         val hostLabel: String,
-        val url: String
+        val url: String,
+        val requiresAppLogin: Boolean
     )
 
     val apps: List<AppLink> = listOf(
-        AppLink("psst", "PSST Data", "test.psst.tudc.cz", PSST_URL),
-        AppLink("dsd", "DSD", "dsd.tudc.cz", DSD_URL)
+        AppLink("psst", "PSST Data", "test.psst.tudc.cz", PSST_URL, requiresAppLogin = true),
+        AppLink("dsd", "DSD", "dsd.tudc.cz", DSD_URL, requiresAppLogin = false)
     )
 
     fun forHost(host: String?): AppLink? {

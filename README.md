@@ -5,14 +5,12 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
-- Po spuštění nejdřív **VPN**, pak **přihlášení**, pak nativní **Domů**
-  se dvěma odkazy (**PSST Data** → `test.psst.tudc.cz`, **DSD** →
-  `dsd.tudc.cz`). Web se otevře až po klepnutí. Přihlášení se ověřuje
-  na PSST.
-- Relace se uloží v aplikaci. Při dalším spuštění se uživatel nepřihlašuje znovu
-  a znovu uvidí Domů.
-- **Odhlásit** (na Domů, nebo ⋮ dole červeně) smaže jméno, heslo, cookies i NTLM relaci
-  úplně a vrátí na obrazovku „Byl jste odhlášen“.
+- Po spuštění (a po VPN) nativní **Domů** s lištou — i bez přihlášení.
+  **PSST Data** má aplikační přihlášení (NTLM, platí pro `psst.tudc.cz` a
+  `test.psst.tudc.cz`). **DSD** otevře web s vlastním formulářem.
+- Údaje k PSST se uloží v aplikaci, dokud je v ⋮ nesmažete.
+- **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
+  relace na otevřených stránkách. Pak jste na obou webech odhlášení.
 - **Karty** nahoře v liště; vpravo **+** (modré), **domeček** (zpět na Domů), **⋮**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
   na pozadí nesežerou tablet. Posun grafu: WebView bez hardware vrstvy,
@@ -22,8 +20,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   (u běžné APK i přehled firemních CA).
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.
-- **VPN brána**: bez Cisco AnyConnect jen varování. Po připojení se buď
-  zobrazí přihlášení, nebo se vrátí otevřené karty (když relace ještě platí).
+- **VPN brána**: bez Cisco AnyConnect jen varování pod lištou. Po připojení
+  se vrátí Domů nebo otevřené karty.
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
 - **Bez prohlížeče na tabletu**: Chrome ani jiný prohlížeč appka
   nepotřebuje a neotevírá. Musí zůstat systémové **Android System WebView**
@@ -150,15 +148,14 @@ proto má vlastní přihlašovací obrazovku. Zkoušejte tvar `DOMÉNA\uživatel
 
 Tok:
 
-1. Bez VPN → jen hláška Cisco AnyConnect. Žádný formulář, žádný home.
-2. VPN běží a **není relace** → formulář. Home se nenačte, dokud server
-   údaje nepřijme.
-3. Údaje sedí → uloží se do `Session` a otevře se home. Další karty i
-   další spuštění aplikace použijí stejné údaje (HTTP Basic / Digest / NTLM).
-4. **⋮ → Odhlásit** → prefs, cookies, HTTP auth cache i Chromium profil
-   se smažou a proces se restartuje (NTLM jinak v procesu přežije).
-5. Špatné heslo se ověří v odděleném procesu a do prohlížeče se nedostane.
-   Na formuláři zůstane hláška; správné heslo lze zadat hned znovu.
+1. Bez VPN → hláška Cisco AnyConnect pod lištou.
+2. VPN běží → nativní **Domů** (i bez přihlášení).
+3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
+   Údaje platí pro `psst.tudc.cz` / `test.psst.tudc.cz`.
+4. **DSD** → web s vlastním přihlášením, údaje z PSST se tam neposílají.
+5. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache i Chromium profil
+   se smažou a proces se restartuje (NTLM jinak v procesu přežije). Pak znovu Domů.
+6. Špatné heslo k PSST se ověří v odděleném procesu a do prohlížeče se nedostane.
 
 | Typ na serveru | Šance ve WebView |
 | --- | --- |

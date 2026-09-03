@@ -33,4 +33,10 @@ class DestinationsTest {
             Destinations.sameApp(Destinations.PSST_URL, Destinations.DSD_URL)
         )
     }
+
+    @Test
+    fun onlyPsstUsesAppLogin() {
+        assertTrue(Destinations.forHost("test.psst.tudc.cz")!!.requiresAppLogin)
+        assertFalse(Destinations.forHost("dsd.tudc.cz")!!.requiresAppLogin)
+    }
 }
