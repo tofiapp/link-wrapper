@@ -3,6 +3,9 @@
 Obálka nad WebView. Přihlášení, karty, VPN a certifikáty řeší Android.
 Grafy, tabulky a zbytek UI kreslí stránka `HSI.Psst.Data` uvnitř WebView.
 
+Prohlídka kódu bez znalosti Kotlinu (mapa souborů, proč WebView / NTLM
+probe / pinning CA): [`VYSVETLENI.md`](VYSVETLENI.md).
+
 ---
 
 ## A. Přihlášení a odhlášení (opraveno)
