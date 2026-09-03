@@ -15,7 +15,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   na pozadí nesežerou tablet. Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
   hover/tooltip při tažení.
-- Nabídka **⋮**: zadat adresu, přenačíst, certifikáty, nastavení odkazů.
+- Nabídka **⋮**: zadat adresu, přenačíst, nastavení odkazů
+  (u běžné APK i přehled firemních CA).
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
 - **VPN brána**: bez Cisco AnyConnect jen varování. Po připojení se buď
@@ -34,7 +35,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
    (`.github/workflows/build.yml`), který appku sestaví, očísluje a podepíše.
 4. Stáhni APK jedním z těchto způsobů:
    - **Releases** (pohodlnější): v repozitáři záložka **Releases** → nejnovější
-     verze → soubor `LinkWrapper-1.0.N.apk`.
+     verze → soubory `LinkWrapper-pinned-1.0.N.apk` (běžná) a
+     `LinkWrapper-systemtrust-1.0.N-system.apk` (jen trust store tabletu).
    - **Actions**: záložka **Actions** → poslední běh → dole v sekci
      **Artifacts** najdeš `LinkWrapper-1.0.N` → stáhni zip, uvnitř je APK.
 5. Ten `.apk` nahraj do tabletu (email sám sobě, Google Drive, USB…) a nainstaluj.
@@ -83,8 +85,8 @@ SZT Root BAU ECC CA          platnost do 4. 4. 2039
 Certifikát stránky podepisuje **mezilehlá** CA, ne kořenová. Oba certifikáty
 autorit jsou vložené v projektu:
 
-- `app/src/main/res/raw/corporate_ca.pem` — kořenová
-- `app/src/main/res/raw/corporate_sub_ca.pem` — mezilehlá
+- `app/src/pinned/res/raw/corporate_ca.pem` — kořenová
+- `app/src/pinned/res/raw/corporate_sub_ca.pem` — mezilehlá
 
 ### Jak ověření probíhá
 
@@ -123,6 +125,20 @@ připomínku pár měsíců předem.
 (Intune → trusted certificate profile). Pak ověřování v aplikaci není potřeba
 vůbec a fungovat bude i běžný prohlížeč.
 
+### APK jen s důvěrou tabletu (`systemtrust`)
+
+Druhá APK **PSST Data (systém)** (`com.example.linkwrapper.systemtrust`)
+nemá v sobě žádné firemní CA, žádné „pokračovat i tak“ a v menu žádnou
+položku o certifikátech. HTTPS ověřuje jen Android podle toho, čemu
+tablet důvěřuje (systémové CA **i** certifikáty nainstalované uživatelem
+/ MDM).
+
+Když se v ní home načte, nainstalované CA na tabletu stačí. Když ne,
+Android spojení odmítne — appka ho nepřekročí.
+
+Jde nainstalovat vedle běžné APK (jiný název i id). Na tabletu musí být
+stejně VPN.
+
 ## Přihlášení a odhlášení
 
 Android neumí Windows Integrated Auth (Kerberos) jako firemní PC. Appka
@@ -151,13 +167,16 @@ Pokud server vyžaduje Kerberos, je potřeba na IIS povolit NTLM (nebo Basic
 přes HTTPS). To aplikace sama nevyřeší.
 
 Údaje se nikam neodesílají mimo cílový server. Záloha aplikace je vypnutá
-(`allowBackup=false`), aby se heslo nezkopírovalo z tabletu.
+(`allowBackup=false`), aby se heslo nezkopírovalo z tabletu. Na disku je
+heslo šifrované klíčem v Android Keystore — čitelný text v souboru
+není. Podrobný bezpečnostní audit: [`BEZPECNOST.md`](BEZPECNOST.md).
 
 ## Co ještě doladit
 
 - **Ikona appky**: teď je jen jednoduchý placeholder (modrý čtverec se
   symbolem odkazu). Dá se snadno vyměnit za firemní logo.
 
-Celkový audit (přihlášení, sekání grafů, bezpečnost): [`AUDIT.md`](AUDIT.md).
+Celkový audit (přihlášení, sekání grafů): [`AUDIT.md`](AUDIT.md).
+Bezpečnost údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
 
 Vysvětlení celého projektu pro člověka bez Kotlinu (co který soubor dělá a proč): [`VYSVETLENI.md`](VYSVETLENI.md).

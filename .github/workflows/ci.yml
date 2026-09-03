@@ -31,15 +31,25 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Build PR APK
+      - name: Build PR APKs
         run: >
-          ./gradlew assembleRelease printVersion --stacktrace
+          ./gradlew assemblePinnedRelease assembleSystemtrustRelease printVersion
+          --stacktrace
           -PversionName=1.0.0-pr${{ github.event.number }}
           -PversionCode=1
 
-      - name: Upload APK artifact
+      - name: Upload pinned APK
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: LinkWrapper-pr${{ github.event.number }}
-          path: app/build/outputs/apk/release/LinkWrapper-*.apk
+          name: LinkWrapper-pr${{ github.event.number }}-pinned
+          path: app/build/outputs/apk/pinned/release/LinkWrapper-*.apk
+          if-no-files-found: error
+
+      - name: Upload systemtrust APK
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinkWrapper-pr${{ github.event.number }}-system
+          path: app/build/outputs/apk/systemtrust/release/LinkWrapper-*.apk
           if-no-files-found: error

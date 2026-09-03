@@ -191,6 +191,7 @@ class WebViewActivity : AppCompatActivity() {
         bindImeInsets()
 
         CookieManager.getInstance().setAcceptCookie(true)
+        WebView.setWebContentsDebuggingEnabled(false)
 
         pendingStartUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
         showSignedOutBanner = Session.consumeSignedOutBanner(this)
@@ -313,6 +314,7 @@ class WebViewActivity : AppCompatActivity() {
             else passwordInput.requestFocus()
         }
         attachImeLayoutListener(true)
+        setSensitiveScreen(true)
     }
 
     private fun presentBrowser() {
@@ -320,6 +322,7 @@ class WebViewActivity : AppCompatActivity() {
         showSignedOutBanner = false
         hideLoginOverlay()
         attachImeLayoutListener(false)
+        setSensitiveScreen(false)
         if (tabs.isEmpty()) {
             restoreSavedTabsOrStart()
         } else {
@@ -352,6 +355,7 @@ class WebViewActivity : AppCompatActivity() {
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
         attachImeLayoutListener(true)
+        setSensitiveScreen(true)
     }
 
     private fun restoreSavedTabsOrStart() {
@@ -562,6 +566,7 @@ class WebViewActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             webView.settings.safeBrowsingEnabled = false
         }
+        webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         // Chromium má vlastní compositor. Hardware vrstva kolem WebView
         // při posunu grafu pokaždé nahrává celou texturu → cukání.
         webView.setLayerType(View.LAYER_TYPE_NONE, null)
@@ -593,15 +598,26 @@ class WebViewActivity : AppCompatActivity() {
         installChartPerfBootstrap(webView)
 
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                val uri = request?.url ?: return true
+                return !isAllowedWebUri(uri)
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return true
+                return !isAllowedWebUri(uri)
+            }
+
             override fun onReceivedSslError(
                 view: WebView?,
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                if (CertPinning.isIssuedByCorporateCa(this@WebViewActivity, error?.certificate)) {
-                    handler?.proceed()
-                } else {
-                    handler?.cancel()
+                SslPolicy.handleSslError(this@WebViewActivity, handler, error) {
                     if (view === activeWebView && !shouldSuppressPageErrorDialogs()) {
                         showCertWarning(error)
                     }
@@ -617,6 +633,11 @@ class WebViewActivity : AppCompatActivity() {
                 awaitingHttpAuth = true
                 if (handler == null || host.isNullOrEmpty()) {
                     handler?.cancel()
+                    awaitingHttpAuth = false
+                    return
+                }
+                if (!AuthHosts.allows(host)) {
+                    handler.cancel()
                     awaitingHttpAuth = false
                     return
                 }
@@ -849,6 +870,11 @@ class WebViewActivity : AppCompatActivity() {
         callback: GeolocationPermissions.Callback?
     ) {
         if (callback == null) return
+        val originHost = origin?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+        if (!AuthHosts.allows(originHost)) {
+            callback.invoke(origin, false, false)
+            return
+        }
         if (hasLocationPermission()) {
             callback.invoke(origin, true, false)
             return
@@ -892,6 +918,22 @@ class WebViewActivity : AppCompatActivity() {
         callback?.invoke(origin, allowed, false)
         if (!allowed) {
             Toast.makeText(this, "Poloha nebyla povolena", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun isAllowedWebUri(uri: Uri): Boolean {
+        val scheme = uri.scheme?.lowercase() ?: return false
+        return scheme == "https" || scheme == "about"
+    }
+
+    private fun setSensitiveScreen(on: Boolean) {
+        if (on) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
 
@@ -1056,9 +1098,16 @@ class WebViewActivity : AppCompatActivity() {
 
         val url = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
         AuthProbe.kill(this)
-        val probeIntent = AuthProbeActivity.intent(this, user, pass, url)
+        if (!AuthHandoff.put(this, user, pass, url)) {
+            failLogin("Přihlášení se nepodařilo připravit. Zkuste to znovu.")
+            return
+        }
+        val probeIntent = AuthProbeActivity.intent(this)
         mainHandler.postDelayed({
-            if (!verifyingLogin) return@postDelayed
+            if (!verifyingLogin) {
+                AuthHandoff.clear(this)
+                return@postDelayed
+            }
             authProbeLauncher.launch(probeIntent)
         }, 150)
     }
@@ -1073,6 +1122,8 @@ class WebViewActivity : AppCompatActivity() {
         showSignedOutBanner = false
         usernameLayout.error = null
         passwordLayout.error = null
+        usernameInput.setText("")
+        passwordInput.setText("")
         AuthProbe.kill(this)
         refreshGate()
     }
@@ -1268,44 +1319,14 @@ class WebViewActivity : AppCompatActivity() {
     private fun showCertWarning(error: SslError?) {
         if (dialogShown) return
         if (shouldSuppressPageErrorDialogs()) return
+        if (!SslPolicy.SHOW_CERT_MENU) {
+            val url = error?.url?.let { runCatching { Uri.parse(it) }.getOrNull() }
+            showNetworkWarning(null, url)
+            return
+        }
         dialogShown = true
         progressBar.visibility = View.GONE
-
-        val detail = when (error?.primaryError) {
-            SslError.SSL_UNTRUSTED ->
-                "Certifikát stránky nevydala firemní certifikační autorita " +
-                    "(SZT Root BAU ECC CA) ani jiná autorita, které zařízení důvěřuje."
-            SslError.SSL_EXPIRED -> "Certifikát stránky vypršel."
-            SslError.SSL_IDMISMATCH ->
-                "Certifikát patří jiné adrese, než na kterou se připojujete."
-            SslError.SSL_NOTYETVALID -> "Certifikát zatím není platný."
-            SslError.SSL_DATE_INVALID -> "Certifikát má neplatné datum."
-            else -> "Certifikát stránky se nepodařilo ověřit."
-        }
-
-        val loadIssue = CertPinning.loadError()
-        val diag = buildString {
-            append("\n\nDetail: kód ")
-            append(error?.primaryError ?: -1)
-            error?.url?.let { append(", ").append(Uri.parse(it).host ?: it) }
-            if (loadIssue != null) append("\n").append(loadIssue)
-        }
-
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Spojení nebylo ověřeno")
-            .setMessage(
-                detail +
-                    "\n\nStránka nebyla načtena. Pokud je to očekávané (např. byla " +
-                    "vyměněna firemní CA), obraťte se na IT — do aplikace je potřeba " +
-                    "doplnit nový certifikát." +
-                    "\n\nPokud jste tuto hlášku nečekali, nepokračujte a nezadávejte " +
-                    "na této stránce žádné přihlašovací údaje." +
-                    diag
-            )
-            .setPositiveButton("Zavřít", null)
-            .setCancelable(true)
-            .setOnDismissListener { dialogShown = false }
-            .show()
+        SslPolicy.showSslRejected(this, error) { dialogShown = false }
     }
 
     private fun showNetworkWarning(code: Int?, url: Uri?) {
@@ -1404,14 +1425,6 @@ class WebViewActivity : AppCompatActivity() {
         exitProcess(0)
     }
 
-    private fun showCertInfo() {
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Ověřování certifikátů")
-            .setMessage(CertPinning.describeChain(this))
-            .setPositiveButton("Zavřít", null)
-            .show()
-    }
-
     private fun openLinkSettings() {
         val steps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             "1. Klepni na „Otevírání odkazů\"\n" +
@@ -1464,11 +1477,11 @@ class WebViewActivity : AppCompatActivity() {
         listOf(
             R.id.action_open_url,
             R.id.action_reload,
-            R.id.action_cert_info,
             R.id.action_link_settings
         ).forEach { id ->
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
         }
+        menu?.findItem(R.id.action_cert_info)?.icon?.mutate()?.setTint(inkSoft)
 
         menu?.findItem(R.id.action_logout)?.let { item ->
             val title = SpannableString("Odhlásit")
@@ -1514,7 +1527,7 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_cert_info -> {
-                showCertInfo()
+                SslPolicy.showInfo(this)
                 true
             }
             R.id.action_link_settings -> {

@@ -13,41 +13,62 @@ data class Credentials(val username: String, val password: String)
 /**
  * Jedna relace přihlášení pro celou aplikaci.
  *
- * Údaje se uloží až po úspěšném ověření na serveru a zůstanou, dokud
- * uživatel nestiskne Odhlásit. Odhlášení smaže prefs i stopu ve WebView.
+ * Údaje se uloží až po úspěšném ověření na serveru, šifrované klíčem
+ * z Android Keystore. Na disku není čitelné heslo. Relace platí, dokud
+ * uživatel nestiskne Odhlásit.
  */
 object Session {
 
     private const val PREFS = "session_prefs"
     private const val KEY_USER = "username"
     private const val KEY_PASS = "password"
+    private const val KEY_USER_ENC = "username_enc"
+    private const val KEY_PASS_ENC = "password_enc"
     private const val KEY_SIGNED_OUT = "show_signed_out"
 
     private const val LEGACY_AUTH_PREFS = "http_auth_prefs"
     private const val LEGACY_GATE_PREFS = "session_gate"
 
+    @Volatile
+    private var memoryOnly: Credentials? = null
+
     fun isActive(context: Context): Boolean = credentials(context) != null
 
     fun credentials(context: Context): Credentials? {
+        memoryOnly?.let { return it }
         migrateLegacy(context)
+        migratePlaintext(context)
         val prefs = prefs(context)
-        val user = prefs.getString(KEY_USER, null) ?: return null
-        val pass = prefs.getString(KEY_PASS, null) ?: return null
+        val encUser = prefs.getString(KEY_USER_ENC, null) ?: return null
+        val encPass = prefs.getString(KEY_PASS_ENC, null) ?: return null
+        val user = SecretStore.decryptFromString(encUser) ?: return null
+        val pass = SecretStore.decryptFromString(encPass) ?: return null
         if (user.isEmpty() || pass.isEmpty()) return null
         return Credentials(user, pass)
     }
 
-    /** Uloží ověřené údaje. Platí, dokud [end] nesmaže relaci. */
+    /** Uloží ověřené údaje. Na disk jen šifrovaně; jinak jen v RAM. */
     fun start(context: Context, username: String, password: String) {
-        prefs(context).edit()
-            .putString(KEY_USER, username)
-            .putString(KEY_PASS, password)
+        memoryOnly = Credentials(username, password)
+        val encUser = SecretStore.encryptToString(username)
+        val encPass = SecretStore.encryptToString(password)
+        val editor = prefs(context).edit()
+            .remove(KEY_USER)
+            .remove(KEY_PASS)
             .putBoolean(KEY_SIGNED_OUT, false)
-            .commit()
+        if (encUser != null && encPass != null) {
+            editor.putString(KEY_USER_ENC, encUser)
+                .putString(KEY_PASS_ENC, encPass)
+        } else {
+            editor.remove(KEY_USER_ENC).remove(KEY_PASS_ENC)
+        }
+        editor.commit()
     }
 
     /** Úplné smazání relace. Nic z hesla nesmí zůstat v prefs. */
     fun end(context: Context) {
+        memoryOnly = null
+        AuthHandoff.clear(context)
         prefs(context).edit()
             .clear()
             .putBoolean(KEY_SIGNED_OUT, true)
@@ -56,6 +77,7 @@ object Session {
             .edit().clear().commit()
         context.getSharedPreferences(LEGACY_GATE_PREFS, Context.MODE_PRIVATE)
             .edit().clear().commit()
+        SecretStore.deleteKey()
     }
 
     fun consumeSignedOutBanner(context: Context): Boolean {
@@ -141,20 +163,45 @@ object Session {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    private fun migratePlaintext(context: Context) {
+        val current = prefs(context)
+        val user = current.getString(KEY_USER, null)
+        val pass = current.getString(KEY_PASS, null)
+        if (user.isNullOrEmpty() || pass.isNullOrEmpty()) {
+            if (current.contains(KEY_USER) || current.contains(KEY_PASS)) {
+                current.edit().remove(KEY_USER).remove(KEY_PASS).commit()
+            }
+            return
+        }
+        val encUser = SecretStore.encryptToString(user)
+        val encPass = SecretStore.encryptToString(pass)
+        val editor = current.edit().remove(KEY_USER).remove(KEY_PASS)
+        if (encUser != null && encPass != null) {
+            editor.putString(KEY_USER_ENC, encUser).putString(KEY_PASS_ENC, encPass)
+            memoryOnly = Credentials(user, pass)
+        }
+        editor.commit()
+    }
+
     /** Převezme údaje ze starého HttpCredentials úložiště, jednorázově. */
     private fun migrateLegacy(context: Context) {
-        val current = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (current.contains(KEY_USER)) return
+        val current = prefs(context)
+        if (current.contains(KEY_USER) || current.contains(KEY_USER_ENC)) return
         val legacy = context.getSharedPreferences(LEGACY_AUTH_PREFS, Context.MODE_PRIVATE)
         val user = legacy.getString("user:*.psst.tudc.cz", null)
             ?: legacy.all.entries.firstOrNull { it.key.startsWith("user:") }?.value as? String
         val pass = legacy.getString("pass:*.psst.tudc.cz", null)
             ?: legacy.all.entries.firstOrNull { it.key.startsWith("pass:") }?.value as? String
         if (!user.isNullOrEmpty() && !pass.isNullOrEmpty()) {
-            current.edit()
-                .putString(KEY_USER, user)
-                .putString(KEY_PASS, pass)
-                .commit()
+            val encUser = SecretStore.encryptToString(user)
+            val encPass = SecretStore.encryptToString(pass)
+            if (encUser != null && encPass != null) {
+                current.edit()
+                    .putString(KEY_USER_ENC, encUser)
+                    .putString(KEY_PASS_ENC, encPass)
+                    .commit()
+                memoryOnly = Credentials(user, pass)
+            }
         }
         legacy.edit().clear().commit()
     }

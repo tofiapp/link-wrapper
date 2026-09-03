@@ -141,6 +141,7 @@
                         android:layout_height="wrap_content"
                         android:imeOptions="actionNext"
                         android:importantForAutofill="no"
+                        android:importantForContentCapture="no"
                         android:inputType="textPersonName" />
                 </com.google.android.material.textfield.TextInputLayout>
 
@@ -160,6 +161,7 @@
                         android:layout_height="wrap_content"
                         android:imeOptions="actionDone"
                         android:importantForAutofill="no"
+                        android:importantForContentCapture="no"
                         android:inputType="textPassword" />
                 </com.google.android.material.textfield.TextInputLayout>
 

@@ -2,6 +2,7 @@ package com.example.linkwrapper
 
 import android.content.Context
 import android.net.http.SslCertificate
+import android.net.http.SslError
 import android.os.Build
 import java.security.MessageDigest
 import java.security.cert.CertificateFactory
@@ -84,6 +85,21 @@ object CertPinning {
             lastLoadError = "CA se nepodařilo načíst: ${e.javaClass.simpleName}"
             null
         }
+    }
+
+    /**
+     * Smí WebView pokračovat přes SSL chybu? Jen když jde výhradně o
+     * nedůvěru k CA (tablety nemají SZT v systému) a řetězec je náš.
+     * Hostname mismatch, expirace ani jiná chyba se nepřekračují.
+     */
+    fun shouldProceed(context: Context, error: SslError?): Boolean {
+        if (error == null) return false
+        if (error.hasError(SslError.SSL_IDMISMATCH)) return false
+        if (error.hasError(SslError.SSL_EXPIRED)) return false
+        if (error.hasError(SslError.SSL_NOTYETVALID)) return false
+        if (error.hasError(SslError.SSL_DATE_INVALID)) return false
+        if (!error.hasError(SslError.SSL_UNTRUSTED)) return false
+        return isIssuedByCorporateCa(context, error.certificate)
     }
 
     /**
