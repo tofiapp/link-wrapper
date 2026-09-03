@@ -1145,6 +1145,13 @@ class WebViewActivity : AppCompatActivity() {
             passwordLayout.error = message
             passwordInput.requestFocus()
             passwordInput.setSelection(passwordInput.text?.length ?: 0)
+            if (SslMessages.isMissingDeviceCerts(message)) {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("Chybí certifikáty")
+                    .setMessage(message)
+                    .setPositiveButton("Zavřít", null)
+                    .show()
+            }
         }
         if (isVpnActive()) presentLogin()
     }
@@ -1319,11 +1326,6 @@ class WebViewActivity : AppCompatActivity() {
     private fun showCertWarning(error: SslError?) {
         if (dialogShown) return
         if (shouldSuppressPageErrorDialogs()) return
-        if (!SslPolicy.SHOW_CERT_MENU) {
-            val url = error?.url?.let { runCatching { Uri.parse(it) }.getOrNull() }
-            showNetworkWarning(null, url)
-            return
-        }
         dialogShown = true
         progressBar.visibility = View.GONE
         SslPolicy.showSslRejected(this, error) { dialogShown = false }

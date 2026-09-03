@@ -172,7 +172,7 @@ class AuthProbeActivity : AppCompatActivity() {
                 error: SslError?
             ) {
                 SslPolicy.handleSslError(this@AuthProbeActivity, handler, error) {
-                    finishProbe(false, SslPolicy.PROBE_SSL_FAILURE)
+                    finishProbe(false, SslPolicy.probeFailure(error))
                 }
             }
 

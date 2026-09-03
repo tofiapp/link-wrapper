@@ -4,17 +4,12 @@ import android.content.Context
 import android.net.http.SslError
 import android.webkit.SslErrorHandler
 import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
  * Žádné vlastní SSL. Platí jen CA, kterým důvěřuje tablet.
- * Chybu spojení appka nepřekračuje a nic o ní uživateli nevysvětluje.
  */
 internal object SslPolicy {
-
-    const val SHOW_CERT_MENU = false
-
-    const val PROBE_SSL_FAILURE =
-        "Stránku se nepodařilo načíst. Zkontrolujte VPN a zkuste to znovu."
 
     @Suppress("UNUSED_PARAMETER")
     fun handleSslError(
@@ -32,13 +27,20 @@ internal object SslPolicy {
 
     fun loadError(): String? = null
 
-    @Suppress("UNUSED_PARAMETER")
+    fun probeFailure(error: SslError?): String = SslMessages.probeFailure(error)
+
     fun showSslRejected(
         activity: AppCompatActivity,
         error: SslError?,
         onDismiss: () -> Unit
     ) {
-        onDismiss()
+        MaterialAlertDialogBuilder(activity)
+            .setTitle("Chybí certifikáty")
+            .setMessage(SslMessages.probeFailure(error))
+            .setPositiveButton("Zavřít", null)
+            .setCancelable(true)
+            .setOnDismissListener { onDismiss() }
+            .show()
     }
 
     @Suppress("UNUSED_PARAMETER")
