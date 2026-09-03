@@ -127,4 +127,6 @@
         </FrameLayout>
     </LinearLayout>
 
+    <include layout="@layout/layout_vpn_gate" />
+
 </FrameLayout>
