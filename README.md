@@ -11,7 +11,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Údaje k PSST se uloží v aplikaci, dokud je v ⋮ nesmažete.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
   relace na otevřených stránkách. Pak jste na obou webech odhlášení.
-- **Karty** nahoře v liště; vpravo **+** (modré), **domeček** (zpět na Domů), **⋮**.
+- **Karty** nahoře v liště včetně karty **Domů**; vpravo **+**, **domeček**
+  (karta Domů), **⋮**. Křížek je jen když je karet víc. Karta Domů křížek nemá.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
   na pozadí nesežerou tablet. Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
@@ -153,6 +154,7 @@ Tok:
 3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
    Údaje platí pro `psst.tudc.cz` / `test.psst.tudc.cz`.
 4. **DSD** → web s vlastním přihlášením, údaje z PSST se tam neposílají.
+   Dočasný HTTP 401 při handshake se neukazuje (žádný dialog „Přístup odepřen“).
 5. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache i Chromium profil
    se smažou a proces se restartuje (NTLM jinak v procesu přežije). Pak znovu Domů.
 6. Špatné heslo k PSST se ověří v odděleném procesu a do prohlížeče se nedostane.

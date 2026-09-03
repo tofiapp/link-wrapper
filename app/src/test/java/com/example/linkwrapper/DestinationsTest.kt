@@ -39,4 +39,11 @@ class DestinationsTest {
         assertTrue(Destinations.forHost("test.psst.tudc.cz")!!.requiresAppLogin)
         assertFalse(Destinations.forHost("dsd.tudc.cz")!!.requiresAppLogin)
     }
+
+    @Test
+    fun homeIsNotAWebHost() {
+        assertEquals("app://home", Destinations.HOME_URL)
+        assertNull(Destinations.forUrl(Destinations.HOME_URL))
+        assertFalse(Destinations.sameApp(Destinations.HOME_URL, Destinations.DSD_URL))
+    }
 }
