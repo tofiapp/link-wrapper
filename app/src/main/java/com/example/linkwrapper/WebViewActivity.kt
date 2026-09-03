@@ -86,10 +86,10 @@ class WebViewActivity : AppCompatActivity() {
         private const val MAX_TABS = 8
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
-        /** Stránky ve WebView jsou moc velké; 67 % ≈ 1,5× víc viditelného obsahu. */
+        /** Stránky ve WebView: mezi výchozími 100 % a předchozími 67 %. */
         private const val PAGE_ZOOM_JS = """
 (function(){
-  var z = '67%';
+  var z = '84%';
   function apply(){
     try { document.documentElement.style.zoom = z; } catch (e) {}
     try { if (document.body) document.body.style.zoom = z; } catch (e) {}
@@ -111,7 +111,7 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var loginOverlay: View
     private lateinit var loginTitle: View
     private lateinit var loginFormColumn: View
-    private lateinit var vpnOnlyPanel: View
+    private lateinit var vpnGateOverlay: View
     private lateinit var loginFormScroll: View
     private lateinit var certBanner: View
     private lateinit var usernameLayout: TextInputLayout
@@ -341,9 +341,9 @@ class WebViewActivity : AppCompatActivity() {
     private fun presentLogin() {
         gate = Gate.LOGIN
         progressBar.visibility = View.GONE
+        hideVpnGate()
         loginOverlay.visibility = View.VISIBLE
         loginOverlay.bringToFront()
-        vpnOnlyPanel.visibility = View.GONE
         loginFormColumn.visibility = View.VISIBLE
         loginFormScroll.visibility = View.VISIBLE
         loginTitle.visibility = View.VISIBLE
@@ -358,7 +358,17 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun presentHome() {
-        convertActiveTabToHome()
+        if (tabs.isEmpty() || activeTab == null) {
+            openNewHomeTab()
+            return
+        }
+        if (activeTab?.isHome == true) {
+            selectTab(activeTab!!.id)
+            return
+        }
+        val existing = tabs.firstOrNull { it.isHome }
+        if (existing != null) selectTab(existing.id)
+        else openNewHomeTab()
     }
 
     private fun enterBrowser() {
@@ -398,15 +408,13 @@ class WebViewActivity : AppCompatActivity() {
         gate = Gate.VPN
         hideKeyboard()
         hideHomeOverlay()
-        loginOverlay.visibility = View.VISIBLE
-        loginOverlay.bringToFront()
+        hideLoginOverlay()
         progressBar.visibility = View.GONE
-        vpnOnlyPanel.visibility = View.VISIBLE
-        loginFormColumn.visibility = View.GONE
-        loginFormScroll.visibility = View.GONE
-        loginTitle.visibility = View.GONE
-        setCertBannerVisible(false)
-        attachImeLayoutListener(true)
+        if (::vpnGateOverlay.isInitialized) {
+            vpnGateOverlay.visibility = View.VISIBLE
+            vpnGateOverlay.bringToFront()
+        }
+        attachImeLayoutListener(false)
         setSensitiveScreen(false)
     }
 
@@ -432,26 +440,22 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    /** Domeček: aktuální karta se změní na Domů. Může jich být víc. */
-    private fun convertActiveTabToHome() {
-        val tab = activeTab
-        if (tab == null) {
-            openNewHomeTab()
+    /** Domeček: otevře kartu Domů, aktuální stránku nechá. */
+    private fun openHomeWindow() {
+        if (activeTab?.isHome == true) {
+            selectTab(activeTab!!.id)
             return
         }
-        if (tab.isHome) {
-            selectTab(tab.id)
-            return
-        }
-        destroyWebView(tab)
-        tab.isHome = true
-        tab.title = "Domů"
-        tab.url = Destinations.HOME_URL
-        selectTab(tab.id)
+        openNewHomeTab()
     }
 
     private fun openNewHomeTab() {
         if (tabs.size >= MAX_TABS) {
+            val existing = tabs.firstOrNull { it.isHome }
+            if (existing != null) {
+                selectTab(existing.id)
+                return
+            }
             Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
             return
         }
@@ -1135,7 +1139,7 @@ class WebViewActivity : AppCompatActivity() {
         loginOverlay = findViewById(R.id.loginOverlay)
         loginTitle = findViewById(R.id.loginTitle)
         loginFormColumn = findViewById(R.id.loginFormColumn)
-        vpnOnlyPanel = findViewById(R.id.vpnOnlyPanel)
+        vpnGateOverlay = findViewById(R.id.vpnGateOverlay)
         loginFormScroll = findViewById(R.id.loginFormScroll)
         certBanner = findViewById(R.id.certBanner)
         usernameLayout = findViewById(R.id.usernameLayout)
@@ -1224,12 +1228,16 @@ class WebViewActivity : AppCompatActivity() {
     private fun hideLoginOverlay() {
         hideKeyboard()
         loginOverlay.visibility = View.GONE
-        vpnOnlyPanel.visibility = View.GONE
         loginFormColumn.visibility = View.GONE
         loginFormScroll.visibility = View.GONE
         setCertBannerVisible(false)
         pendingAuthHandler = null
         updateLoginButton()
+        hideVpnGate()
+    }
+
+    private fun hideVpnGate() {
+        if (::vpnGateOverlay.isInitialized) vpnGateOverlay.visibility = View.GONE
     }
 
     private fun submitLogin() {
@@ -1700,13 +1708,14 @@ class WebViewActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         hideKeyboard()
         if (item.itemId == R.id.action_logout) {
+            if (gate == Gate.VPN) return true
             confirmLogout()
             return true
         }
         if (item.itemId == R.id.action_home) {
             if (gate == Gate.VPN) return true
             if (verifyingLogin) failLogin(null, stayOnForm = false)
-            presentHome()
+            openHomeWindow()
             return true
         }
         if (gate == Gate.VPN) return true
@@ -1763,6 +1772,10 @@ class WebViewActivity : AppCompatActivity() {
             hideKeyboard()
             return
         }
+        if (gate == Gate.VPN) {
+            super.onBackPressed()
+            return
+        }
         if (gate == Gate.HOME) {
             super.onBackPressed()
             return
@@ -1780,7 +1793,7 @@ class WebViewActivity : AppCompatActivity() {
         if (wv != null && wv.canGoBack()) {
             wv.goBack()
         } else {
-            presentHome()
+            openHomeWindow()
         }
     }
 }

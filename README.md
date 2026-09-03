@@ -11,21 +11,21 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Údaje k PSST se uloží v aplikaci, dokud je v ⋮ nesmažete.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
   relace na otevřených stránkách. Pak jste na obou webech odhlášení.
-- **Karty** nahoře v liště. **Domeček** změní *aktuální* kartu na **Domů**
-  (můžete mít víc karet Domů). **+** na Domů otevře další kartu Domů.
+- **Karty** nahoře v liště. **Domeček** otevře kartu **Domů** z jakékoliv
+  stránky (aktuální web zůstane). **+** na Domů otevře další kartu Domů.
   Křížek je jen když je karet víc. Dlaždice na Domů mají jen název
   (PSST Data, DSD), bez adresy. Karta DSD se jmenuje **DSD**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
-  na pozadí nesežerou tablet. Stránky jsou oddálené (~⅔ výchozí velikosti),
-  aby bylo vidět víc. Posun grafu: WebView bez hardware vrstvy,
+  na pozadí nesežerou tablet. Stránky jsou mírně oddálené (84 %),
+  aby bylo vidět víc, ale ne tak moc jako předtím. Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
   hover/tooltip při tažení.
 - Nabídka **⋮**: zadat adresu, přenačíst, nastavení odkazů
   (u běžné APK i přehled firemních CA).
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.
-- **VPN brána**: bez Cisco AnyConnect jen varování pod lištou. Po připojení
-  se vrátí Domů nebo otevřené karty.
+- **VPN brána**: bez Cisco AnyConnect hláška přes celou obrazovku — karty
+  ani lišta nejdou použít. Po připojení se vrátí Domů nebo otevřené karty.
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
 - **Bez prohlížeče na tabletu**: Chrome ani jiný prohlížeč appka
   nepotřebuje a neotevírá. Musí zůstat systémové **Android System WebView**
@@ -152,7 +152,7 @@ proto má vlastní přihlašovací obrazovku. Zkoušejte tvar `DOMÉNA\uživatel
 
 Tok:
 
-1. Bez VPN → hláška Cisco AnyConnect pod lištou.
+1. Bez VPN → hláška přes celou obrazovku (Cisco AnyConnect). Nic jiného nefunguje.
 2. VPN běží → nativní **Domů** (i bez přihlášení).
 3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
    Údaje platí pro `psst.tudc.cz` / `test.psst.tudc.cz`.

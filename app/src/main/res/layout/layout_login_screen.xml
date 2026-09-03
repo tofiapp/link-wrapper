@@ -161,40 +161,4 @@
         </ScrollView>
     </LinearLayout>
 
-    <LinearLayout
-        android:id="@+id/vpnOnlyPanel"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:gravity="center_horizontal"
-        android:orientation="vertical"
-        android:paddingHorizontal="36dp"
-        android:visibility="gone">
-
-        <ImageView
-            android:layout_width="56dp"
-            android:layout_height="56dp"
-            android:contentDescription="@null"
-            android:src="@drawable/ic_warning_triangle" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="20dp"
-            android:fontFamily="sans-serif-medium"
-            android:gravity="center_horizontal"
-            android:text="VPN není připojená"
-            android:textColor="@color/alert"
-            android:textSize="20sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:gravity="center_horizontal"
-            android:lineSpacingMultiplier="1.35"
-            android:text="Připojte se přes Cisco AnyConnect.\nPo připojení vás aplikace vrátí zpět."
-            android:textColor="@color/ink_soft"
-            android:textSize="15sp" />
-    </LinearLayout>
 </FrameLayout>
