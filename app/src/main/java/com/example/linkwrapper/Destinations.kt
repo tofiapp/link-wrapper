@@ -12,6 +12,7 @@ internal object Destinations {
     const val PSST_URL = "https://test.psst.tudc.cz/HSI.Psst.Data"
     const val DSD_URL = "https://dsd.tudc.cz/"
     const val LOGIN_URL = PSST_URL
+    const val HOME_URL = "app://home"
 
     data class AppLink(
         val id: String,
