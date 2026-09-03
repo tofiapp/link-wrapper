@@ -5,12 +5,15 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
-- Po spuštění nejdřív **VPN**, pak **přihlášení**. Home
-  (`https://test.psst.tudc.cz/HSI.Psst.Data`) se otevře až po platných údajích.
-- Relace se uloží v aplikaci. Při dalším spuštění se uživatel nepřihlašuje znovu.
-- **Odhlásit** (⋮, dole, červeně) smaže jméno, heslo, cookies i NTLM relaci
+- Po spuštění nejdřív **VPN**, pak **přihlášení**, pak nativní **Domů**
+  se dvěma odkazy (**PSST Data** → `test.psst.tudc.cz`, **DSD** →
+  `dsd.tudc.cz`). Web se otevře až po klepnutí. Přihlášení se ověřuje
+  na PSST.
+- Relace se uloží v aplikaci. Při dalším spuštění se uživatel nepřihlašuje znovu
+  a znovu uvidí Domů.
+- **Odhlásit** (na Domů, nebo ⋮ dole červeně) smaže jméno, heslo, cookies i NTLM relaci
   úplně a vrátí na obrazovku „Byl jste odhlášen“.
-- **Karty** nahoře v liště; vpravo **+** (modré), **domeček**, **⋮**.
+- **Karty** nahoře v liště; vpravo **+** (modré), **domeček** (zpět na Domů), **⋮**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
   na pozadí nesežerou tablet. Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
@@ -18,7 +21,7 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Nabídka **⋮**: zadat adresu, přenačíst, nastavení odkazů
   (u běžné APK i přehled firemních CA).
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
-  `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
+  `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.
 - **VPN brána**: bez Cisco AnyConnect jen varování. Po připojení se buď
   zobrazí přihlášení, nebo se vrátí otevřené karty (když relace ještě platí).
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.

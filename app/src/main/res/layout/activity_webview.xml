@@ -124,6 +124,7 @@
         </FrameLayout>
     </LinearLayout>
 
+    <include layout="@layout/layout_home_screen" />
     <include layout="@layout/layout_login_screen" />
 
 </FrameLayout>
