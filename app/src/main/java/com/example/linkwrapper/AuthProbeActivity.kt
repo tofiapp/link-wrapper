@@ -60,6 +60,7 @@ object AuthProbe {
         } catch (_: Exception) {
         }
         deleteProfile(context)
+        AuthHandoff.clear(context)
     }
 
     fun deleteProfile(context: Context) {
@@ -79,20 +80,14 @@ object AuthProbe {
 class AuthProbeActivity : AppCompatActivity() {
 
     companion object {
-        const val EXTRA_USER = "extra_user"
-        const val EXTRA_PASS = "extra_pass"
-        const val EXTRA_URL = "extra_url"
         const val EXTRA_ERROR = "extra_error"
 
         private const val MAX_AUTH_ROUNDS = 16
         private const val TIMEOUT_MS = 14_000L
         private const val SETTLE_MS = 700L
 
-        fun intent(context: Context, username: String, password: String, url: String): Intent {
+        fun intent(context: Context): Intent {
             return Intent(context, AuthProbeActivity::class.java).apply {
-                putExtra(EXTRA_USER, username)
-                putExtra(EXTRA_PASS, password)
-                putExtra(EXTRA_URL, url)
                 addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
             }
         }
@@ -125,14 +120,19 @@ class AuthProbeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setFlags(
+            android.view.WindowManager.LayoutParams.FLAG_SECURE,
+            android.view.WindowManager.LayoutParams.FLAG_SECURE
+        )
         try {
             WebView.setDataDirectorySuffix(AuthProbe.DATA_DIR_SUFFIX)
         } catch (_: IllegalStateException) {
         }
 
-        username = intent.getStringExtra(EXTRA_USER).orEmpty()
-        password = intent.getStringExtra(EXTRA_PASS).orEmpty()
-        val url = intent.getStringExtra(EXTRA_URL).orEmpty()
+        val request = AuthHandoff.take(this)
+        username = request?.username.orEmpty()
+        password = request?.password.orEmpty()
+        val url = request?.url.orEmpty()
         if (username.isEmpty() || password.isEmpty() || url.isEmpty()) {
             finishProbe(false, "Neplatné jméno nebo heslo")
             return
@@ -161,13 +161,17 @@ class AuthProbeActivity : AppCompatActivity() {
     private fun configureWebView(webView: WebView) {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
+        webView.settings.allowFileAccess = false
+        webView.settings.allowContentAccess = false
+        webView.settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        WebView.setWebContentsDebuggingEnabled(false)
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(
                 view: WebView?,
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                if (CertPinning.isIssuedByCorporateCa(this@AuthProbeActivity, error?.certificate)) {
+                if (CertPinning.shouldProceed(this@AuthProbeActivity, error)) {
                     handler?.proceed()
                 } else {
                     handler?.cancel()
@@ -181,7 +185,7 @@ class AuthProbeActivity : AppCompatActivity() {
                 host: String?,
                 realm: String?
             ) {
-                if (handler == null || host.isNullOrEmpty()) {
+                if (handler == null || host.isNullOrEmpty() || !AuthHosts.allows(host)) {
                     handler?.cancel()
                     finishProbe(false, "Neplatné jméno nebo heslo")
                     return
@@ -257,6 +261,9 @@ class AuthProbeActivity : AppCompatActivity() {
         } catch (_: Exception) {
         }
         webView = null
+        username = ""
+        password = ""
+        AuthHandoff.clear(this)
         setResult(
             if (ok) Activity.RESULT_OK else Activity.RESULT_CANCELED,
             Intent().putExtra(EXTRA_ERROR, error)

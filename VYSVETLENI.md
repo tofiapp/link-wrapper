@@ -6,6 +6,7 @@ dělá, a proč je tohle řešení a ne Chrome / běžné přihlášení / „pr
 ignoruj“ u certifikátů.**
 
 Technický seznam oprav (sekání grafů, stará brána přihlášení) je v [`AUDIT.md`](AUDIT.md).
+Bezpečnost uložených údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
 Návod na instalaci APK je v [`README.md`](README.md).
 
 ---
@@ -329,22 +330,18 @@ přihlášený“.
 
 `object Session` = jedna relace pro celou appku.
 
-Uložení: `SharedPreferences` pojmenované `session_prefs`, režim
-`MODE_PRIVATE` (jen tahle appka). Klíče `username` a `password`. Zápis
-přes `.commit()` (hned, ne na pozadí) — při Odhlásit by `.apply()` mohlo
-nestihnout smazat heslo před zabitím procesu.
+Na disku **není čitelné heslo**. Ukládá se jako AES-256-GCM (klíč v
+Android Keystore, neopustí tablet). Zápis přes `.commit()` (hned).
+Když Keystore selže, relace zůstane jen v RAM — po vypnutí appky je
+potřeba přihlášení znovu.
 
-`isActive` = obě položky neprázdné. Relace **neexpirovává sama**. Platí,
+`isActive` = údaje jdou dešifrovat. Relace **neexpirovává sama**. Platí,
 dokud někdo nestiskne Odhlásit.
 
-`migrateLegacy` jednorázově převezme údaje ze starého úložiště
-(`http_auth_prefs`), kdyby na tabletu ještě visela verze před přepisem
-přihlášení.
+Při prvním spuštění nové verze se starý plaintext z prefs přežene do
+šifry a smaže. Totéž pro ještě starší `http_auth_prefs`.
 
-**Proč ne šifrované úložiště:** EncryptedSharedPreferences na některých
-tabletech padá a chtělo by extra knihovnu. Kompromis: plaintext v private
-prefs + vypnutá záloha + mazání při Odhlásit. Heslo nikam na internet
-nejde — jen na cílový server při HTTP auth.
+Podrobnosti a hrozby: [`BEZPECNOST.md`](BEZPECNOST.md).
 
 ---
 
@@ -499,10 +496,9 @@ WebView (viz § 1, tablety bez prohlížeče).
 Android nemá Kerberos/Negotiate jako firemní notebook. IIS musí pustit
 NTLM (nebo Basic přes HTTPS). Appka Kerberos sama nedodělá.
 
-**Proč heslo v SharedPreferences a ne v Keystore/EncryptedPrefs?**
-Jednoduchost a kompatibilita tabletů. Riziko: root/záloha. Záloha je
-vypnutá. Šifrované prefs je volitelný další krok, až se ověří na cílových
-zařízeních.
+**Proč heslo šifrované Keystore a ne EncryptedSharedPreferences?**
+Ta knihovna na některých tabletech padá. AES-GCM přímo v Android
+Keystore je v systému od API 23 (appka chce 26). Klíč neopustí hardware.
 
 **Proč zabíjet proces při Odhlásit?**
 NTLM žije v Chromiu v RAM procesu. API `clearHttpAuthUsernamePassword()`
@@ -549,8 +545,8 @@ tím, než Highcharts nastartuje.
 
 | téma | stav |
 | --- | --- |
-| Heslo v plaintext prefs | ano; jen tato appka; záloha vypnutá |
-| Heslo na cizí server | ne; jen HTTP auth na cílovou URL |
+| Heslo v plaintext prefs | ne — AES-GCM, klíč v Keystore |
+| Heslo na cizí server | ne; HTTP auth jen PSST hostitelé |
 | Pokračovat přes špatný certifikát | ne |
 | HTTP bez TLS | ne |
 | Přístup na `file://` | vypnutý |

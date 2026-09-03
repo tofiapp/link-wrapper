@@ -191,6 +191,7 @@ class WebViewActivity : AppCompatActivity() {
         bindImeInsets()
 
         CookieManager.getInstance().setAcceptCookie(true)
+        WebView.setWebContentsDebuggingEnabled(false)
 
         pendingStartUrl = resolveUrlFromIntent(intent) ?: DEFAULT_URL
         showSignedOutBanner = Session.consumeSignedOutBanner(this)
@@ -313,6 +314,7 @@ class WebViewActivity : AppCompatActivity() {
             else passwordInput.requestFocus()
         }
         attachImeLayoutListener(true)
+        setSensitiveScreen(true)
     }
 
     private fun presentBrowser() {
@@ -320,6 +322,7 @@ class WebViewActivity : AppCompatActivity() {
         showSignedOutBanner = false
         hideLoginOverlay()
         attachImeLayoutListener(false)
+        setSensitiveScreen(false)
         if (tabs.isEmpty()) {
             restoreSavedTabsOrStart()
         } else {
@@ -352,6 +355,7 @@ class WebViewActivity : AppCompatActivity() {
         loggedOutBanner.visibility = View.GONE
         vpnBanner.visibility = View.GONE
         attachImeLayoutListener(true)
+        setSensitiveScreen(true)
     }
 
     private fun restoreSavedTabsOrStart() {
@@ -562,6 +566,7 @@ class WebViewActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             webView.settings.safeBrowsingEnabled = false
         }
+        webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         // Chromium má vlastní compositor. Hardware vrstva kolem WebView
         // při posunu grafu pokaždé nahrává celou texturu → cukání.
         webView.setLayerType(View.LAYER_TYPE_NONE, null)
@@ -593,12 +598,26 @@ class WebViewActivity : AppCompatActivity() {
         installChartPerfBootstrap(webView)
 
         webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                val uri = request?.url ?: return true
+                return !isAllowedWebUri(uri)
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+                val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return true
+                return !isAllowedWebUri(uri)
+            }
+
             override fun onReceivedSslError(
                 view: WebView?,
                 handler: SslErrorHandler?,
                 error: SslError?
             ) {
-                if (CertPinning.isIssuedByCorporateCa(this@WebViewActivity, error?.certificate)) {
+                if (CertPinning.shouldProceed(this@WebViewActivity, error)) {
                     handler?.proceed()
                 } else {
                     handler?.cancel()
@@ -617,6 +636,11 @@ class WebViewActivity : AppCompatActivity() {
                 awaitingHttpAuth = true
                 if (handler == null || host.isNullOrEmpty()) {
                     handler?.cancel()
+                    awaitingHttpAuth = false
+                    return
+                }
+                if (!AuthHosts.allows(host)) {
+                    handler.cancel()
                     awaitingHttpAuth = false
                     return
                 }
@@ -849,6 +873,11 @@ class WebViewActivity : AppCompatActivity() {
         callback: GeolocationPermissions.Callback?
     ) {
         if (callback == null) return
+        val originHost = origin?.let { runCatching { Uri.parse(it).host }.getOrNull() }
+        if (!AuthHosts.allows(originHost)) {
+            callback.invoke(origin, false, false)
+            return
+        }
         if (hasLocationPermission()) {
             callback.invoke(origin, true, false)
             return
@@ -892,6 +921,22 @@ class WebViewActivity : AppCompatActivity() {
         callback?.invoke(origin, allowed, false)
         if (!allowed) {
             Toast.makeText(this, "Poloha nebyla povolena", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun isAllowedWebUri(uri: Uri): Boolean {
+        val scheme = uri.scheme?.lowercase() ?: return false
+        return scheme == "https" || scheme == "about"
+    }
+
+    private fun setSensitiveScreen(on: Boolean) {
+        if (on) {
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
     }
 
@@ -1056,9 +1101,16 @@ class WebViewActivity : AppCompatActivity() {
 
         val url = pendingResumeUrl ?: pendingStartUrl ?: DEFAULT_URL
         AuthProbe.kill(this)
-        val probeIntent = AuthProbeActivity.intent(this, user, pass, url)
+        if (!AuthHandoff.put(this, user, pass, url)) {
+            failLogin("Přihlášení se nepodařilo připravit. Zkuste to znovu.")
+            return
+        }
+        val probeIntent = AuthProbeActivity.intent(this)
         mainHandler.postDelayed({
-            if (!verifyingLogin) return@postDelayed
+            if (!verifyingLogin) {
+                AuthHandoff.clear(this)
+                return@postDelayed
+            }
             authProbeLauncher.launch(probeIntent)
         }, 150)
     }
@@ -1073,6 +1125,8 @@ class WebViewActivity : AppCompatActivity() {
         showSignedOutBanner = false
         usernameLayout.error = null
         passwordLayout.error = null
+        usernameInput.setText("")
+        passwordInput.setText("")
         AuthProbe.kill(this)
         refreshGate()
     }

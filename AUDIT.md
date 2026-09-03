@@ -5,6 +5,7 @@ Grafy, tabulky a zbytek UI kreslí stránka `HSI.Psst.Data` uvnitř WebView.
 
 Prohlídka kódu bez znalosti Kotlinu (mapa souborů, proč WebView / NTLM
 probe / pinning CA): [`VYSVETLENI.md`](VYSVETLENI.md).
+Bezpečnost uložených údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
 
 ---
 
@@ -143,10 +144,12 @@ změna `HSI.Psst.Data`.
 
 | věc | stav |
 | --- | --- |
-| Heslo v `SharedPreferences` (plaintext, `MODE_PRIVATE`) | **zůstává** — EncryptedSharedPreferences by chtělo extra knihovnu a na některých tabletech padá. Relace se mažou Odhlásit. Záloha aplikace je vypnutá. |
+| Heslo na disku | **šifrované** AES-256-GCM, klíč v Android Keystore. Starý plaintext se při spuštění smaže. Viz [`BEZPECNOST.md`](BEZPECNOST.md). |
+| Heslo v Intentu (probe) | pryč — šifrovaný soubor v `no_backup`, po čtení skartace |
+| HTTP auth na cizí host | jen `psst.tudc.cz` / `test.psst.tudc.cz` |
 | `allowFileAccess` / access z `file://` | vypnuto (dřív default zapnutý) |
 | `usesCleartextTraffic` | false |
-| Catch-all intent filtr `http/https` | záměr („Otevřít pomocí“), ale appka se nabízí u **každého** odkazu v systému, nejen PSST |
+| Catch-all intent filtr `http/https` | záměr („Otevřít pomocí“); **heslo se na cizí host neposílá** |
 | Exportovaná activity `singleTask` | nutná pro odkazy; zkontrolovat, že bez relace nejde na home (teď brána) |
 | JS v WebView | nutný pro PSST; souborový přístup je vypnutý |
 
@@ -155,8 +158,8 @@ změna `HSI.Psst.Data`.
 - Max. 8 WebView pořád žere paměť. Pozastavení skrytých karet pomůže CPU/GPU,
   ne RAM. Na 2 GB tabletu může Android karty zabít — po návratu se
   nenačtou z `onSaveInstanceState` (stav karet se neukládá).
-- Není `shouldOverrideUrlLoading` pro `mailto:` / `tel:` / `intent:`.
-  Takový odkaz zůstane ve WebView nebo selže.
+- Není `shouldOverrideUrlLoading` pro `mailto:` / `tel:` — takové odkazy
+  se nenačtou (`https` / `about` jen). `intent:` a `file:` jsou zablokované.
 - `setOnLongClickListener { true }` blokuje dlouhé stisknutí (kopírování
   odkazu / textu). Pravděpodobně záměr proti náhodnému menu.
 
@@ -193,11 +196,10 @@ změna `HSI.Psst.Data`.
 ## D. Co by stálo za další kolo (není v tomto PR)
 
 1. `mailto:` / `tel:` poslat do systému.
-2. Volitelně EncryptedSharedPreferences, až bude ověřené na cílových tabletech.
-3. Ukládat seznam karet do prefs a po zabití procesu je obnovit (URL,
+2. Ukládat seznam karet do prefs a po zabití procesu je obnovit (URL,
    ne DOM) — jen pokud relace platí.
-4. Zúžit catch-all `https` filtr, pokud vadí, že se appka nabízí u
-   veřejného webu.
-5. Pokud grafy cukají i po těchto úpravách: měřit ve stránce (počet bodů,
+3. Volitelně zúžit catch-all `https` filtr, pokud vadí, že se appka nabízí
+   u veřejného webu (heslo se tam už neposílá).
+4. Pokud grafy cukají i po těchto úpravách: měřit ve stránce (počet bodů,
    refresh, SVG vs canvas, Highcharts boost). To už je změna `HSI.Psst.Data`,
    ne obálky.

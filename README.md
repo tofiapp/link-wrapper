@@ -151,13 +151,16 @@ Pokud server vyžaduje Kerberos, je potřeba na IIS povolit NTLM (nebo Basic
 přes HTTPS). To aplikace sama nevyřeší.
 
 Údaje se nikam neodesílají mimo cílový server. Záloha aplikace je vypnutá
-(`allowBackup=false`), aby se heslo nezkopírovalo z tabletu.
+(`allowBackup=false`), aby se heslo nezkopírovalo z tabletu. Na disku je
+heslo šifrované klíčem v Android Keystore — čitelný text v souboru
+není. Podrobný bezpečnostní audit: [`BEZPECNOST.md`](BEZPECNOST.md).
 
 ## Co ještě doladit
 
 - **Ikona appky**: teď je jen jednoduchý placeholder (modrý čtverec se
   symbolem odkazu). Dá se snadno vyměnit za firemní logo.
 
-Celkový audit (přihlášení, sekání grafů, bezpečnost): [`AUDIT.md`](AUDIT.md).
+Celkový audit (přihlášení, sekání grafů): [`AUDIT.md`](AUDIT.md).
+Bezpečnost údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
 
 Vysvětlení celého projektu pro člověka bez Kotlinu (co který soubor dělá a proč): [`VYSVETLENI.md`](VYSVETLENI.md).
