@@ -11,10 +11,13 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Údaje k PSST se uloží v aplikaci, dokud je v ⋮ nesmažete.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
   relace na otevřených stránkách. Pak jste na obou webech odhlášení.
-- **Karty** nahoře v liště včetně karty **Domů**; vpravo **+**, **domeček**
-  (karta Domů), **⋮**. Křížek je jen když je karet víc. Karta Domů křížek nemá.
+- **Karty** nahoře v liště. **Domeček** změní *aktuální* kartu na **Domů**
+  (můžete mít víc karet Domů). **+** na Domů otevře další kartu Domů.
+  Křížek je jen když je karet víc. Dlaždice na Domů mají jen název
+  (PSST Data, DSD), bez adresy. Karta DSD se jmenuje **DSD**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
-  na pozadí nesežerou tablet. Posun grafu: WebView bez hardware vrstvy,
+  na pozadí nesežerou tablet. Stránky jsou oddálené (~⅔ výchozí velikosti),
+  aby bylo vidět víc. Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
   hover/tooltip při tažení.
 - Nabídka **⋮**: zadat adresu, přenačíst, nastavení odkazů

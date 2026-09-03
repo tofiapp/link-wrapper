@@ -9,6 +9,7 @@
     android:background="@color/surface"
     android:clickable="true"
     android:focusable="true"
+    android:longClickable="false"
     android:visibility="gone">
 
     <LinearLayout
@@ -16,45 +17,23 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-medium"
-            android:letterSpacing="-0.02"
-            android:paddingHorizontal="28dp"
-            android:paddingTop="24dp"
-            android:paddingBottom="8dp"
-            android:text="Domů"
-            android:textColor="@color/ink"
-            android:textSize="28sp" />
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:lineSpacingMultiplier="1.3"
-            android:paddingHorizontal="28dp"
-            android:paddingBottom="20dp"
-            android:text="Vyberte, kam chcete pokračovat."
-            android:textColor="@color/ink_soft"
-            android:textSize="15sp" />
-
-        <ScrollView
+        <Space
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipToPadding="false"
-            android:fillViewport="true"
-            android:overScrollMode="ifContentScrolls"
-            android:scrollbars="none">
+            android:layout_weight="1" />
 
-            <LinearLayout
-                android:id="@+id/homeAppList"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:paddingHorizontal="28dp"
-                android:paddingBottom="16dp" />
-        </ScrollView>
+        <LinearLayout
+            android:id="@+id/homeAppList"
+            android:layout_width="match_parent"
+            android:layout_height="168dp"
+            android:gravity="center"
+            android:orientation="horizontal"
+            android:paddingHorizontal="40dp" />
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
 
         <TextView
             android:id="@+id/homeVersion"
