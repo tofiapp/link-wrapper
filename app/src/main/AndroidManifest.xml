@@ -20,6 +20,7 @@
         <!--
           Jediná activity: VPN, nativní Domů, web. Přihlášení k PSST
           až po klepnutí na dlaždici. Relace PSST v Session do smazání údajů.
+          Na zařízení se appka jmenuje Obálka.
         -->
         <activity
             android:name=".WebViewActivity"
