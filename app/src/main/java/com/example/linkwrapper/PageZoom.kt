@@ -30,11 +30,11 @@ internal object PageZoom {
     fun storedPercent(context: Context): Int? {
         val prefs = prefs(context)
         if (!prefs.contains(KEY_SIZE)) return null
-        return clamp(prefs.getInt(KEY_SIZE, PORTRAIT_PERCENT))
+        return snap(prefs.getInt(KEY_SIZE, PORTRAIT_PERCENT))
     }
 
     fun setPercent(context: Context, percent: Int) {
-        prefs(context).edit().putInt(KEY_SIZE, clamp(percent)).commit()
+        prefs(context).edit().putInt(KEY_SIZE, snap(percent)).commit()
     }
 
     fun clear(context: Context) {
@@ -42,6 +42,12 @@ internal object PageZoom {
     }
 
     fun clamp(percent: Int): Int = percent.coerceIn(MIN_PERCENT, MAX_PERCENT)
+
+    fun snap(percent: Int): Int {
+        val c = clamp(percent)
+        val stepped = MIN_PERCENT + ((c - MIN_PERCENT) / STEP_PERCENT) * STEP_PERCENT
+        return clamp(stepped)
+    }
 
     fun applyJs(percent: Int): String {
         val z = "${clamp(percent)}%"

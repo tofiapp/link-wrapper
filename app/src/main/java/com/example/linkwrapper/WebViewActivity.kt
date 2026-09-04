@@ -1083,7 +1083,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun showPageSizeDialog() {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val saved = PageZoom.storedPercent(this)
-        val starting = saved ?: PageZoom.percent(landscape)
+        val starting = PageZoom.snap(saved ?: PageZoom.percent(landscape))
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_page_size, null)
         val value = view.findViewById<TextView>(R.id.pageSizeValue)
         val slider = view.findViewById<Slider>(R.id.pageSizeSlider)

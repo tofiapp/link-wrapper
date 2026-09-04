@@ -20,6 +20,14 @@ class PageZoomTest {
     }
 
     @Test
+    fun snapAlignsToStep() {
+        assertEquals(86, PageZoom.snap(87))
+        assertEquals(88, PageZoom.snap(88))
+        assertEquals(PageZoom.MIN_PERCENT, PageZoom.snap(1))
+        assertEquals(PageZoom.MAX_PERCENT, PageZoom.snap(999))
+    }
+
+    @Test
     fun jsUsesClampedPercent() {
         val js = PageZoom.setJs(1000)
         assertTrue(js.contains("${PageZoom.MAX_PERCENT}%"))
