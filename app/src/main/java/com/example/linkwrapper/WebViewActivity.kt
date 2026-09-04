@@ -701,6 +701,8 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
         webView.settings.textZoom = 100
+        // 100 % = 1 CSS px na 1 dp; WebView jinak umí stránku „přizpůsobit“ a smrsknout prvky.
+        webView.setInitialScale(100)
         webView.settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             webView.settings.safeBrowsingEnabled = false
@@ -1285,7 +1287,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                desktopLayoutJs() + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1297,36 +1299,32 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartPerfFallback(webView: WebView) {
         if (webView in chartPerfInjected) return
         try {
-            webView.evaluateJavascript(DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
+            webView.evaluateJavascript(desktopLayoutJs() + pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
             chartPerfInjected.add(webView)
         } catch (_: Exception) {
         }
     }
 
-    private fun pageCssWidth(): Float {
+    private fun pageCssWidthPx(): Int {
         val px = webContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val density = resources.displayMetrics.density
-        if (density <= 0f) return px.toFloat()
-        return px / density
+        if (density <= 0f) return px
+        return DesktopSite.clampCssWidth(kotlin.math.round(px / density).toInt())
     }
 
-    private fun visualZoom(url: String?, userPercent: Int = pageUserPercent(url)): Int =
-        PageZoom.visualPercent(pageCssWidth(), userPercent)
+    private fun desktopLayoutJs(): String = DesktopSite.bootstrapJs(pageCssWidthPx())
 
-    private fun pageUserPercent(url: String?): Int {
+    private fun pageZoomPercentFor(url: String?): Int {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return PageZoom.percentFor(this, url, landscape)
     }
 
-    private fun pageZoomPercentFor(url: String?): Int = visualZoom(url)
-
     private fun pageZoomJs(): String {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val w = pageCssWidth()
         return PageZoom.pickerJs(
-            PageZoom.visualPercent(w, PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape)),
-            PageZoom.visualPercent(w, PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape)),
-            PageZoom.visualPercent(w, PageZoom.CHART_PERCENT)
+            PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape),
+            PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape),
+            PageZoom.CHART_PERCENT
         )
     }
 
@@ -1335,21 +1333,22 @@ class WebViewActivity : AppCompatActivity() {
         previewPercent: Int? = null
     ) {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val layout = DesktopSite.setJs(pageCssWidthPx())
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
             val kind = PageZoom.kindFor(tab.url)
-            val user = if (previewKind != null && previewPercent != null && kind == previewKind) {
+            val percent = if (previewKind != null && previewPercent != null && kind == previewKind) {
                 PageZoom.snap(previewPercent)
             } else {
                 PageZoom.percentFor(this, kind, landscape)
             }
-            wv.evaluateJavascript(DesktopSite.setJs() + PageZoom.setJs(visualZoom(tab.url, user)), null)
+            wv.evaluateJavascript(layout + PageZoom.setJs(percent), null)
         }
     }
 
     private fun applyDesktopLayout(webView: WebView, url: String?) {
         webView.evaluateJavascript(
-            DesktopSite.setJs() + PageZoom.setJs(pageZoomPercentFor(url)),
+            DesktopSite.setJs(pageCssWidthPx()) + PageZoom.setJs(pageZoomPercentFor(url)),
             null
         )
     }
