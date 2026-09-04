@@ -61,7 +61,7 @@ VPN brána, dva APK vedle sebe.
 | `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
 | `DeviceTrust.kt` | banner „tablet nemá CA“ u přihlášení |
 | `SslPolicy.kt` + `network_security_config.xml` | HTTPS jen podle CA na tabletu |
-| `ChartPerf.kt` | strop DPR; Highcharts `setSize` na šířku/výšku WebView (ne prázdné CSS místo) |
+| `ChartPerf.kt` | strop DPR; graf (`dmId`) `setSize` na šířku WebView a výšku ≥ 4 obrazovky |
 | `DesktopSite.kt` | desktopový Chrome UA; viewport `device-width` + overflow auto |
 | `layout_vpn_gate.xml` | celoobrazovková hláška bez VPN |
 | `layout_home_screen.xml` | dlaždice jen s názvem |

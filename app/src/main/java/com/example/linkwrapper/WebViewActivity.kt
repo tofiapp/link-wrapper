@@ -878,6 +878,7 @@ class WebViewActivity : AppCompatActivity() {
                 if (view != null) authFailedViews.remove(view)
                 if (view != null) {
                     applyDesktopLayout(view, url)
+                    scheduleLayoutRetry(view)
                 }
                 updateTabMeta(view ?: return, url)
             }
@@ -1331,15 +1332,24 @@ class WebViewActivity : AppCompatActivity() {
             } else {
                 PageZoom.percentFor(this, kind, landscape)
             }
-            wv.evaluateJavascript(layout + PageZoom.setJs(percent), null)
+            wv.evaluateJavascript(layout + PageZoom.setJs(percent) + ChartPerf.APPLY_JS, null)
         }
     }
 
     private fun applyDesktopLayout(webView: WebView, url: String?) {
-        webView.evaluateJavascript(
-            DesktopSite.setJs() + PageZoom.setJs(pageZoomPercentFor(url)),
-            null
-        )
+        try {
+            webView.evaluateJavascript(
+                DesktopSite.setJs() + PageZoom.setJs(pageZoomPercentFor(url)) + ChartPerf.APPLY_JS,
+                null
+            )
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun scheduleLayoutRetry(webView: WebView) {
+        webView.postDelayed({ applyDesktopLayout(webView, webView.url) }, 600)
+        webView.postDelayed({ applyDesktopLayout(webView, webView.url) }, 1800)
+        webView.postDelayed({ applyDesktopLayout(webView, webView.url) }, 4000)
     }
 
     private fun bindLoginUi() {
