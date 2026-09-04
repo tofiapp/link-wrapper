@@ -11,7 +11,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:lineSpacingMultiplier="1.3"
-        android:text="Každá appka zvlášť. Grafy mají vždy 84 %. Drží se, dokud v nabídce nesmažete údaje."
+        android:text="100 % vyplní šířku obrazovky (stránka se skládá jako na širším PC a zmenší se). Grafy mají 84 %. Drží se, dokud v nabídce nesmažete údaje."
         android:textColor="@color/ink_soft"
         android:textSize="14sp" />
 

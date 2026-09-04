@@ -7,9 +7,9 @@ import org.junit.Test
 class PageZoomTest {
 
     @Test
-    fun portraitIsCloserThanLandscape() {
-        assertEquals(88, PageZoom.percent(landscape = false))
-        assertEquals(80, PageZoom.percent(landscape = true))
+    fun defaultUserSizeFillsWidth() {
+        assertEquals(100, PageZoom.percent(landscape = false))
+        assertEquals(100, PageZoom.percent(landscape = true))
     }
 
     @Test
@@ -30,6 +30,15 @@ class PageZoomTest {
     }
 
     @Test
+    fun visualZoomFitsDesktopViewportToScreen() {
+        assertEquals(100, PageZoom.visualPercent(1280f, 100))
+        assertEquals(50, PageZoom.visualPercent(640f, 100))
+        assertEquals(62, PageZoom.visualPercent(800f, 100))
+        assertEquals(42, PageZoom.visualPercent(640f, 84))
+        assertEquals(PageZoom.VISUAL_MIN_PERCENT, PageZoom.visualPercent(100f, 100))
+    }
+
+    @Test
     fun clampKeepsUserSizeInRange() {
         assertEquals(PageZoom.MIN_PERCENT, PageZoom.clamp(10))
         assertEquals(PageZoom.MAX_PERCENT, PageZoom.clamp(400))
@@ -45,13 +54,14 @@ class PageZoomTest {
     }
 
     @Test
-    fun jsUsesClampedPercent() {
+    fun jsUsesVisualPercentRange() {
         val js = PageZoom.setJs(1000)
-        assertTrue(js.contains("${PageZoom.MAX_PERCENT}%"))
+        assertTrue(js.contains("${PageZoom.VISUAL_MAX_PERCENT}%"))
         val apply = PageZoom.applyJs(1)
-        assertTrue(apply.contains("${PageZoom.MIN_PERCENT}%"))
-        val picker = PageZoom.pickerJs(88, 80)
-        assertTrue(picker.contains("84%"))
+        assertTrue(apply.contains("${PageZoom.VISUAL_MIN_PERCENT}%"))
+        val picker = PageZoom.pickerJs(62, 62, 52)
+        assertTrue(picker.contains("62%"))
+        assertTrue(picker.contains("52%"))
         assertTrue(picker.contains("dmId"))
     }
 }

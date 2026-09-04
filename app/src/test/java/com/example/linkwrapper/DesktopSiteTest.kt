@@ -26,5 +26,7 @@ class DesktopSiteTest {
         assertTrue(DesktopSite.BOOTSTRAP_JS.contains("${DesktopSite.VIEWPORT_WIDTH}"))
         assertTrue(DesktopSite.BOOTSTRAP_JS.contains("viewport"))
         assertTrue(DesktopSite.setJs().contains("${DesktopSite.VIEWPORT_WIDTH}"))
+        assertTrue(!DesktopSite.BOOTSTRAP_JS.contains("initial-scale=1"))
+        assertTrue(!DesktopSite.setJs().contains("initial-scale"))
     }
 }
