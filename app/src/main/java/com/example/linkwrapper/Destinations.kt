@@ -1,12 +1,15 @@
 package com.example.linkwrapper
 
 import java.net.URI
+import java.net.URLDecoder
 
 /**
  * Dlaždice na nativní obrazovce Domů.
  *
  * PSST používá aplikační přihlášení (NTLM). DSD má vlastní formulář
  * a údaje z PSST se tam neposílají.
+ *
+ * Adresa s `dmId` na PSST je graf (sdílení / „Otevřít pomocí“).
  */
 internal object Destinations {
 
@@ -40,9 +43,37 @@ internal object Destinations {
 
     fun forUrl(url: String?): AppLink? = forHost(hostOf(url))
 
-    /** Popisek karty: u známé appky jen název (DSD, PSST Data), ne host. */
+    fun isChart(url: String?): Boolean =
+        forUrl(url)?.id == "psst" && !dmId(url).isNullOrBlank()
+
+    fun dmId(url: String?): String? {
+        if (url.isNullOrBlank()) return null
+        val query = try {
+            URI(url).query
+        } catch (_: Exception) {
+            null
+        } ?: return null
+        query.split('&').forEach { part ->
+            val i = part.indexOf('=')
+            if (i <= 0) return@forEach
+            if (!part.substring(0, i).equals("dmId", ignoreCase = true)) return@forEach
+            val raw = part.substring(i + 1)
+            if (raw.isBlank()) return@forEach
+            return try {
+                URLDecoder.decode(raw, Charsets.UTF_8.name())
+            } catch (_: Exception) {
+                raw
+            }
+        }
+        return null
+    }
+
+    /** Popisek karty: graf ze sdílení nese dmId, jinak název appky. */
     fun tabTitle(url: String): String {
         if (url == HOME_URL) return "Domů"
+        dmId(url)?.let { id ->
+            if (forUrl(url)?.id == "psst") return "Graf $id"
+        }
         forUrl(url)?.let { return it.title }
         return hostOf(url) ?: "Karta"
     }

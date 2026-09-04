@@ -835,7 +835,7 @@ class WebViewActivity : AppCompatActivity() {
                 super.onPageStarted(view, url, favicon)
                 if (view != null) {
                     injectChartPerfFallback(view)
-                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercent()), null)
+                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                 }
             }
 
@@ -858,6 +858,9 @@ class WebViewActivity : AppCompatActivity() {
                     }
                 }
                 if (view != null) authFailedViews.remove(view)
+                if (view != null) {
+                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
+                }
                 updateTabMeta(view ?: return, url)
             }
         }
@@ -1082,29 +1085,42 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun showPageSizeDialog() {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val saved = PageZoom.storedPercent(this)
-        val starting = PageZoom.snap(saved ?: PageZoom.percent(landscape))
+        val psstStart = PageZoom.snap(
+            PageZoom.storedPercent(this, PageZoom.Kind.Psst) ?: PageZoom.percent(landscape)
+        )
+        val dsdStart = PageZoom.snap(
+            PageZoom.storedPercent(this, PageZoom.Kind.Dsd) ?: PageZoom.percent(landscape)
+        )
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_page_size, null)
-        val value = view.findViewById<TextView>(R.id.pageSizeValue)
-        val slider = view.findViewById<Slider>(R.id.pageSizeSlider)
-        fun label(percent: Int) {
-            value.text = "$percent %"
+        val psstValue = view.findViewById<TextView>(R.id.pageSizePsstValue)
+        val psstSlider = view.findViewById<Slider>(R.id.pageSizePsstSlider)
+        val dsdValue = view.findViewById<TextView>(R.id.pageSizeDsdValue)
+        val dsdSlider = view.findViewById<Slider>(R.id.pageSizeDsdSlider)
+        fun bind(
+            slider: Slider,
+            label: TextView,
+            start: Int,
+            kind: PageZoom.Kind
+        ) {
+            label.text = "$start %"
+            slider.valueFrom = PageZoom.MIN_PERCENT.toFloat()
+            slider.valueTo = PageZoom.MAX_PERCENT.toFloat()
+            slider.stepSize = PageZoom.STEP_PERCENT.toFloat()
+            slider.value = start.toFloat()
+            slider.addOnChangeListener { _, v, fromUser ->
+                val percent = PageZoom.snap(v.toInt())
+                label.text = "$percent %"
+                if (fromUser) applyPageZoomToAllTabs(kind, percent)
+            }
         }
-        label(starting)
-        slider.valueFrom = PageZoom.MIN_PERCENT.toFloat()
-        slider.valueTo = PageZoom.MAX_PERCENT.toFloat()
-        slider.stepSize = PageZoom.STEP_PERCENT.toFloat()
-        slider.value = starting.toFloat()
-        slider.addOnChangeListener { _, v, fromUser ->
-            val percent = PageZoom.clamp(v.toInt())
-            label(percent)
-            if (fromUser) applyPageZoomToAllTabs(percent)
-        }
+        bind(psstSlider, psstValue, psstStart, PageZoom.Kind.Psst)
+        bind(dsdSlider, dsdValue, dsdStart, PageZoom.Kind.Dsd)
         MaterialAlertDialogBuilder(this)
             .setTitle("Velikost stránek")
             .setView(view)
             .setPositiveButton("Uložit") { _, _ ->
-                PageZoom.setPercent(this, PageZoom.clamp(slider.value.toInt()))
+                PageZoom.setPercent(this, PageZoom.Kind.Psst, psstSlider.value.toInt())
+                PageZoom.setPercent(this, PageZoom.Kind.Dsd, dsdSlider.value.toInt())
                 applyPageZoomToAllTabs()
             }
             .setNegativeButton("Zrušit") { _, _ ->
@@ -1269,17 +1285,33 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun pageZoomPercent(): Int {
+    private fun pageZoomPercentFor(url: String?): Int {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        return PageZoom.percent(this, landscape)
+        return PageZoom.percentFor(this, url, landscape)
     }
 
-    private fun pageZoomJs(): String = PageZoom.applyJs(pageZoomPercent())
+    private fun pageZoomJs(): String {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        return PageZoom.pickerJs(
+            PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape),
+            PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape)
+        )
+    }
 
-    private fun applyPageZoomToAllTabs(percent: Int = pageZoomPercent()) {
-        val js = PageZoom.setJs(percent)
+    private fun applyPageZoomToAllTabs(
+        previewKind: PageZoom.Kind? = null,
+        previewPercent: Int? = null
+    ) {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         tabs.forEach { tab ->
-            tab.webView?.evaluateJavascript(js, null)
+            val wv = tab.webView ?: return@forEach
+            val kind = PageZoom.kindFor(tab.url)
+            val percent = if (previewKind != null && previewPercent != null && kind == previewKind) {
+                PageZoom.snap(previewPercent)
+            } else {
+                PageZoom.percentFor(this, kind, landscape)
+            }
+            wv.evaluateJavascript(PageZoom.setJs(percent), null)
         }
     }
 

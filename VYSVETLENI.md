@@ -7,8 +7,8 @@ ignoruj“ u certifikátů.**
 
 Technický seznam oprav a **aktuální** tok (obě APK: Domů bez loginu,
 PSST až po dlaždici; karty; VPN; HTTPS podle CA na tabletu)
-je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (pinning CA v APK,
-názvy karet z `dmId`) už neplatí — když se liší, platí AUDIT a README.
+je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (pinning CA v APK)
+už neplatí — když se liší, platí AUDIT a README.
 Bezpečnost uložených údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
 Návod na instalaci APK je v [`README.md`](README.md).
 
@@ -259,7 +259,8 @@ kartu.
 
 Název karty **není** `document.title` z webu. Graf by pořád přepisoval
 titulek na „graf“ a lišta by se skládala dokola (sekání). Místo toho
-`Destinations.tabTitle`: Domů / PSST Data / DSD, jinak název serveru.
+`Destinations.tabTitle`: Domů / PSST Data / DSD / **Graf {dmId}** u grafu
+ze sdílení, jinak název serveru.
 
 Neaktivní karta se **vyjme z obrazovky** (`removeView`) a dostane
 `onPause()` + `RENDERER_PRIORITY_WAIVED`. `View.GONE` nestačí — Chromium by

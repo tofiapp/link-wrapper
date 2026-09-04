@@ -13,6 +13,23 @@ class PageZoomTest {
     }
 
     @Test
+    fun chartsAreFixedAt84() {
+        assertEquals(84, PageZoom.CHART_PERCENT)
+        assertEquals(
+            PageZoom.Kind.Chart,
+            PageZoom.kindFor("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12")
+        )
+        assertEquals(
+            PageZoom.Kind.Psst,
+            PageZoom.kindFor(Destinations.PSST_URL)
+        )
+        assertEquals(
+            PageZoom.Kind.Dsd,
+            PageZoom.kindFor(Destinations.DSD_URL)
+        )
+    }
+
+    @Test
     fun clampKeepsUserSizeInRange() {
         assertEquals(PageZoom.MIN_PERCENT, PageZoom.clamp(10))
         assertEquals(PageZoom.MAX_PERCENT, PageZoom.clamp(400))
@@ -33,5 +50,8 @@ class PageZoomTest {
         assertTrue(js.contains("${PageZoom.MAX_PERCENT}%"))
         val apply = PageZoom.applyJs(1)
         assertTrue(apply.contains("${PageZoom.MIN_PERCENT}%"))
+        val picker = PageZoom.pickerJs(88, 80)
+        assertTrue(picker.contains("84%"))
+        assertTrue(picker.contains("dmId"))
     }
 }
