@@ -198,9 +198,6 @@ class WebViewActivity : AppCompatActivity() {
 
         progressBar = findViewById(R.id.progressBar)
         webContainer = findViewById(R.id.webContainer)
-        webContainer.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
-            if (right - left != oldRight - oldLeft) applyPageZoomToAllTabs()
-        }
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
@@ -687,8 +684,7 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.domStorageEnabled = true
         webView.settings.setGeolocationEnabled(true)
         webView.settings.useWideViewPort = true
-        webView.settings.loadWithOverviewMode = false
-        webView.settings.userAgentString = DesktopSite.userAgent(webView.settings.userAgentString)
+        webView.settings.loadWithOverviewMode = true
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
@@ -717,8 +713,8 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.offscreenPreRaster = false
         webView.overScrollMode = View.OVER_SCROLL_NEVER
         webView.isNestedScrollingEnabled = false
-        webView.isVerticalScrollBarEnabled = true
-        webView.isHorizontalScrollBarEnabled = true
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
         webView.importantForAccessibility =
             View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         webView.isHapticFeedbackEnabled = false
@@ -853,7 +849,7 @@ class WebViewActivity : AppCompatActivity() {
                 super.onPageStarted(view, url, favicon)
                 if (view != null) {
                     injectChartPerfFallback(view)
-                    applyDesktopLayout(view, url)
+                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                 }
             }
 
@@ -877,8 +873,7 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 if (view != null) authFailedViews.remove(view)
                 if (view != null) {
-                    applyDesktopLayout(view, url)
-                    scheduleLayoutRetry(view)
+                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                 }
                 updateTabMeta(view ?: return, url)
             }
@@ -1286,7 +1281,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1298,7 +1293,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartPerfFallback(webView: WebView) {
         if (webView in chartPerfInjected) return
         try {
-            webView.evaluateJavascript(DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
+            webView.evaluateJavascript(pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
             chartPerfInjected.add(webView)
         } catch (_: Exception) {
         }
@@ -1313,8 +1308,7 @@ class WebViewActivity : AppCompatActivity() {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return PageZoom.pickerJs(
             PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape),
-            PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape),
-            PageZoom.CHART_PERCENT
+            PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape)
         )
     }
 
@@ -1323,7 +1317,6 @@ class WebViewActivity : AppCompatActivity() {
         previewPercent: Int? = null
     ) {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val layout = DesktopSite.setJs()
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
             val kind = PageZoom.kindFor(tab.url)
@@ -1332,24 +1325,8 @@ class WebViewActivity : AppCompatActivity() {
             } else {
                 PageZoom.percentFor(this, kind, landscape)
             }
-            wv.evaluateJavascript(layout + PageZoom.setJs(percent) + ChartPerf.APPLY_JS, null)
+            wv.evaluateJavascript(PageZoom.setJs(percent), null)
         }
-    }
-
-    private fun applyDesktopLayout(webView: WebView, url: String?) {
-        try {
-            webView.evaluateJavascript(
-                DesktopSite.setJs() + PageZoom.setJs(pageZoomPercentFor(url)) + ChartPerf.APPLY_JS,
-                null
-            )
-        } catch (_: Exception) {
-        }
-    }
-
-    private fun scheduleLayoutRetry(webView: WebView) {
-        webView.postDelayed({ applyDesktopLayout(webView, webView.url) }, 600)
-        webView.postDelayed({ applyDesktopLayout(webView, webView.url) }, 1800)
-        webView.postDelayed({ applyDesktopLayout(webView, webView.url) }, 4000)
     }
 
     private fun bindLoginUi() {

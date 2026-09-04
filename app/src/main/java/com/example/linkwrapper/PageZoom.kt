@@ -3,17 +3,19 @@ package com.example.linkwrapper
 import android.content.Context
 
 /**
- * Volitelné přiblížení webu v ⋮. 100 % = žádný CSS zoom (skutečná velikost,
- * stránka vyplní WebView a jde scrollovat). DSD a PSST Data zvlášť;
- * grafy (`dmId`) taky 100 %, ať vyplní obrazovku.
+ * Oddálení webu ve WebView. Bez vlastního nastavení je na výšku stránka
+ * o něco větší (snadnější klepnutí) a na šířku o něco menší.
+ *
+ * DSD a PSST Data mají každé svou velikost (v ⋮). Grafy (`dmId`) mají
+ * vždy 84 %. Nastavení platí, dokud uživatel nesmaže údaje.
  */
 internal object PageZoom {
 
     enum class Kind { Psst, Dsd, Chart, Other }
 
-    const val PORTRAIT_PERCENT = 100
-    const val LANDSCAPE_PERCENT = 100
-    const val CHART_PERCENT = 100
+    const val PORTRAIT_PERCENT = 88
+    const val LANDSCAPE_PERCENT = 80
+    const val CHART_PERCENT = 84
     const val MIN_PERCENT = 60
     const val MAX_PERCENT = 140
     const val STEP_PERCENT = 2
@@ -74,11 +76,13 @@ internal object PageZoom {
     }
 
     fun applyJs(percent: Int): String {
-        val body = zoomBodyJs(percent)
+        val z = "${clamp(percent)}%"
         return """
 (function(){
+  var z = '$z';
   function apply(){
-    $body
+    try { document.documentElement.style.zoom = z; } catch (e) {}
+    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
   }
   apply();
   document.addEventListener('DOMContentLoaded', apply);
@@ -86,10 +90,11 @@ internal object PageZoom {
 """
     }
 
-    fun pickerJs(psstPercent: Int, dsdPercent: Int, chartPercent: Int = CHART_PERCENT): String {
+    /** Vybere zoom podle hostitele a dmId — běží na začátku dokumentu. */
+    fun pickerJs(psstPercent: Int, dsdPercent: Int): String {
         val psst = "${clamp(psstPercent)}%"
         val dsd = "${clamp(dsdPercent)}%"
-        val chart = "${clamp(chartPercent)}%"
+        val chart = "$CHART_PERCENT%"
         return """
 (function(){
   var PSST = '$psst';
@@ -104,35 +109,20 @@ internal object PageZoom {
       return PSST;
     } catch (e) { return PSST; }
   }
-  function setZoom(z){
-    try {
-      if (z === '100%') {
-        document.documentElement.style.removeProperty('zoom');
-        if (document.body) document.body.style.removeProperty('zoom');
-      } else {
-        document.documentElement.style.zoom = z;
-        if (document.body) document.body.style.removeProperty('zoom');
-      }
-    } catch (e) {}
+  function apply(){
+    var z = pick();
+    try { document.documentElement.style.zoom = z; } catch (e) {}
+    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
   }
-  function apply(){ setZoom(pick()); }
   apply();
   document.addEventListener('DOMContentLoaded', apply);
 })();
 """
     }
 
-    fun setJs(percent: Int): String = zoomBodyJs(percent)
-
-    private fun zoomBodyJs(percent: Int): String {
-        val p = clamp(percent)
-        return if (p == 100) {
-            "try{document.documentElement.style.removeProperty('zoom');" +
-                "if(document.body)document.body.style.removeProperty('zoom');}catch(e){}"
-        } else {
-            "try{document.documentElement.style.zoom='$p%';" +
-                "if(document.body)document.body.style.removeProperty('zoom');}catch(e){}"
-        }
+    fun setJs(percent: Int): String {
+        val z = "${clamp(percent)}%"
+        return "try{document.documentElement.style.zoom='$z';if(document.body)document.body.style.zoom='$z';}catch(e){}"
     }
 
     private fun keyFor(kind: Kind): String? = when (kind) {
@@ -141,6 +131,7 @@ internal object PageZoom {
         else -> null
     }
 
+    /** Starší společná velikost se jednorázově zkopíruje na PSST i DSD. */
     private fun migrateLegacy(context: Context) {
         val prefs = prefs(context)
         if (!prefs.contains(KEY_SIZE_LEGACY)) return
