@@ -409,11 +409,10 @@ Dál vypne:
 - hover stav řad (na dotyku stejně nedává smysl)
 
 **Nesahá** na `touch-action: none` ani `contain` u `.highcharts-scrolling`.
-Po načtení Highcharts `setSize` na šířku a výšku WebView — CSS výšku
-nenafukuje (to pod grafem nechalo bílé místo).
+Na stránce s `dmId` Highcharts `setSize` na šířku WebView a výšku aspoň
+4 obrazovky. Jiné stránky nemění.
 
-**Záměrně nevolá** `chart.update()` / `redraw()` při posunu. `setSize`
-jen jednou srovná graf s obrazovkou.
+**Záměrně nevolá** `chart.update()` / `redraw()` při posunu.
 
 Vstříkne se přes `addDocumentStartJavaScript` (nejdřív, než stránka
 běží). Starší WebView to umí až v `onPageStarted` — první canvas pak
