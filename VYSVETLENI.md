@@ -134,7 +134,6 @@ Na tabletu se obě APK jmenují **Obálka**.
 | `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
 | `SslPolicy.kt` | HTTPS jen podle CA na tabletu; žádný pinning v APK |
 | `ChartPerf.kt` | JavaScript, který Highcharts na tabletu zklidní |
-| `DesktopSite.kt` | Chrome na Windows, viewport na šířku WebView, jde scrollovat |
 
 Žádný druhý jazyk v appce není. XML je vzhled, YAML v `.github` je sestavení.
 
@@ -276,7 +275,6 @@ Křížek poslední karty neukončí appku — otevře znovu home.
 | `javaScriptEnabled = true` | bez JS PSST vůbec neběží |
 | `allowFileAccess = false` | ať stránka nesahá na soubory tabletu |
 | `setSupportZoom(false)` | pinch-zoom by se pral s posunem grafu |
-| desktopový UA + `width=device-width` | desktopové menu, stránka vyplní WebView a jde posouvat |
 | `LAYER_TYPE_NONE` | hardware vrstva kolem WebView při posunu nahrává celou texturu na GPU → cukání |
 | `safeBrowsingEnabled = false` | Google Safe Browsing u interního webu jen překáží |
 | `forceDark` vypnutý | ať Android web nepřekresluje na tmu |
@@ -408,11 +406,8 @@ Dál vypne:
 - tooltip, který jezdí s prstem
 - hover stav řad (na dotyku stejně nedává smysl)
 
-**Nesahá** na `touch-action: none` ani `contain` u `.highcharts-scrolling`.
-Na stránce s `dmId` Highcharts `setSize` na šířku WebView a výšku aspoň
-4 obrazovky. Jiné stránky nemění.
-
-**Záměrně nevolá** `chart.update()` / `redraw()` při posunu.
+**Záměrně nevolá** `chart.update()` / `redraw()` — to by při posunu graf
+znovu složilo a cukalo ještě víc.
 
 Vstříkne se přes `addDocumentStartJavaScript` (nejdřív, než stránka
 běží). Starší WebView to umí až v `onPageStarted` — první canvas pak
