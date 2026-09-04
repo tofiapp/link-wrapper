@@ -408,12 +408,12 @@ Dál vypne:
 - tooltip, který jezdí s prstem
 - hover stav řad (na dotyku stejně nedává smysl)
 
-**Nesahá** na `touch-action: none` ani `contain` u `.highcharts-scrolling` —
-to by ořízlo zbytek grafu a stránkou by nešlo posouvat. Po načtení graf
-natáhne na šířku a oříznutý scrollovací blok zvětší na obsah.
+**Nesahá** na `touch-action: none` ani `contain` u `.highcharts-scrolling`.
+Po načtení Highcharts `setSize` na šířku a výšku WebView — CSS výšku
+nenafukuje (to pod grafem nechalo bílé místo).
 
-**Záměrně nevolá** `chart.update()` / `redraw()` — to by při posunu graf
-znovu složilo a cukalo ještě víc. `setSize` jen srovná šířku s kontejnerem.
+**Záměrně nevolá** `chart.update()` / `redraw()` při posunu. `setSize`
+jen jednou srovná graf s obrazovkou.
 
 Vstříkne se přes `addDocumentStartJavaScript` (nejdřív, než stránka
 běží). Starší WebView to umí až v `onPageStarted` — první canvas pak

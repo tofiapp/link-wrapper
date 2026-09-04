@@ -12,10 +12,12 @@ class ChartPerfTest {
         assertFalse(js.contains("touch-action:none"))
         assertFalse(js.contains("touch-action: none"))
         assertFalse(js.contains("contain:"))
+        assertFalse(js.contains("scrollHeight"))
         assertTrue(js.contains("highcharts-scrolling"))
         assertTrue(js.contains("overflow:auto"))
-        assertTrue(js.contains("width:100%"))
         assertTrue(js.contains("setSize"))
+        assertTrue(js.contains("clientWidth"))
+        assertTrue(js.contains("panning: true"))
         assertTrue(js.contains("highcharts-container"))
     }
 }
