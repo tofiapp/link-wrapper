@@ -3,22 +3,23 @@ package com.example.linkwrapper
 import android.content.Context
 
 /**
- * Oddálení webu ve WebView. Bez vlastního nastavení je na výšku stránka
- * o něco větší (snadnější klepnutí) a na šířku o něco menší.
- *
- * DSD a PSST Data mají každé svou velikost (v ⋮). Grafy (`dmId`) mají
- * vždy 84 %. Nastavení platí, dokud uživatel nesmaže údaje.
+ * Oddálení webu ve WebView. Stránka se skládá jako na PC (viewport 1280)
+ * a pak se zmenší, aby se vešla na šířku tabletu. 100 % v ⋮ = přesně
+ * na šířku obrazovky. DSD a PSST Data mají každé svou velikost; grafy
+ * (`dmId`) mají 84 % této přizpůsobené šířky.
  */
 internal object PageZoom {
 
     enum class Kind { Psst, Dsd, Chart, Other }
 
-    const val PORTRAIT_PERCENT = 88
-    const val LANDSCAPE_PERCENT = 80
+    const val PORTRAIT_PERCENT = 100
+    const val LANDSCAPE_PERCENT = 100
     const val CHART_PERCENT = 84
     const val MIN_PERCENT = 60
     const val MAX_PERCENT = 140
     const val STEP_PERCENT = 2
+    const val VISUAL_MIN_PERCENT = 25
+    const val VISUAL_MAX_PERCENT = 200
 
     private const val PREFS = "page_prefs"
     private const val KEY_SIZE_LEGACY = "page_size_percent"
@@ -49,6 +50,20 @@ internal object PageZoom {
         }
     }
 
+    /**
+     * Skutečné CSS zoom: stránka se skládá na [DesktopSite.VIEWPORT_WIDTH]
+     * a zmenší se na šířku WebView. [userPercent] 100 = přesně na šířku.
+     */
+    fun visualPercent(cssWidth: Float, userPercent: Int): Int {
+        if (cssWidth <= 1f) return clampVisual(userPercent)
+        val fit = cssWidth / DesktopSite.VIEWPORT_WIDTH * 100f
+        val visual = fit * clamp(userPercent) / 100f
+        return clampVisual(kotlin.math.round(visual).toInt())
+    }
+
+    fun clampVisual(percent: Int): Int =
+        percent.coerceIn(VISUAL_MIN_PERCENT, VISUAL_MAX_PERCENT)
+
     fun storedPercent(context: Context, kind: Kind): Int? {
         migrateLegacy(context)
         val key = keyFor(kind) ?: return null
@@ -76,7 +91,7 @@ internal object PageZoom {
     }
 
     fun applyJs(percent: Int): String {
-        val z = "${clamp(percent)}%"
+        val z = "${clampVisual(percent)}%"
         return """
 (function(){
   var z = '$z';
@@ -91,10 +106,10 @@ internal object PageZoom {
     }
 
     /** Vybere zoom podle hostitele a dmId — běží na začátku dokumentu. */
-    fun pickerJs(psstPercent: Int, dsdPercent: Int): String {
-        val psst = "${clamp(psstPercent)}%"
-        val dsd = "${clamp(dsdPercent)}%"
-        val chart = "$CHART_PERCENT%"
+    fun pickerJs(psstPercent: Int, dsdPercent: Int, chartPercent: Int = CHART_PERCENT): String {
+        val psst = "${clampVisual(psstPercent)}%"
+        val dsd = "${clampVisual(dsdPercent)}%"
+        val chart = "${clampVisual(chartPercent)}%"
         return """
 (function(){
   var PSST = '$psst';
@@ -121,7 +136,7 @@ internal object PageZoom {
     }
 
     fun setJs(percent: Int): String {
-        val z = "${clamp(percent)}%"
+        val z = "${clampVisual(percent)}%"
         return "try{document.documentElement.style.zoom='$z';if(document.body)document.body.style.zoom='$z';}catch(e){}"
     }
 

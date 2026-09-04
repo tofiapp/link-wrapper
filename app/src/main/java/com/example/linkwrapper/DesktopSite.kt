@@ -39,7 +39,7 @@ internal object DesktopSite {
         m.setAttribute('name', 'viewport');
         head.insertBefore(m, head.firstChild);
       }
-      m.setAttribute('content', 'width=' + W + ', initial-scale=1');
+      m.setAttribute('content', 'width=' + W);
     } catch (e) {}
   }
   viewport();
@@ -73,5 +73,5 @@ internal object DesktopSite {
         "try{var m=document.querySelector('meta[name=\"viewport\"]');" +
             "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');" +
             "(document.head||document.documentElement).appendChild(m);}" +
-            "m.setAttribute('content','width=$VIEWPORT_WIDTH, initial-scale=1');}catch(e){}"
+            "m.setAttribute('content','width=$VIEWPORT_WIDTH');}catch(e){}"
 }

@@ -198,6 +198,9 @@ class WebViewActivity : AppCompatActivity() {
 
         progressBar = findViewById(R.id.progressBar)
         webContainer = findViewById(R.id.webContainer)
+        webContainer.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            if (right - left != oldRight - oldLeft) applyPageZoomToAllTabs()
+        }
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
@@ -684,7 +687,7 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.domStorageEnabled = true
         webView.settings.setGeolocationEnabled(true)
         webView.settings.useWideViewPort = true
-        webView.settings.loadWithOverviewMode = true
+        webView.settings.loadWithOverviewMode = false
         webView.settings.userAgentString = DesktopSite.userAgent(webView.settings.userAgentString)
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.settings.allowFileAccess = false
@@ -1300,16 +1303,30 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun pageZoomPercentFor(url: String?): Int {
+    private fun pageCssWidth(): Float {
+        val px = webContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        val density = resources.displayMetrics.density
+        if (density <= 0f) return px.toFloat()
+        return px / density
+    }
+
+    private fun visualZoom(url: String?, userPercent: Int = pageUserPercent(url)): Int =
+        PageZoom.visualPercent(pageCssWidth(), userPercent)
+
+    private fun pageUserPercent(url: String?): Int {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return PageZoom.percentFor(this, url, landscape)
     }
 
+    private fun pageZoomPercentFor(url: String?): Int = visualZoom(url)
+
     private fun pageZoomJs(): String {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val w = pageCssWidth()
         return PageZoom.pickerJs(
-            PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape),
-            PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape)
+            PageZoom.visualPercent(w, PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape)),
+            PageZoom.visualPercent(w, PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape)),
+            PageZoom.visualPercent(w, PageZoom.CHART_PERCENT)
         )
     }
 
@@ -1321,12 +1338,12 @@ class WebViewActivity : AppCompatActivity() {
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
             val kind = PageZoom.kindFor(tab.url)
-            val percent = if (previewKind != null && previewPercent != null && kind == previewKind) {
+            val user = if (previewKind != null && previewPercent != null && kind == previewKind) {
                 PageZoom.snap(previewPercent)
             } else {
                 PageZoom.percentFor(this, kind, landscape)
             }
-            wv.evaluateJavascript(DesktopSite.setJs() + PageZoom.setJs(percent), null)
+            wv.evaluateJavascript(DesktopSite.setJs() + PageZoom.setJs(visualZoom(tab.url, user)), null)
         }
     }
 

@@ -19,10 +19,11 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   (PSST Data, DSD), bez adresy. Karta DSD se jmenuje **DSD**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
   na pozadí nesežerou tablet. Dlouhé podržení karty nebo odkazu otevře
-  dialog **Otevřít na druhé kartě**. Přiblížení webu: výchozí na výšku
-  88 %, na šířku 80 %; v ⋮ → **Velikost stránek** zvlášť pro DSD a zvlášť
-  pro PSST Data (drží se do Vymazat údaje). Grafy (`dmId`) mají vždy 84 %
-  a karta ze sdílení se jmenuje **Graf …** podle `dmId`.
+  dialog **Otevřít na druhé kartě**. Stránky se skládají jako na PC (1280 px)
+  a **zmenší se na šířku tabletu**, ať se vejdou na obrazovku. V ⋮ →
+  **Velikost stránek** zvlášť pro DSD a zvlášť pro PSST Data (100 % = na
+  šířku; drží se do Vymazat údaje). Grafy (`dmId`) mají 84 % a karta ze
+  sdílení se jmenuje **Graf …** podle `dmId`.
   Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
   hover/tooltip při tažení. Stránky (DSD, PSST Data, grafy) se načítají

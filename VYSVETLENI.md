@@ -276,7 +276,7 @@ Křížek poslední karty neukončí appku — otevře znovu home.
 | `javaScriptEnabled = true` | bez JS PSST vůbec neběží |
 | `allowFileAccess = false` | ať stránka nesahá na soubory tabletu |
 | `setSupportZoom(false)` | pinch-zoom by se pral s posunem grafu |
-| desktopový UA + viewport 1280 | stránky jako na PC, ne tabletová forma |
+| desktopový UA + viewport 1280 zmenšený na šířku | stránky jako na PC, vejdou se na tablet |
 | `LAYER_TYPE_NONE` | hardware vrstva kolem WebView při posunu nahrává celou texturu na GPU → cukání |
 | `safeBrowsingEnabled = false` | Google Safe Browsing u interního webu jen překáží |
 | `forceDark` vypnutý | ať Android web nepřekresluje na tmu |
