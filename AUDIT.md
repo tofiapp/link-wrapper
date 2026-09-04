@@ -23,7 +23,8 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 | klepnutí na PSST Data bez relace | formulář, ověření v `:authprobe`, pak web |
 | klepnutí na DSD | web s vlastním formulářem; údaje z PSST se **neposílají** |
 | komu jde HTTP auth | jen `psst.tudc.cz` / `test.psst.tudc.cz` |
-| **+** nebo **domeček** | nová karta **Domů**; aktuální web zůstane |
+| **domeček** | aktuální karta se změní na **Domů** |
+| **+** | nová karta **Domů**; aktuální web zůstane |
 | dlouhé podržení karty / odkazu | dialog **Otevřít na druhé kartě** |
 | dočasný HTTP 401 u DSD | žádný dialog |
 | Vymazat údaje | prefs, cookies, velikost stránek, profil pryč, nový proces, znovu Domů |
