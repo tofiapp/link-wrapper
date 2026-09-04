@@ -7,7 +7,8 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * Žádné vlastní SSL. Platí jen CA, kterým důvěřuje tablet.
+ * HTTPS jen podle CA na tabletu (systém + uživatel / MDM).
+ * Appka spojení sama nepřekročí.
  */
 internal object SslPolicy {
 
@@ -36,9 +37,5 @@ internal object SslPolicy {
             .setCancelable(true)
             .setOnDismissListener { onDismiss() }
             .show()
-    }
-
-    @Suppress("UNUSED_PARAMETER")
-    fun showInfo(activity: AppCompatActivity) {
     }
 }

@@ -5,10 +5,12 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
-- Po spuštění (a po VPN) nativní **Domů** s lištou — i bez přihlášení.
-  **PSST Data** má aplikační přihlášení (NTLM, platí pro `psst.tudc.cz` a
-  `test.psst.tudc.cz`). **DSD** otevře web s vlastním formulářem.
-- Údaje k PSST se uloží v aplikaci, dokud je v ⋮ nesmažete.
+- Po spuštění (a po VPN) nativní **Domů**.
+  **Běžná APK:** PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
+  `test.psst.tudc.cz`). **DSD** má vlastní formulář na webu.
+  **Zkušební APK** (`PSST Data (zkušební)`): přihlášení hned na Domů,
+  údaje platí pro celé `tudc.cz` (včetně DSD).
+- Údaje se uloží v aplikaci, dokud je v ⋮ nesmažete.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
   relace na otevřených stránkách. Pak jste na obou webech odhlášení.
 - **Karty** nahoře v liště. **Domeček** i **+** otevřou kartu **Domů**
@@ -20,8 +22,7 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
   hover/tooltip při tažení.
-- Nabídka **⋮**: zadat adresu, přenačíst, nastavení odkazů
-  (u běžné APK i přehled firemních CA).
+- Nabídka **⋮**: zadat adresu, přenačíst, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.
 - **VPN brána**: bez Cisco AnyConnect hláška přes celou obrazovku — karty
@@ -41,7 +42,7 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 4. Stáhni APK jedním z těchto způsobů:
    - **Releases** (pohodlnější): v repozitáři záložka **Releases** → nejnovější
      verze → soubory `LinkWrapper-pinned-1.0.N.apk` (běžná) a
-     `LinkWrapper-systemtrust-1.0.N-system.apk` (jen trust store tabletu).
+     `LinkWrapper-systemtrust-1.0.N-system.apk` (zkušební, přihlášení pro tudc.cz).
    - **Actions**: záložka **Actions** → poslední běh → dole v sekci
      **Artifacts** najdeš `LinkWrapper-1.0.N` → stáhni zip, uvnitř je APK.
 5. Ten `.apk` nahraj do tabletu (email sám sobě, Google Drive, USB…) a nainstaluj.
@@ -73,76 +74,18 @@ ze stejného podpisu přepíše starší instalaci — není potřeba nejdřív 
 Podpisový klíč je v `app/keystore/` (repo je soukromé). Díky tomu mají všechny
 CI buildy stejný podpis a aktualizace na tabletu fungují.
 
-## Firemní certifikáty (důležité)
+## Firemní certifikáty
 
-Tablety nemají systémově nainstalovanou firemní CA (Správa železnic), proto
-jim prohlížeč hlásí `NET::ERR_CERT_AUTHORITY_INVALID`. Aplikace si ověření
-provede sama.
+HTTPS ověřuje **Android podle CA na tabletu** (systémové i ty, které
+nainstalovalo IT / uživatel). V aplikaci už **nejsou** přibalené firemní
+CA ani obejití „pokračovat i tak“. Když tablet autoritě nedůvěřuje,
+spojení se nenačte.
 
-Řetězec certifikátů je dvouúrovňový:
+IT musí mít na tabletech nasazenou firemní CA (Intune → trusted
+certificate profile). Bez toho weby `tudc.cz` nepůjdou.
 
-```
-SZT Root BAU ECC CA          platnost do 4. 4. 2039
-  └─ SZT Sub BAU ECC CA1     platnost do 22. 5. 2028
-       └─ psst.tudc.cz       obnovuje se ~1× ročně
-```
-
-Certifikát stránky podepisuje **mezilehlá** CA, ne kořenová. Oba certifikáty
-autorit jsou vložené v projektu:
-
-- `app/src/pinned/res/raw/corporate_ca.pem` — kořenová
-- `app/src/pinned/res/raw/corporate_sub_ca.pem` — mezilehlá
-
-### Jak ověření probíhá
-
-1. Kořenová CA musí odpovídat otisku `EXPECTED_ROOT_SHA256` v `CertPinning.kt`
-   a být self-signed.
-2. Mezilehlá CA musí být podepsaná kořenovou. Vlastní otisk zapsaný nemá —
-   ověřuje se podpisem, takže při její výměně stačí vyměnit soubor.
-3. Certifikát serveru musí být podepsaný mezilehlou CA.
-4. Všechny tři musí být časově platné, obě autority musí mít `CA:TRUE`.
-
-Aplikace **neignoruje certifikátové chyby plošně** a neváže se na jeden
-konkrétní web. Cokoliv mimo tento řetězec je odmítnuto a stránka se nenačte —
-ochrana proti podvrženému spojení zůstává funkční. Dialog nemá možnost
-„pokračovat i tak" a nemá ji dostat.
-
-### Výhody
-
-- Funguje pro **všechny** interní stránky za firemní SSL inspekcí.
-- **Přežije každoroční obnovu** certifikátů jednotlivých stránek — v aplikaci
-  není potřeba měnit nic.
-
-### Termíny údržby
-
-**Květen 2028** — vyprší mezilehlá CA. Vyexportuj novou z prohlížeče
-(Base-64 X.509 `.CER`, prostřední položka v cestě k certifikátu) a nahraď jí
-`corporate_sub_ca.pem`. Otisk nikam zapisovat nemusíš.
-
-**Duben 2039** — vyprší kořenová CA. Stejný postup pro `corporate_ca.pem`,
-navíc je potřeba přepsat `EXPECTED_ROOT_SHA256` v `CertPinning.kt`
-(`openssl x509 -in ca.pem -noout -fingerprint -sha256`).
-
-Certifikáty se často obnovují dřív, než skutečně vyprší — stojí za to mít
-připomínku pár měsíců předem.
-
-**Nejlepší řešení dlouhodobě:** nechat IT nasadit obě CA na tablety systémově
-(Intune → trusted certificate profile). Pak ověřování v aplikaci není potřeba
-vůbec a fungovat bude i běžný prohlížeč.
-
-### APK jen s důvěrou tabletu (`systemtrust`)
-
-Druhá APK **PSST Data (systém)** (`com.example.linkwrapper.systemtrust`)
-nemá v sobě žádné firemní CA, žádné „pokračovat i tak“ a v menu žádnou
-položku o certifikátech. HTTPS ověřuje jen Android podle toho, čemu
-tablet důvěřuje (systémové CA **i** certifikáty nainstalované uživatelem
-/ MDM).
-
-Když se v ní home načte, nainstalované CA na tabletu stačí. Když ne,
-Android spojení odmítne — appka ho nepřekročí.
-
-Jde nainstalovat vedle běžné APK (jiný název i id). Na tabletu musí být
-stejně VPN.
+Obě APK (běžná i zkušební) používají stejné ověření. Liší se jen
+přihlášením, viz níž.
 
 ## Přihlášení a odhlášení
 
@@ -153,14 +96,19 @@ proto má vlastní přihlašovací obrazovku. Zkoušejte tvar `DOMÉNA\uživatel
 Tok:
 
 1. Bez VPN → hláška přes celou obrazovku (Cisco AnyConnect). Nic jiného nefunguje.
-2. VPN běží → nativní **Domů** (i bez přihlášení).
-3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
-   Údaje platí pro `psst.tudc.cz` / `test.psst.tudc.cz`.
-4. **DSD** → web s vlastním přihlášením, údaje z PSST se tam neposílají.
-   Dočasný HTTP 401 při handshake se neukazuje (žádný dialog „Přístup odepřen“).
+2. **Běžná APK:** VPN → nativní **Domů** i bez přihlášení.
+   **Zkušební APK:** VPN → nejdřív přihlášení, teprve potom Domů.
+3. **Běžná APK — PSST Data** bez uložených údajů → formulář, ověření, pak web.
+   Údaje platí jen pro `psst.tudc.cz` / `test.psst.tudc.cz`.
+   **Zkušební APK:** stejný formulář na Domů; údaje platí pro **celé `tudc.cz`**
+   (včetně DSD).
+4. **Běžná APK — DSD** → web s vlastním přihlášením, údaje z PSST se tam
+   neposílají. Dočasný HTTP 401 při handshake se neukazuje
+   (žádný dialog „Přístup odepřen“).
 5. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache i Chromium profil
-   se smažou a proces se restartuje (NTLM jinak v procesu přežije). Pak znovu Domů.
-6. Špatné heslo k PSST se ověří v odděleném procesu a do prohlížeče se nedostane.
+   se smažou a proces se restartuje (NTLM jinak v procesu přežije). Pak znovu
+   Domů (u zkušební znovu přihlášení).
+6. Špatné heslo se ověří v odděleném procesu a do prohlížeče se nedostane.
 
 | Typ na serveru | Šance ve WebView |
 | --- | --- |

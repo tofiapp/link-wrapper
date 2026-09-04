@@ -8,22 +8,36 @@ class AuthHostsTest {
 
     @Test
     fun allowsPsstHosts() {
-        assertTrue(AuthHosts.allows("psst.tudc.cz"))
-        assertTrue(AuthHosts.allows("PSST.TUDC.CZ"))
-        assertTrue(AuthHosts.allows("test.psst.tudc.cz"))
-        assertTrue(AuthHosts.allows("www.test.psst.tudc.cz"))
-        assertTrue(AuthHosts.allows("a.psst.tudc.cz"))
+        assertTrue(AuthHosts.allows("psst.tudc.cz", allTudc = false))
+        assertTrue(AuthHosts.allows("PSST.TUDC.CZ", allTudc = false))
+        assertTrue(AuthHosts.allows("test.psst.tudc.cz", allTudc = false))
+        assertTrue(AuthHosts.allows("www.test.psst.tudc.cz", allTudc = false))
+        assertTrue(AuthHosts.allows("a.psst.tudc.cz", allTudc = false))
     }
 
     @Test
-    fun rejectsForeignHosts() {
-        assertFalse(AuthHosts.allows(null))
-        assertFalse(AuthHosts.allows(""))
-        assertFalse(AuthHosts.allows("evil.com"))
-        assertFalse(AuthHosts.allows("tudc.cz"))
-        assertFalse(AuthHosts.allows("notpsst.tudc.cz"))
-        assertFalse(AuthHosts.allows("dsd.tudc.cz"))
-        assertFalse(AuthHosts.allows("psst.tudc.cz.attacker.com"))
-        assertFalse(AuthHosts.allows("google.com"))
+    fun productionRejectsNonPsst() {
+        assertFalse(AuthHosts.allows(null, allTudc = false))
+        assertFalse(AuthHosts.allows("", allTudc = false))
+        assertFalse(AuthHosts.allows("evil.com", allTudc = false))
+        assertFalse(AuthHosts.allows("tudc.cz", allTudc = false))
+        assertFalse(AuthHosts.allows("notpsst.tudc.cz", allTudc = false))
+        assertFalse(AuthHosts.allows("dsd.tudc.cz", allTudc = false))
+        assertFalse(AuthHosts.allows("psst.tudc.cz.attacker.com", allTudc = false))
+        assertFalse(AuthHosts.allows("google.com", allTudc = false))
+    }
+
+    @Test
+    fun trialAllowsWholeTudc() {
+        assertTrue(AuthHosts.allows("tudc.cz", allTudc = true))
+        assertTrue(AuthHosts.allows("dsd.tudc.cz", allTudc = true))
+        assertTrue(AuthHosts.allows("www.dsd.tudc.cz", allTudc = true))
+        assertTrue(AuthHosts.allows("psst.tudc.cz", allTudc = true))
+        assertTrue(AuthHosts.allows("test.psst.tudc.cz", allTudc = true))
+        assertTrue(AuthHosts.isTudc("foo.bar.tudc.cz"))
+        assertFalse(AuthHosts.allows("evil.com", allTudc = true))
+        assertFalse(AuthHosts.allows("tudc.cz.attacker.com", allTudc = true))
+        assertFalse(AuthHosts.allows("nottudc.cz", allTudc = true))
+        assertFalse(AuthHosts.isTudc(null))
     }
 }
