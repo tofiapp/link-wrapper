@@ -25,6 +25,8 @@ class DesktopSiteTest {
         val js = DesktopSite.BOOTSTRAP_JS
         assertTrue(js.contains("width=device-width"))
         assertTrue(js.contains("initial-scale=1"))
+        assertTrue(js.contains("width:100%"))
+        assertTrue(js.contains("max-width:none"))
         assertTrue(js.contains("overflow:visible"))
         assertTrue(js.contains("max-height:none"))
         assertFalse(js.contains("minimum-scale"))

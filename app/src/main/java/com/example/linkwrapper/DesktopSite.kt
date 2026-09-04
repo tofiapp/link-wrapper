@@ -27,7 +27,7 @@ internal object DesktopSite {
       if (document.getElementById('obalka-scroll')) return;
       var s = document.createElement('style');
       s.id = 'obalka-scroll';
-      s.textContent = 'html,body,form{overflow:visible!important;max-height:none!important;}';
+      s.textContent = 'html,body,form{overflow:visible!important;max-height:none!important;width:100%!important;max-width:none!important;}';
       (document.head || document.documentElement).appendChild(s);
     } catch (e) {}
   }
