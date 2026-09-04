@@ -1,15 +1,18 @@
 package com.example.linkwrapper
 
 /**
- * Stránky mají vypadat jako na PC, ne v tabletovém / mobilním rozložení.
+ * Stránky mají desktopové menu (Chrome na Windows), ale skládají se na
+ * **skutečnou šířku tabletu** — užší a delší, bez zmenšování prvků.
  *
- * WebView jinak posílá Android UA (`Mobile`) a CSS vidí úzký displej —
- * DSD i PSST pak nasadí „blbou tabletovou formu“. Přepíšeme UA na Chrome
- * na Windows a na začátku dokumentu nastavíme viewport na desktopovou šířku.
+ * Široký viewport + CSS zoom všechno smrskl. Tady je 1 CSS pixel = 1 dp.
  */
 internal object DesktopSite {
 
-    const val VIEWPORT_WIDTH = 1280
+    const val MIN_CSS_WIDTH = 360
+    const val MAX_CSS_WIDTH = 2000
+
+    fun clampCssWidth(cssWidth: Int): Int =
+        cssWidth.coerceIn(MIN_CSS_WIDTH, MAX_CSS_WIDTH)
 
     fun userAgent(defaultUa: String?): String {
         val chrome = defaultUa
@@ -22,13 +25,11 @@ internal object DesktopSite {
             "(KHTML, like Gecko) $chrome Safari/537.36"
     }
 
-    /**
-     * Běží na začátku dokumentu, dřív než CSS a skripty stránky.
-     * Přepíše `width=device-width` (tablet) na pevnou PC šířku.
-     */
-    const val BOOTSTRAP_JS = """
+    fun bootstrapJs(cssWidth: Int): String {
+        val w = clampCssWidth(cssWidth)
+        return """
 (function(){
-  var W = $VIEWPORT_WIDTH;
+  var W = $w;
   function viewport(){
     try {
       var head = document.head || document.documentElement;
@@ -39,7 +40,7 @@ internal object DesktopSite {
         m.setAttribute('name', 'viewport');
         head.insertBefore(m, head.firstChild);
       }
-      m.setAttribute('content', 'width=' + W);
+      m.setAttribute('content', 'width=' + W + ', initial-scale=1, minimum-scale=1, maximum-scale=1');
     } catch (e) {}
   }
   viewport();
@@ -68,10 +69,13 @@ internal object DesktopSite {
   } catch (e) {}
 })();
 """
+    }
 
-    fun setJs(): String =
-        "try{var m=document.querySelector('meta[name=\"viewport\"]');" +
+    fun setJs(cssWidth: Int): String {
+        val w = clampCssWidth(cssWidth)
+        return "try{var m=document.querySelector('meta[name=\"viewport\"]');" +
             "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');" +
             "(document.head||document.documentElement).appendChild(m);}" +
-            "m.setAttribute('content','width=$VIEWPORT_WIDTH');}catch(e){}"
+            "m.setAttribute('content','width=$w, initial-scale=1, minimum-scale=1, maximum-scale=1');}catch(e){}"
+    }
 }

@@ -134,7 +134,7 @@ Na tabletu se obě APK jmenují **Obálka**.
 | `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
 | `SslPolicy.kt` | HTTPS jen podle CA na tabletu; žádný pinning v APK |
 | `ChartPerf.kt` | JavaScript, který Highcharts na tabletu zklidní |
-| `DesktopSite.kt` | stránky jako na PC (desktopový UA, viewport 1280) |
+| `DesktopSite.kt` | Chrome na Windows, skládání na šířku tabletu |
 
 Žádný druhý jazyk v appce není. XML je vzhled, YAML v `.github` je sestavení.
 
@@ -276,7 +276,7 @@ Křížek poslední karty neukončí appku — otevře znovu home.
 | `javaScriptEnabled = true` | bez JS PSST vůbec neběží |
 | `allowFileAccess = false` | ať stránka nesahá na soubory tabletu |
 | `setSupportZoom(false)` | pinch-zoom by se pral s posunem grafu |
-| desktopový UA + viewport 1280 zmenšený na šířku | stránky jako na PC, vejdou se na tablet |
+| desktopový UA + viewport na šířku tabletu | desktopové menu, užší delší stránka, prvky se nesmrskávají |
 | `LAYER_TYPE_NONE` | hardware vrstva kolem WebView při posunu nahrává celou texturu na GPU → cukání |
 | `safeBrowsingEnabled = false` | Google Safe Browsing u interního webu jen překáží |
 | `forceDark` vypnutý | ať Android web nepřekresluje na tmu |

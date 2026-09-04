@@ -19,15 +19,16 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   (PSST Data, DSD), bez adresy. Karta DSD se jmenuje **DSD**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
   na pozadí nesežerou tablet. Dlouhé podržení karty nebo odkazu otevře
-  dialog **Otevřít na druhé kartě**. Stránky se skládají jako na PC (1280 px)
-  a **zmenší se na šířku tabletu**, ať se vejdou na obrazovku. V ⋮ →
-  **Velikost stránek** zvlášť pro DSD a zvlášť pro PSST Data (100 % = na
-  šířku; drží se do Vymazat údaje). Grafy (`dmId`) mají 84 % a karta ze
+  dialog **Otevřít na druhé kartě**. Stránky se hlásí jako Chrome na PC,
+  ale skládají se **na šířku tabletu** (užší a delší, prvky se nezmenšují).
+  V ⋮ → **Velikost stránek** zvlášť pro DSD a PSST Data (100 % = skutečná
+  velikost; drží se do Vymazat údaje). Grafy (`dmId`) mají 84 % a karta ze
   sdílení se jmenuje **Graf …** podle `dmId`.
   Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
-  hover/tooltip při tažení. Stránky (DSD, PSST Data, grafy) se načítají
-  v **desktopovém** rozložení jako na PC, ne v tabletové formě.
+  hover/tooltip při tažení. Menu zůstává desktopové (Chrome na Windows);
+  obsah se skládá na šířku tabletu, takže je stránka delší a prvky
+  zůstávají čitelné.
 - Nabídka **⋮**: zadat adresu, přenačíst, velikost stránek, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.
