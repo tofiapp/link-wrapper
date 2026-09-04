@@ -1,6 +1,5 @@
 package com.example.linkwrapper
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -22,14 +21,14 @@ class DesktopSiteTest {
     }
 
     @Test
-    fun viewportMatchesTabletWidthAtScaleOne() {
-        val js = DesktopSite.bootstrapJs(800)
-        assertTrue(js.contains("var W = 800"))
-        assertTrue(js.contains("width=' + W"))
+    fun viewportFillsWebViewAndAllowsScroll() {
+        val js = DesktopSite.BOOTSTRAP_JS
+        assertTrue(js.contains("width=device-width"))
         assertTrue(js.contains("initial-scale=1"))
-        assertTrue(DesktopSite.setJs(800).contains("width=800, initial-scale=1, minimum-scale=1, maximum-scale=1"))
-        assertEquals(360, DesktopSite.clampCssWidth(10))
-        assertEquals(2000, DesktopSite.clampCssWidth(9999))
-        assertEquals(800, DesktopSite.clampCssWidth(800))
+        assertTrue(js.contains("overflow:visible"))
+        assertTrue(js.contains("max-height:none"))
+        assertFalse(js.contains("minimum-scale"))
+        assertFalse(js.contains("maximum-scale"))
+        assertTrue(DesktopSite.setJs().contains("width=device-width, initial-scale=1"))
     }
 }

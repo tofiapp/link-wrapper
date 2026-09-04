@@ -8,6 +8,8 @@ package com.example.linkwrapper
  * canvas/SVG. Při posunu se pak překresluje 4–9× víc pixelů než na PC
  * (DPR ~1). [BOOTSTRAP_JS] stropne DPR **než** se Highcharts spustí.
  * `chart.update` / `redraw` tady není — to by graf při posunu znovu složilo.
+ * `touch-action: none` / `contain: paint` na `.highcharts-scrolling` taky ne —
+ * ořízly by zbytek grafu a zablokovaly posun prstem.
  */
 internal object ChartPerf {
 
@@ -38,7 +40,7 @@ internal object ChartPerf {
     if (!root) return;
     var s = document.createElement('style');
     s.id = 'psst-chart-perf-css';
-    s.textContent = 'canvas,.highcharts-container,.highcharts-scrolling,.highcharts-root{touch-action:none;-webkit-tap-highlight-color:transparent;contain:layout style paint;}';
+    s.textContent = 'canvas,.highcharts-container,.highcharts-root{-webkit-tap-highlight-color:transparent;}';
     root.appendChild(s);
   }
   css();

@@ -55,19 +55,19 @@ VPN brána, dva APK vedle sebe.
 | --- | --- |
 | `WebViewActivity.kt` | jediná obrazovka: VPN, Domů / login, karty, web |
 | `Destinations.kt` | PSST / DSD / Domů, popisek karty |
-| `PageZoom.kt` | DSD a PSST zvlášť; 100 % = skutečná velikost; grafy 84 % |
+| `PageZoom.kt` | DSD a PSST zvlášť; 100 % = bez CSS zoomu (vyplní obrazovku, jde scrollovat); grafy taky 100 % |
 | `Session.kt` + `SecretStore.kt` | šifrované údaje, Keystore AES-256-GCM |
 | `AuthProbeActivity.kt` + `AuthHandoff.kt` | ověření hesla v jiném procesu |
 | `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
 | `DeviceTrust.kt` | banner „tablet nemá CA“ u přihlášení |
 | `SslPolicy.kt` + `network_security_config.xml` | HTTPS jen podle CA na tabletu |
-| `ChartPerf.kt` | strop `devicePixelRatio` kvůli grafům |
-| `DesktopSite.kt` | desktopový Chrome UA; viewport = šířka tabletu (užší a delší, bez smrskávání) |
+| `ChartPerf.kt` | strop `devicePixelRatio` kvůli grafům; nesahá na scroll Highcharts |
+| `DesktopSite.kt` | desktopový Chrome UA; viewport `device-width` + overflow auto |
 | `layout_vpn_gate.xml` | celoobrazovková hláška bez VPN |
 | `layout_home_screen.xml` | dlaždice jen s názvem |
 
 Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`, `PageZoomTest`,
-`DesktopSiteTest`.
+`DesktopSiteTest`, `ChartPerfTest`.
 
 ---
 

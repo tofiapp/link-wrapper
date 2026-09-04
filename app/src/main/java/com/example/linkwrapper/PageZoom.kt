@@ -3,9 +3,9 @@ package com.example.linkwrapper
 import android.content.Context
 
 /**
- * Volitelné přiblížení webu v ⋮. 100 % = skutečná velikost prvků
- * (stránka se skládá na šířku tabletu, je delší, nic se nesmrskává).
- * DSD a PSST Data zvlášť; grafy (`dmId`) mají 84 %.
+ * Volitelné přiblížení webu v ⋮. 100 % = žádný CSS zoom (skutečná velikost,
+ * stránka vyplní WebView a jde scrollovat). DSD a PSST Data zvlášť;
+ * grafy (`dmId`) taky 100 %, ať vyplní obrazovku.
  */
 internal object PageZoom {
 
@@ -13,7 +13,7 @@ internal object PageZoom {
 
     const val PORTRAIT_PERCENT = 100
     const val LANDSCAPE_PERCENT = 100
-    const val CHART_PERCENT = 84
+    const val CHART_PERCENT = 100
     const val MIN_PERCENT = 60
     const val MAX_PERCENT = 140
     const val STEP_PERCENT = 2
@@ -74,13 +74,11 @@ internal object PageZoom {
     }
 
     fun applyJs(percent: Int): String {
-        val z = "${clamp(percent)}%"
+        val body = zoomBodyJs(percent)
         return """
 (function(){
-  var z = '$z';
   function apply(){
-    try { document.documentElement.style.zoom = z; } catch (e) {}
-    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
+    $body
   }
   apply();
   document.addEventListener('DOMContentLoaded', apply);
@@ -106,20 +104,35 @@ internal object PageZoom {
       return PSST;
     } catch (e) { return PSST; }
   }
-  function apply(){
-    var z = pick();
-    try { document.documentElement.style.zoom = z; } catch (e) {}
-    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
+  function setZoom(z){
+    try {
+      if (z === '100%') {
+        document.documentElement.style.removeProperty('zoom');
+        if (document.body) document.body.style.removeProperty('zoom');
+      } else {
+        document.documentElement.style.zoom = z;
+        if (document.body) document.body.style.removeProperty('zoom');
+      }
+    } catch (e) {}
   }
+  function apply(){ setZoom(pick()); }
   apply();
   document.addEventListener('DOMContentLoaded', apply);
 })();
 """
     }
 
-    fun setJs(percent: Int): String {
-        val z = "${clamp(percent)}%"
-        return "try{document.documentElement.style.zoom='$z';if(document.body)document.body.style.zoom='$z';}catch(e){}"
+    fun setJs(percent: Int): String = zoomBodyJs(percent)
+
+    private fun zoomBodyJs(percent: Int): String {
+        val p = clamp(percent)
+        return if (p == 100) {
+            "try{document.documentElement.style.removeProperty('zoom');" +
+                "if(document.body)document.body.style.removeProperty('zoom');}catch(e){}"
+        } else {
+            "try{document.documentElement.style.zoom='$p%';" +
+                "if(document.body)document.body.style.removeProperty('zoom');}catch(e){}"
+        }
     }
 
     private fun keyFor(kind: Kind): String? = when (kind) {
