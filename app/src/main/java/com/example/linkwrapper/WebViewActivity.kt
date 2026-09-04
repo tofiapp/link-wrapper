@@ -685,6 +685,7 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.setGeolocationEnabled(true)
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = true
+        webView.settings.userAgentString = DesktopSite.userAgent(webView.settings.userAgentString)
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
         webView.settings.allowFileAccess = false
         webView.settings.allowContentAccess = false
@@ -849,7 +850,7 @@ class WebViewActivity : AppCompatActivity() {
                 super.onPageStarted(view, url, favicon)
                 if (view != null) {
                     injectChartPerfFallback(view)
-                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
+                    applyDesktopLayout(view, url)
                 }
             }
 
@@ -873,7 +874,7 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 if (view != null) authFailedViews.remove(view)
                 if (view != null) {
-                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
+                    applyDesktopLayout(view, url)
                 }
                 updateTabMeta(view ?: return, url)
             }
@@ -1281,7 +1282,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1293,7 +1294,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartPerfFallback(webView: WebView) {
         if (webView in chartPerfInjected) return
         try {
-            webView.evaluateJavascript(pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
+            webView.evaluateJavascript(DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
             chartPerfInjected.add(webView)
         } catch (_: Exception) {
         }
@@ -1325,8 +1326,15 @@ class WebViewActivity : AppCompatActivity() {
             } else {
                 PageZoom.percentFor(this, kind, landscape)
             }
-            wv.evaluateJavascript(PageZoom.setJs(percent), null)
+            wv.evaluateJavascript(DesktopSite.setJs() + PageZoom.setJs(percent), null)
         }
+    }
+
+    private fun applyDesktopLayout(webView: WebView, url: String?) {
+        webView.evaluateJavascript(
+            DesktopSite.setJs() + PageZoom.setJs(pageZoomPercentFor(url)),
+            null
+        )
     }
 
     private fun bindLoginUi() {
