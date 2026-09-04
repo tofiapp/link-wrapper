@@ -2,34 +2,13 @@ package com.example.linkwrapper
 
 /**
  * Stránky mají desktopové menu (Chrome na Windows), ale skládají se na
- * **skutečnou šířku tabletu** — užší a delší, bez zmenšování prvků.
- *
- * Široký viewport + CSS zoom všechno smrskl. Tady je 1 CSS pixel = 1 dp.
+ * šířku WebView (`width=device-width`, měřítko 1). 1 CSS pixel = 1 dp,
+ * stránka může být delší a jít scrollovat — bez smrskávání prvků.
  */
 internal object DesktopSite {
 
-    const val MIN_CSS_WIDTH = 360
-    const val MAX_CSS_WIDTH = 2000
-
-    fun clampCssWidth(cssWidth: Int): Int =
-        cssWidth.coerceIn(MIN_CSS_WIDTH, MAX_CSS_WIDTH)
-
-    fun userAgent(defaultUa: String?): String {
-        val chrome = defaultUa
-            ?.let { Regex("Chrome/[\\d.]+").find(it)?.value }
-            ?: "Chrome/120.0.0.0"
-        val webkit = defaultUa
-            ?.let { Regex("AppleWebKit/[\\d.]+").find(it)?.value }
-            ?: "AppleWebKit/537.36"
-        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) $webkit " +
-            "(KHTML, like Gecko) $chrome Safari/537.36"
-    }
-
-    fun bootstrapJs(cssWidth: Int): String {
-        val w = clampCssWidth(cssWidth)
-        return """
+    const val BOOTSTRAP_JS = """
 (function(){
-  var W = $w;
   function viewport(){
     try {
       var head = document.head || document.documentElement;
@@ -40,11 +19,21 @@ internal object DesktopSite {
         m.setAttribute('name', 'viewport');
         head.insertBefore(m, head.firstChild);
       }
-      m.setAttribute('content', 'width=' + W + ', initial-scale=1, minimum-scale=1, maximum-scale=1');
+      m.setAttribute('content', 'width=device-width, initial-scale=1');
+    } catch (e) {}
+  }
+  function unclip(){
+    try {
+      if (document.getElementById('obalka-scroll')) return;
+      var s = document.createElement('style');
+      s.id = 'obalka-scroll';
+      s.textContent = 'html,body,form{overflow:visible!important;max-height:none!important;width:100%!important;max-width:none!important;}';
+      (document.head || document.documentElement).appendChild(s);
     } catch (e) {}
   }
   viewport();
-  document.addEventListener('DOMContentLoaded', viewport);
+  unclip();
+  document.addEventListener('DOMContentLoaded', function(){ viewport(); unclip(); });
 
   try {
     Object.defineProperty(navigator, 'platform', {
@@ -69,13 +58,21 @@ internal object DesktopSite {
   } catch (e) {}
 })();
 """
+
+    fun userAgent(defaultUa: String?): String {
+        val chrome = defaultUa
+            ?.let { Regex("Chrome/[\\d.]+").find(it)?.value }
+            ?: "Chrome/120.0.0.0"
+        val webkit = defaultUa
+            ?.let { Regex("AppleWebKit/[\\d.]+").find(it)?.value }
+            ?: "AppleWebKit/537.36"
+        return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) $webkit " +
+            "(KHTML, like Gecko) $chrome Safari/537.36"
     }
 
-    fun setJs(cssWidth: Int): String {
-        val w = clampCssWidth(cssWidth)
-        return "try{var m=document.querySelector('meta[name=\"viewport\"]');" +
+    fun setJs(): String =
+        "try{var m=document.querySelector('meta[name=\"viewport\"]');" +
             "if(!m){m=document.createElement('meta');m.setAttribute('name','viewport');" +
             "(document.head||document.documentElement).appendChild(m);}" +
-            "m.setAttribute('content','width=$w, initial-scale=1, minimum-scale=1, maximum-scale=1');}catch(e){}"
-    }
+            "m.setAttribute('content','width=device-width, initial-scale=1');}catch(e){}"
 }

@@ -701,8 +701,6 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.builtInZoomControls = false
         webView.settings.displayZoomControls = false
         webView.settings.textZoom = 100
-        // 100 % = 1 CSS px na 1 dp; WebView jinak umí stránku „přizpůsobit“ a smrsknout prvky.
-        webView.setInitialScale(100)
         webView.settings.layoutAlgorithm = WebSettings.LayoutAlgorithm.NORMAL
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             webView.settings.safeBrowsingEnabled = false
@@ -719,8 +717,8 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.offscreenPreRaster = false
         webView.overScrollMode = View.OVER_SCROLL_NEVER
         webView.isNestedScrollingEnabled = false
-        webView.isVerticalScrollBarEnabled = false
-        webView.isHorizontalScrollBarEnabled = false
+        webView.isVerticalScrollBarEnabled = true
+        webView.isHorizontalScrollBarEnabled = true
         webView.importantForAccessibility =
             View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         webView.isHapticFeedbackEnabled = false
@@ -1287,7 +1285,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                desktopLayoutJs() + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1299,20 +1297,11 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartPerfFallback(webView: WebView) {
         if (webView in chartPerfInjected) return
         try {
-            webView.evaluateJavascript(desktopLayoutJs() + pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
+            webView.evaluateJavascript(DesktopSite.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS, null)
             chartPerfInjected.add(webView)
         } catch (_: Exception) {
         }
     }
-
-    private fun pageCssWidthPx(): Int {
-        val px = webContainer.width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
-        val density = resources.displayMetrics.density
-        if (density <= 0f) return px
-        return DesktopSite.clampCssWidth(kotlin.math.round(px / density).toInt())
-    }
-
-    private fun desktopLayoutJs(): String = DesktopSite.bootstrapJs(pageCssWidthPx())
 
     private fun pageZoomPercentFor(url: String?): Int {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -1333,7 +1322,7 @@ class WebViewActivity : AppCompatActivity() {
         previewPercent: Int? = null
     ) {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val layout = DesktopSite.setJs(pageCssWidthPx())
+        val layout = DesktopSite.setJs()
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
             val kind = PageZoom.kindFor(tab.url)
@@ -1348,7 +1337,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun applyDesktopLayout(webView: WebView, url: String?) {
         webView.evaluateJavascript(
-            DesktopSite.setJs(pageCssWidthPx()) + PageZoom.setJs(pageZoomPercentFor(url)),
+            DesktopSite.setJs() + PageZoom.setJs(pageZoomPercentFor(url)),
             null
         )
     }
