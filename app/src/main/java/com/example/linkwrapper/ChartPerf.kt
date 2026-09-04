@@ -7,12 +7,9 @@ package com.example.linkwrapper
  * Na tabletu je [devicePixelRatio] často 2–3. Highcharts podle něj násobí
  * canvas/SVG. Při posunu se pak překresluje 4–9× víc pixelů než na PC
  * (DPR ~1). [BOOTSTRAP_JS] stropne DPR **než** se Highcharts spustí.
- * `chart.update` / `redraw` tady není — to by graf při posunu znovu složilo.
- * `touch-action: none` / `contain: paint` na `.highcharts-scrolling` taky ne —
- * ořízly by zbytek grafu a zablokovaly posun prstem.
  *
- * Po vykreslení se graf natáhne na šířku kontejneru a oříznutý
- * `.highcharts-scrolling` se zvětší na obsah, ať jde zbytek dojet na stránce.
+ * Graf se po načtení přepočítá na šířku a výšku WebView (`setSize`).
+ * CSS výšku kontejneru nenafukujeme — to by pod grafem nechalo prázdno.
  */
 internal object ChartPerf {
 
@@ -45,78 +42,70 @@ internal object ChartPerf {
     s.id = 'psst-chart-perf-css';
     s.textContent = [
       'canvas,.highcharts-container,.highcharts-root{-webkit-tap-highlight-color:transparent;}',
-      '.highcharts-container{width:100%!important;max-width:100%!important;overflow:visible!important;max-height:none!important;}',
-      '.highcharts-scrolling{overflow:auto!important;max-height:none!important;touch-action:pan-x pan-y!important;}'
+      '.highcharts-scrolling{overflow:auto!important;touch-action:pan-x pan-y!important;}'
     ].join('');
     root.appendChild(s);
   }
   css();
   document.addEventListener('DOMContentLoaded', css);
 
-  function unclipAncestors(el) {
+  function viewSize() {
+    var de = document.documentElement;
+    var w = (de && de.clientWidth) || window.innerWidth || 0;
+    var h = (de && de.clientHeight) || window.innerHeight || 0;
+    return { w: w, h: h };
+  }
+
+  function widen(el, w) {
     var n = el;
     var hops = 0;
-    while (n && n !== document.documentElement && hops < 14) {
+    while (n && hops < 12) {
       try {
-        n.style.maxHeight = 'none';
-        var ov = n.style.overflow || '';
-        if (!ov || ov === 'hidden') n.style.overflow = 'visible';
-        if (n.style.overflowY === 'hidden') n.style.overflowY = 'visible';
+        n.style.setProperty('max-width', 'none', 'important');
+        n.style.setProperty('width', w + 'px', 'important');
+        n.style.setProperty('margin-left', '0', 'important');
+        n.style.setProperty('margin-right', '0', 'important');
+        n.style.setProperty('box-sizing', 'border-box', 'important');
       } catch (e) {}
+      if (n === document.body || n === document.documentElement) break;
       n = n.parentElement;
       hops++;
     }
   }
 
-  function unlockScrolling() {
-    try {
-      var scs = document.querySelectorAll('.highcharts-scrolling');
-      for (var i = 0; i < scs.length; i++) {
-        var sc = scs[i];
-        sc.style.touchAction = 'pan-x pan-y';
-        sc.style.maxHeight = 'none';
-        var needed = sc.scrollHeight;
-        var inner = sc.firstElementChild;
-        if (inner) {
-          var ih = Math.max(inner.scrollHeight || 0, inner.offsetHeight || 0);
-          if (ih > needed) needed = ih;
-        }
-        if (needed > sc.clientHeight + 8) {
-          sc.style.height = needed + 'px';
-          sc.style.overflow = 'visible';
-          var host = sc.parentElement;
-          if (host) {
-            host.style.height = 'auto';
-            host.style.overflow = 'visible';
-          }
-        } else {
-          sc.style.overflow = 'auto';
-        }
-        unclipAncestors(sc);
-      }
-    } catch (e) {}
+  function targetHeight(c, vh) {
+    var axes = (c.yAxis && c.yAxis.length) ? c.yAxis.length : 1;
+    var series = (c.series && c.series.length) ? c.series.length : 1;
+    var panes = axes > 1 ? axes : (series > 6 ? series : 1);
+    var h = Math.max(vh, panes * 150);
+    if (h > 8000) h = 8000;
+    return Math.round(h);
   }
 
-  function sizeChart(c) {
-    if (!c || !c.container) return;
+  function fitChart(c) {
+    if (!c || !c.setSize || c.__obalkaFit) return;
+    var vs = viewSize();
+    var w = Math.round(vs.w);
+    var h = targetHeight(c, vs.h);
+    if (w < 200 || h < 200) return;
+    var sameW = Math.abs((c.chartWidth || 0) - w) < 4;
+    var sameH = Math.abs((c.chartHeight || 0) - h) < 4;
+    if (sameW && sameH) return;
+    c.__obalkaFit = 1;
     try {
-      unclipAncestors(c.container);
-      var parent = c.renderTo || c.container.parentElement;
-      var w = parent && parent.clientWidth ? parent.clientWidth : 0;
-      if (w > 0 && c.setSize && Math.abs((c.chartWidth || 0) - w) > 8) {
-        c.setSize(w, undefined, false);
-      }
+      var host = c.renderTo || c.container;
+      if (host) widen(host, w);
+      c.setSize(w, h, false);
     } catch (e) {}
-    unlockScrolling();
+    c.__obalkaFit = 0;
   }
 
-  function sizeAll() {
+  function fitAll() {
     css();
-    unlockScrolling();
     try {
       var H = window.Highcharts;
       if (!H || !H.charts) return;
-      for (var i = 0; i < H.charts.length; i++) sizeChart(H.charts[i]);
+      for (var i = 0; i < H.charts.length; i++) fitChart(H.charts[i]);
     } catch (e) {}
   }
 
@@ -126,7 +115,10 @@ internal object ChartPerf {
       H.__psstOpts = 1;
       try {
         H.setOptions({
-          chart: { animation: false },
+          chart: {
+            animation: false,
+            panning: true
+          },
           tooltip: { followTouchMove: false, animation: false },
           plotOptions: {
             series: {
@@ -143,8 +135,8 @@ internal object ChartPerf {
       try {
         H.addEvent(H.Chart, 'load', function() {
           var c = this;
-          setTimeout(function(){ sizeChart(c); }, 0);
-          setTimeout(function(){ sizeChart(c); }, 400);
+          setTimeout(function(){ fitChart(c); }, 0);
+          setTimeout(function(){ fitChart(c); }, 500);
         });
       } catch (e) {}
     }
@@ -164,11 +156,11 @@ internal object ChartPerf {
     try { applyH(window.Highcharts); } catch (e2) {}
   }
 
-  document.addEventListener('DOMContentLoaded', sizeAll);
-  window.addEventListener('load', sizeAll);
-  window.addEventListener('resize', sizeAll);
-  setTimeout(sizeAll, 800);
-  setTimeout(sizeAll, 2500);
+  document.addEventListener('DOMContentLoaded', fitAll);
+  window.addEventListener('load', fitAll);
+  window.addEventListener('resize', fitAll);
+  setTimeout(fitAll, 900);
+  setTimeout(fitAll, 2200);
 })();
 """
 }
