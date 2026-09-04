@@ -25,7 +25,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   a karta ze sdílení se jmenuje **Graf …** podle `dmId`.
   Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
-  hover/tooltip při tažení.
+  hover/tooltip při tažení. Stránky (DSD, PSST Data, grafy) se načítají
+  v **desktopovém** rozložení jako na PC, ne v tabletové formě.
 - Nabídka **⋮**: zadat adresu, přenačíst, velikost stránek, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.

@@ -62,10 +62,12 @@ VPN brána, dva APK vedle sebe.
 | `DeviceTrust.kt` | banner „tablet nemá CA“ u přihlášení |
 | `SslPolicy.kt` + `network_security_config.xml` | HTTPS jen podle CA na tabletu |
 | `ChartPerf.kt` | strop `devicePixelRatio` kvůli grafům |
+| `DesktopSite.kt` | desktopový Chrome UA + viewport 1280, ať stránky nejsou v tabletové formě |
 | `layout_vpn_gate.xml` | celoobrazovková hláška bez VPN |
 | `layout_home_screen.xml` | dlaždice jen s názvem |
 
-Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`, `PageZoomTest`.
+Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`, `PageZoomTest`,
+`DesktopSiteTest`.
 
 ---
 
