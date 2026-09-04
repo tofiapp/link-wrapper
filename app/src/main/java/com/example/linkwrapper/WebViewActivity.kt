@@ -439,13 +439,27 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    /** Domeček: otevře kartu Domů, aktuální stránku nechá. */
+    /** Domeček: aktuální karta (DSD, PSST, graf) se změní na Domů. */
     private fun openHomeWindow() {
-        if (activeTab?.isHome == true) {
-            selectTab(activeTab!!.id)
+        convertActiveTabToHome()
+    }
+
+    private fun convertActiveTabToHome() {
+        val tab = activeTab
+        if (tab == null) {
+            openNewHomeTab()
             return
         }
-        openNewHomeTab()
+        if (tab.isHome) {
+            selectTab(tab.id)
+            return
+        }
+        destroyWebView(tab)
+        hideKeyboard()
+        tab.isHome = true
+        tab.title = "Domů"
+        tab.url = Destinations.HOME_URL
+        selectTab(tab.id)
     }
 
     private fun openNewHomeTab() {

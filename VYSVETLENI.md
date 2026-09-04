@@ -301,8 +301,8 @@ pak teprve opustí appku. Na přihlášení Zpět **neobejde bránu**.
 
 ### 6.7 Menu ⋮
 
-XML: `menu_webview.xml`. Vpravo viditelně **+** a **domeček** — obojí
-otevře **novou** kartu Domů (aktuální web zůstane). V ⋮:
+XML: `menu_webview.xml`. Vpravo viditelně **+** (nová karta Domů, aktuální
+web zůstane) a **domeček** (aktuální karta se změní na Domů). V ⋮:
 
 - zadat URL
 - přenačíst

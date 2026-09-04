@@ -13,8 +13,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Údaje se uloží v aplikaci, dokud je v ⋮ nesmažete.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
   relace na otevřených stránkách. Pak jste na obou webech odhlášení.
-- **Karty** nahoře v liště. **Domeček** i **+** otevřou kartu **Domů**
-  z jakékoliv stránky (aktuální web zůstane, neskopíruje se).
+- **Karty** nahoře v liště. **Domeček** změní aktuální kartu (DSD, PSST,
+  graf) na **Domů**. **+** otevře novou kartu **Domů**, aktuální web zůstane.
   Křížek je jen když je karet víc. Dlaždice na Domů mají jen název
   (PSST Data, DSD), bez adresy. Karta DSD se jmenuje **DSD**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
