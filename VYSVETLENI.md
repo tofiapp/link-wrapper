@@ -5,8 +5,8 @@ Po dočtení by mělo být jasné: **co appka je, kudy teče uživatel, co kter�
 dělá, a proč je tohle řešení a ne Chrome / běžné přihlášení / „prostě to
 ignoruj“ u certifikátů.**
 
-Technický seznam oprav a **aktuální** tok (běžná APK: Domů bez loginu;
-zkušební: login na Domů; karty; VPN; HTTPS podle CA na tabletu)
+Technický seznam oprav a **aktuální** tok (obě APK: Domů bez loginu,
+PSST až po dlaždici; karty; VPN; HTTPS podle CA na tabletu)
 je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (pinning CA v APK,
 názvy karet z `dmId`) už neplatí — když se liší, platí AUDIT a README.
 Bezpečnost uložených údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
@@ -122,7 +122,7 @@ link-wrapper/
 ```
 
 Balíček se jmenuje `com.example.linkwrapper` — to je historický název z šablony.
-Na tabletu se běžná APK jmenuje **PSST Data**, zkušební **PSST Data (zkušební)**.
+Na tabletu se obě APK jmenují **Obálka**.
 
 **Hlavní Kotlin soubory:**
 
@@ -165,8 +165,7 @@ Všechno se rozhoduje v jedné funkci: `refreshGate()` v `WebViewActivity.kt`.
                             (údaje = tudc.cz)
 ```
 
-**Běžná APK:** Domů i bez přihlášení. Údaje jen pro PSST.
-**Zkušební APK:** nejdřív přihlášení, údaje pro celé `tudc.cz`.
+**Obě APK:** Domů i bez přihlášení. Údaje jen pro PSST. DSD má vlastní formulář.
 Dřív appka pinovala firemní CA v APK — to už není, viz `AUDIT.md`.
 
 ---
@@ -525,13 +524,13 @@ tím, než Highcharts nastartuje.
 | téma | stav |
 | --- | --- |
 | Heslo v plaintext prefs | ne — AES-GCM, klíč v Keystore |
-| Heslo na cizí server | běžná APK: jen PSST; zkušební: celé `tudc.cz` |
+| Heslo na cizí server | jen PSST (`psst.tudc.cz` / `test.psst.tudc.cz`) |
 | Pokračovat přes špatný certifikát | ne |
 | HTTP bez TLS | ne |
 | Přístup na `file://` | vypnutý |
 | JS ve WebView | nutný; souborový přístup vypnutý |
 | Probe activity zvenku | ne (`exported=false`) |
-| Hlavní activity zvenku | ano (odkazy); zkušební bez relace zůstane na přihlášení |
+| Hlavní activity zvenku | ano (odkazy); bez relace na PSST se ukáže formulář |
 | Keystore v soukromém gitu | ano, kvůli aktualizacím; heslo k úložišti je v `keystore.properties` |
 
 ---

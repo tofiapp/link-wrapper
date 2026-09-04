@@ -18,7 +18,7 @@ způsobem, který tenhle kód dřív dovoloval.
 | Přečte ho záloha Google / USB? | **Ne.** Záloha je vypnutá, citlivé soubory jsou vyloučené. |
 | Je na disku čitelným textem? | **Ne** (po této úpravě). Je zašifrované klíčem v Android Keystore. |
 | Objeví se v logu při přihlášení? | **Ne.** Do Intentu se už nedává. |
-| Odešle ho appka na cizí web (odkaz, phishing)? | **Běžná APK: ne** — jen `psst.tudc.cz` / `test.psst.tudc.cz`. **Zkušební APK: ano na celé `tudc.cz`.** |
+| Odešle ho appka na cizí web (odkaz, phishing)? | **Ne** — jen `psst.tudc.cz` / `test.psst.tudc.cz`. |
 | Půjde screenshot přihlášení z recents? | **Ne.** Obrazovka s heslem má `FLAG_SECURE`. |
 | Přečte ho root / firemní MDM s plným přístupem? | **Ano, to nejde zastavit v appce.** Tablet by neměl být rootnutý. |
 
@@ -66,9 +66,8 @@ Cesta útoku: e-mail / „Otevřít pomocí“ / `⋮ → zadat URL` na
 V **běžné APK** se údaje posílají jen na `psst.tudc.cz` a
 `test.psst.tudc.cz` (a jejich subdomény). Cizí 401 heslo nedostane.
 
-Ve **zkušební APK** platí totéž pro celé `tudc.cz` (včetně DSD). Cizí
-host mimo `tudc.cz` heslo pořád nedostane. Podvržený `něco.tudc.cz` ano —
-proto je to jen zkušební build.
+Obě APK posílají údaje jen na `psst.tudc.cz` a `test.psst.tudc.cz`
+(a jejich subdomény). DSD ani cizí 401 heslo nedostane.
 
 ### 4. SSL „pokračuj“ / pinning v APK (vysoké, odstraněno)
 

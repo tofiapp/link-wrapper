@@ -5,11 +5,11 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
+- Na tabletu se appka jmenuje **Obálka** (běžná i zkušební APK).
 - Po spuštění (a po VPN) nativní **Domů**.
-  **Běžná APK:** PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
-  `test.psst.tudc.cz`). **DSD** má vlastní formulář na webu.
-  **Zkušební APK** (`PSST Data (zkušební)`): přihlášení hned na Domů,
-  údaje platí pro celé `tudc.cz` (včetně DSD).
+  PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
+  `test.psst.tudc.cz`). **DSD** má vlastní formulář na webu; údaje z PSST
+  se tam neposílají.
 - Údaje se uloží v aplikaci, dokud je v ⋮ nesmažete.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
   relace na otevřených stránkách. Pak jste na obou webech odhlášení.
@@ -18,11 +18,14 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   Křížek je jen když je karet víc. Dlaždice na Domů mají jen název
   (PSST Data, DSD), bez adresy. Karta DSD se jmenuje **DSD**.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
-  na pozadí nesežerou tablet. Přiblížení webu: na výšku 88 %, na šířku 80 %.
+  na pozadí nesežerou tablet. Dlouhé podržení karty nebo odkazu otevře
+  dialog **Otevřít na druhé kartě**. Přiblížení webu: výchozí na výšku
+  88 %, na šířku 80 %; v ⋮ → **Velikost stránek** jde nastavit společně
+  pro DSD, PSST Data i grafy (drží se do Vymazat údaje).
   Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
   hover/tooltip při tažení.
-- Nabídka **⋮**: zadat adresu, přenačíst, nastavení odkazů.
+- Nabídka **⋮**: zadat adresu, přenačíst, velikost stránek, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.
 - **VPN brána**: bez Cisco AnyConnect hláška přes celou obrazovku — karty
@@ -42,7 +45,7 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 4. Stáhni APK jedním z těchto způsobů:
    - **Releases** (pohodlnější): v repozitáři záložka **Releases** → nejnovější
      verze → soubory `LinkWrapper-pinned-1.0.N.apk` (běžná) a
-     `LinkWrapper-systemtrust-1.0.N-system.apk` (zkušební, přihlášení pro tudc.cz).
+     `LinkWrapper-systemtrust-1.0.N-system.apk` (zkušební, stejné přihlášení).
    - **Actions**: záložka **Actions** → poslední běh → dole v sekci
      **Artifacts** najdeš `LinkWrapper-1.0.N` → stáhni zip, uvnitř je APK.
 5. Ten `.apk` nahraj do tabletu (email sám sobě, Google Drive, USB…) a nainstaluj.
@@ -84,8 +87,8 @@ spojení se nenačte.
 IT musí mít na tabletech nasazenou firemní CA (Intune → trusted
 certificate profile). Bez toho weby `tudc.cz` nepůjdou.
 
-Obě APK (běžná i zkušební) používají stejné ověření. Liší se jen
-přihlášením, viz níž.
+Obě APK (běžná i zkušební) používají stejné ověření HTTPS i stejné
+přihlášení. Na zařízení se obě jmenují **Obálka**.
 
 ## Přihlášení a odhlášení
 
@@ -96,18 +99,15 @@ proto má vlastní přihlašovací obrazovku. Zkoušejte tvar `DOMÉNA\uživatel
 Tok:
 
 1. Bez VPN → hláška přes celou obrazovku (Cisco AnyConnect). Nic jiného nefunguje.
-2. **Běžná APK:** VPN → nativní **Domů** i bez přihlášení.
-   **Zkušební APK:** VPN → nejdřív přihlášení, teprve potom Domů.
-3. **Běžná APK — PSST Data** bez uložených údajů → formulář, ověření, pak web.
+2. VPN → nativní **Domů** i bez přihlášení.
+3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
    Údaje platí jen pro `psst.tudc.cz` / `test.psst.tudc.cz`.
-   **Zkušební APK:** stejný formulář na Domů; údaje platí pro **celé `tudc.cz`**
-   (včetně DSD).
-4. **Běžná APK — DSD** → web s vlastním přihlášením, údaje z PSST se tam
+4. **DSD** → web s vlastním přihlášením, údaje z PSST se tam
    neposílají. Dočasný HTTP 401 při handshake se neukazuje
    (žádný dialog „Přístup odepřen“).
-5. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache i Chromium profil
-   se smažou a proces se restartuje (NTLM jinak v procesu přežije). Pak znovu
-   Domů (u zkušební znovu přihlášení).
+5. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache, velikost stránek
+   i Chromium profil se smažou a proces se restartuje (NTLM jinak v procesu
+   přežije). Pak znovu Domů.
 6. Špatné heslo se ověří v odděleném procesu a do prohlížeče se nedostane.
 
 | Typ na serveru | Šance ve WebView |

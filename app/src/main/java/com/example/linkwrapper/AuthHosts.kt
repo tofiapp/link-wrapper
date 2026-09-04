@@ -3,7 +3,7 @@ package com.example.linkwrapper
 /**
  * Servery, kterým smí aplikace poslat uložené jméno a heslo.
  *
- * Běžná APK: jen PSST. Zkušební APK: celé `tudc.cz`.
+ * Jen PSST. DSD má vlastní formulář — údaje z PSST se tam neposílají.
  * Catch-all „Otevřít pomocí“ umí načíst i cizí HTTPS — bez tohoto
  * seznamu by WebView na 401 odeslalo účet na útočníkův server.
  */
@@ -14,11 +14,8 @@ internal object AuthHosts {
         "test.psst.tudc.cz"
     )
 
-    fun allows(host: String?): Boolean = allows(host, BuildConfig.TRIAL_HOME_LOGIN)
-
-    fun allows(host: String?, allTudc: Boolean): Boolean {
+    fun allows(host: String?): Boolean {
         val h = host?.lowercase()?.trim('.') ?: return false
-        if (allTudc) return isTudc(h)
         if (h in psstExact) return true
         return psstExact.any { h.endsWith(".$it") }
     }

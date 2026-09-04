@@ -25,9 +25,31 @@ object Session {
     private const val KEY_PASS_ENC = "password_enc"
 
     private const val LEGACY_AUTH_PREFS = "http_auth_prefs"
+    private const val KEY_DROPPED_SHARED_AUTH = "dropped_shared_http_auth"
 
     @Volatile
     private var memoryOnly: Credentials? = null
+
+    /**
+     * Jednorázově smaže HTTP auth / uložená hesla ve WebView.
+     * Zkušební build dřív posílal údaje na celé tudc.cz (včetně DSD)
+     * a Chromium si je držel i po sjednocení přihlášení.
+     */
+    fun dropSharedHttpAuthOnce(context: Context) {
+        val current = prefs(context)
+        if (current.getBoolean(KEY_DROPPED_SHARED_AUTH, false)) return
+        try {
+            @Suppress("DEPRECATION")
+            val db = WebViewDatabase.getInstance(context)
+            db.clearHttpAuthUsernamePassword()
+            @Suppress("DEPRECATION")
+            db.clearFormData()
+            @Suppress("DEPRECATION")
+            db.clearUsernamePassword()
+        } catch (_: Exception) {
+        }
+        current.edit().putBoolean(KEY_DROPPED_SHARED_AUTH, true).commit()
+    }
 
     fun isActive(context: Context): Boolean = credentials(context) != null
 
@@ -65,6 +87,7 @@ object Session {
     fun end(context: Context) {
         memoryOnly = null
         AuthHandoff.clear(context)
+        PageZoom.clear(context)
         prefs(context).edit().clear().commit()
         context.getSharedPreferences(LEGACY_AUTH_PREFS, Context.MODE_PRIVATE)
             .edit().clear().commit()

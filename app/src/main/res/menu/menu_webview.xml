@@ -27,6 +27,11 @@
             android:icon="@drawable/ic_refresh"
             app:showAsAction="never" />
         <item
+            android:id="@+id/action_page_size"
+            android:title="Velikost stránek"
+            android:icon="@drawable/ic_page_size"
+            app:showAsAction="never" />
+        <item
             android:id="@+id/action_link_settings"
             android:title="Nastavení odkazů"
             android:icon="@drawable/ic_settings_alert"

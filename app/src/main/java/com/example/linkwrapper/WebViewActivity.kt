@@ -2,12 +2,15 @@ package com.example.linkwrapper
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.os.Message
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -64,6 +67,7 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.slider.Slider
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.util.Collections
@@ -202,6 +206,7 @@ class WebViewActivity : AppCompatActivity() {
 
         CookieManager.getInstance().setAcceptCookie(true)
         WebView.setWebContentsDebuggingEnabled(false)
+        Session.dropSharedHttpAuthOnce(this)
 
         pendingStartUrl = explicitUrlFromIntent(intent)
         refreshGate()
@@ -293,8 +298,7 @@ class WebViewActivity : AppCompatActivity() {
 
     /**
      * Bez VPN → varování.
-     * Běžná APK: Domů i bez relace; přihlášení k PSST až po dlaždici.
-     * Zkušební APK: nejdřív přihlášení (údaje pro celé tudc.cz), pak Domů.
+     * Domů i bez relace; přihlášení k PSST až po dlaždici.
      */
     private fun refreshGate() {
         if (isFinishing) return
@@ -303,10 +307,6 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         if (verifyingLogin) {
-            presentLogin()
-            return
-        }
-        if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this)) {
             presentLogin()
             return
         }
@@ -334,10 +334,6 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun needsAppLogin(url: String): Boolean {
         if (Session.isActive(this)) return false
-        if (BuildConfig.TRIAL_HOME_LOGIN) {
-            val host = runCatching { Uri.parse(url).host }.getOrNull()
-            return AuthHosts.allows(host, allTudc = true)
-        }
         return Destinations.forUrl(url)?.requiresAppLogin == true
     }
 
@@ -361,10 +357,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun presentHome() {
-        if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this) && !verifyingLogin) {
-            presentLogin()
-            return
-        }
         if (tabs.isEmpty() || activeTab == null) {
             openNewHomeTab()
             return
@@ -449,10 +441,6 @@ class WebViewActivity : AppCompatActivity() {
 
     /** Domeček: otevře kartu Domů, aktuální stránku nechá. */
     private fun openHomeWindow() {
-        if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this) && !verifyingLogin) {
-            presentLogin()
-            return
-        }
         if (activeTab?.isHome == true) {
             selectTab(activeTab!!.id)
             return
@@ -633,6 +621,10 @@ class WebViewActivity : AppCompatActivity() {
                 if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
             )
             root.setOnClickListener { selectTab(tab.id) }
+            root.setOnLongClickListener {
+                showLinkOrTabActions(tab.url, tab.title)
+                true
+            }
             val showClose = tabs.size > 1
             close.visibility = if (showClose) View.VISIBLE else View.GONE
             val padEnd = ((if (showClose) 4 else 14) * resources.displayMetrics.density).toInt()
@@ -696,6 +688,11 @@ class WebViewActivity : AppCompatActivity() {
             webView.settings.safeBrowsingEnabled = false
         }
         webView.settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+        @Suppress("DEPRECATION")
+        webView.settings.saveFormData = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            webView.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        }
         // Chromium má vlastní compositor. Hardware vrstva kolem WebView
         // při posunu grafu pokaždé nahrává celou texturu → cukání.
         webView.setLayerType(View.LAYER_TYPE_NONE, null)
@@ -717,7 +714,10 @@ class WebViewActivity : AppCompatActivity() {
         }
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-        webView.setOnLongClickListener { true }
+        webView.setOnLongClickListener { view ->
+            handleWebViewLongClick(view as WebView)
+            true
+        }
         webView.setOnTouchListener { v, ev ->
             if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
                 v.parent?.requestDisallowInterceptTouchEvent(true)
@@ -833,7 +833,10 @@ class WebViewActivity : AppCompatActivity() {
 
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
-                if (view != null) injectChartPerfFallback(view)
+                if (view != null) {
+                    injectChartPerfFallback(view)
+                    view.evaluateJavascript(PageZoom.setJs(pageZoomPercent()), null)
+                }
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
@@ -984,6 +987,137 @@ class WebViewActivity : AppCompatActivity() {
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
         )
         dialog.show()
+    }
+
+    /**
+     * Dlouhé podržení odkazu ve stránce. Systémovou Chromium nabídku
+     * nenecháme — místo ní náš dialog (otevřít na druhé kartě / kopírovat).
+     */
+    private fun handleWebViewLongClick(webView: WebView): Boolean {
+        val result = webView.hitTestResult
+        when (result.type) {
+            WebView.HitTestResult.SRC_ANCHOR_TYPE,
+            WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE -> {
+                val fallback = result.extra
+                val handler = Handler(Looper.getMainLooper()) { msg ->
+                    val href = msg.data.getString("url")
+                        ?: msg.data.getString("src")
+                        ?: fallback
+                    if (!href.isNullOrBlank()) {
+                        val uri = runCatching { Uri.parse(href) }.getOrNull()
+                        if (uri != null && isAllowedWebUri(uri)) {
+                            showLinkOrTabActions(href, "Odkaz")
+                        }
+                    }
+                    true
+                }
+                webView.requestFocusNodeHref(Message.obtain(handler))
+            }
+        }
+        return true
+    }
+
+    private fun showLinkOrTabActions(url: String, heading: String) {
+        if (url.isBlank() || url == Destinations.HOME_URL) {
+            Toast.makeText(this, "Domů nelze poslat na druhou kartu", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val items = arrayOf("Otevřít na druhé kartě", "Kopírovat adresu")
+        MaterialAlertDialogBuilder(this)
+            .setTitle(heading)
+            .setItems(items) { _, which ->
+                when (which) {
+                    0 -> openOnOtherTab(url)
+                    1 -> copyUrlToClipboard(url)
+                }
+            }
+            .setNegativeButton("Zrušit", null)
+            .show()
+    }
+
+    /**
+     * Stejnou adresu otevře na jiné kartě a nechá aktuální na místě.
+     * Prázdná karta Domů má přednost; jinak nová karta, případně přepis
+     * té druhé, když je karet maximum.
+     */
+    private fun openOnOtherTab(url: String) {
+        if (url.isBlank() || url == Destinations.HOME_URL) return
+        val currentId = activeTabId
+        val otherHome = tabs.firstOrNull { it.id != currentId && it.isHome }
+        when {
+            otherHome != null -> loadUrlIntoTab(otherHome, url)
+            tabs.size < MAX_TABS -> {
+                openInNewTab(url)
+                if (currentId != -1L) selectTab(currentId)
+            }
+            else -> {
+                val other = tabs.firstOrNull { it.id != currentId }
+                if (other == null) {
+                    Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                loadUrlIntoTab(other, url)
+            }
+        }
+        Toast.makeText(this, "Otevřeno na druhé kartě", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun loadUrlIntoTab(tab: BrowserTab, url: String) {
+        if (tab.isHome) {
+            val webView = createWebView()
+            tab.webView = webView
+            tab.isHome = false
+        }
+        tab.url = url
+        tab.title = tabLabel(url)
+        tab.webView?.loadUrl(url)
+        refreshTabStrip()
+    }
+
+    private fun copyUrlToClipboard(url: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("Odkaz", url))
+        Toast.makeText(this, "Adresa zkopírována", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showPageSizeDialog() {
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val saved = PageZoom.storedPercent(this)
+        val starting = PageZoom.snap(saved ?: PageZoom.percent(landscape))
+        val view = LayoutInflater.from(this).inflate(R.layout.dialog_page_size, null)
+        val value = view.findViewById<TextView>(R.id.pageSizeValue)
+        val slider = view.findViewById<Slider>(R.id.pageSizeSlider)
+        fun label(percent: Int) {
+            value.text = "$percent %"
+        }
+        label(starting)
+        slider.valueFrom = PageZoom.MIN_PERCENT.toFloat()
+        slider.valueTo = PageZoom.MAX_PERCENT.toFloat()
+        slider.stepSize = PageZoom.STEP_PERCENT.toFloat()
+        slider.value = starting.toFloat()
+        slider.addOnChangeListener { _, v, fromUser ->
+            val percent = PageZoom.clamp(v.toInt())
+            label(percent)
+            if (fromUser) applyPageZoomToAllTabs(percent)
+        }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("Velikost stránek")
+            .setView(view)
+            .setPositiveButton("Uložit") { _, _ ->
+                PageZoom.setPercent(this, PageZoom.clamp(slider.value.toInt()))
+                applyPageZoomToAllTabs()
+            }
+            .setNegativeButton("Zrušit") { _, _ ->
+                applyPageZoomToAllTabs()
+            }
+            .setNeutralButton("Výchozí") { _, _ ->
+                PageZoom.clear(this)
+                applyPageZoomToAllTabs()
+            }
+            .setOnCancelListener {
+                applyPageZoomToAllTabs()
+            }
+            .show()
     }
 
     // ── Poloha ──────────────────────────────────────────────────────────
@@ -1137,13 +1271,13 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun pageZoomPercent(): Int {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        return PageZoom.percent(landscape)
+        return PageZoom.percent(this, landscape)
     }
 
     private fun pageZoomJs(): String = PageZoom.applyJs(pageZoomPercent())
 
-    private fun applyPageZoomToAllTabs() {
-        val js = PageZoom.setJs(pageZoomPercent())
+    private fun applyPageZoomToAllTabs(percent: Int = pageZoomPercent()) {
+        val js = PageZoom.setJs(percent)
         tabs.forEach { tab ->
             tab.webView?.evaluateJavascript(js, null)
         }
@@ -1213,7 +1347,7 @@ class WebViewActivity : AppCompatActivity() {
             enterVpnGate()
             return
         }
-        if ((BuildConfig.TRIAL_HOME_LOGIN || app.requiresAppLogin) && !Session.isActive(this)) {
+        if (app.requiresAppLogin && !Session.isActive(this)) {
             pendingStartUrl = app.url
             presentLogin()
             return
@@ -1695,6 +1829,7 @@ class WebViewActivity : AppCompatActivity() {
         listOf(
             R.id.action_open_url,
             R.id.action_reload,
+            R.id.action_page_size,
             R.id.action_link_settings
         ).forEach { id ->
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
@@ -1741,10 +1876,6 @@ class WebViewActivity : AppCompatActivity() {
             R.id.action_new_tab -> {
                 if (gate == Gate.VPN) return true
                 if (verifyingLogin) failLogin(null, stayOnForm = false)
-                if (BuildConfig.TRIAL_HOME_LOGIN && !Session.isActive(this)) {
-                    presentLogin()
-                    return true
-                }
                 openNewHomeTab()
                 true
             }
@@ -1752,6 +1883,11 @@ class WebViewActivity : AppCompatActivity() {
                 if (gate != Gate.BROWSER) return true
                 dialogShown = false
                 activeWebView?.reload()
+                true
+            }
+            R.id.action_page_size -> {
+                if (gate == Gate.VPN) return true
+                showPageSizeDialog()
                 true
             }
             R.id.action_link_settings -> {
