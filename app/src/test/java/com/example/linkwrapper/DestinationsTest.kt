@@ -36,7 +36,22 @@ class DestinationsTest {
         assertEquals("DSD", Destinations.tabTitle(Destinations.DSD_URL))
         assertEquals("DSD", Destinations.tabTitle("https://dsd.tudc.cz/foo?x=1"))
         assertEquals("PSST Data", Destinations.tabTitle(Destinations.PSST_URL))
-        assertEquals("PSST Data", Destinations.tabTitle("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12"))
         assertEquals("example.com", Destinations.tabTitle("https://example.com/path"))
+    }
+
+    @Test
+    fun chartFromShareUsesDmIdInTabTitle() {
+        assertEquals(
+            "Graf 12",
+            Destinations.tabTitle("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12")
+        )
+        assertEquals(
+            "Graf 45",
+            Destinations.tabTitle("https://psst.tudc.cz/HSI.Psst.Data?foo=1&dmId=45")
+        )
+        assertTrue(Destinations.isChart("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12"))
+        assertFalse(Destinations.isChart(Destinations.PSST_URL))
+        assertFalse(Destinations.isChart("https://dsd.tudc.cz/?dmId=12"))
+        assertEquals("12", Destinations.dmId("https://test.psst.tudc.cz/HSI.Psst.Data?dmid=12"))
     }
 }

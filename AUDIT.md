@@ -54,7 +54,7 @@ VPN brána, dva APK vedle sebe.
 | --- | --- |
 | `WebViewActivity.kt` | jediná obrazovka: VPN, Domů / login, karty, web |
 | `Destinations.kt` | PSST / DSD / Domů, popisek karty |
-| `PageZoom.kt` | výchozí 88 / 80 %; volitelná společná velikost v ⋮ |
+| `PageZoom.kt` | DSD a PSST zvlášť; grafy vždy 84 % |
 | `Session.kt` + `SecretStore.kt` | šifrované údaje, Keystore AES-256-GCM |
 | `AuthProbeActivity.kt` + `AuthHandoff.kt` | ověření hesla v jiném procesu |
 | `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
