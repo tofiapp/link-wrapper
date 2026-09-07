@@ -7,23 +7,22 @@ import org.junit.Test
 class ChartFitTest {
 
     @Test
-    fun jsFitsOnceSequentiallyThenLocks() {
+    fun jsZoomsThenIdentifiesOverlay() {
         val js = ChartFit.FIT_JS
         assertTrue(js.contains("if (window.__chartFitDone) return"))
         assertTrue(js.contains("function step1_zoom()"))
-        assertTrue(js.contains("function step2_height()"))
-        assertTrue(js.contains("el.style.removeProperty('height')"))
+        assertTrue(js.contains("function identifyOverlay()"))
+        assertTrue(js.contains("elementsFromPoint"))
+        assertTrue(js.contains("AndroidDebugBridge.showResult"))
+        assertTrue(js.contains("setTimeout"))
+        assertTrue(js.contains("1500"))
         assertTrue(js.contains("winW / contentW"))
-        assertTrue(js.contains("window.__chartZoom = zoom"))
         assertTrue(js.contains("document.body.style.setProperty('zoom'"))
-        assertTrue(js.contains("requestAnimationFrame(function()"))
-        assertTrue(js.contains("requestAnimationFrame(step2_height)"))
-        assertTrue(js.contains("window.__chartFitDone = true"))
         assertTrue(js.contains("new MutationObserver"))
-        assertFalse(js.contains("AndroidDebugBridge"))
+        assertFalse(js.contains("function step2_height()"))
+        assertFalse(js.contains("el.style.setProperty('height'"))
         assertFalse(js.contains("Math.min"))
         assertFalse(js.contains("setInterval"))
-        assertFalse(js.contains("document.documentElement.style.setProperty('zoom'"))
     }
 
     @Test
