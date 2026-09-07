@@ -16,6 +16,11 @@ class ChartFitTest {
         assertTrue(js.contains("'important'"))
         assertTrue(js.contains("requestAnimationFrame"))
         assertTrue(js.contains("dispatchEvent(new Event('resize'))"))
+        assertTrue(js.contains("AndroidDebugBridge.showResult"))
+        assertTrue(js.contains("setTimeout"))
+        assertTrue(js.contains("offsetHeightBefore"))
+        assertTrue(js.contains("styleHeightAfter"))
+        assertTrue(js.contains("offsetHeightDelayed"))
     }
 
     @Test
