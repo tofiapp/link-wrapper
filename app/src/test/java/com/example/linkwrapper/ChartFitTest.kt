@@ -23,6 +23,7 @@ class ChartFitTest {
         assertTrue(js.contains("el.offsetHeight"))
         assertTrue(js.contains("h.style.setProperty('height', needed + 'px'"))
         assertTrue(js.contains("background', 'transparent'"))
+        assertTrue(js.contains("wrapBg.style.setProperty('background', 'transparent'"))
         assertTrue(js.contains("setInterval(enforce, 500)"))
         assertTrue(js.contains("window.__chartFitDone = true"))
         assertFalse(js.contains("height', 'auto'"))

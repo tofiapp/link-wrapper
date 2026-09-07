@@ -190,6 +190,9 @@ class WebViewActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, true)
         setContentView(R.layout.activity_webview)
+        // Dočasná diagnostika: magenta = Android pod HTML; bílá = stránka.
+        findViewById<View>(R.id.root).setBackgroundColor(Color.MAGENTA)
+        window.decorView.setBackgroundColor(Color.MAGENTA)
 
         toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)

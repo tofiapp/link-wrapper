@@ -76,6 +76,11 @@ window.__chartZoom = null;
             b.style.setProperty('height', needed + 'px', 'important');
             b.style.setProperty('min-height', needed + 'px', 'important');
             b.style.setProperty('background', 'transparent', 'important');
+
+            var wrapBg = document.querySelector('.css-nm4wu0');
+            if (wrapBg) {
+                wrapBg.style.setProperty('background', 'transparent', 'important');
+            }
         }
 
         enforce();
