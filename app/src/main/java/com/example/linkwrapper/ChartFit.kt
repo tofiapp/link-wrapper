@@ -1,8 +1,8 @@
 package com.example.linkwrapper
 
 /**
- * Zoom grafu podle šířky. Výšku `.chart-part` nemění — html/body
- * se roztáhnou na skutečnou výšku wrapperu, ať jde doscrollovat.
+ * Zoom grafu podle šířky. `.chart-part` se nemění — html/body
+ * dostanou konkrétní výšku obsahu, ať jde doscrollovat.
  */
 internal object ChartFit {
 
@@ -51,17 +51,31 @@ window.__chartZoom = null;
         if (!wrapper) return;
 
         function enforce() {
+            var el = document.querySelector('.chart-part');
+            if (!el) return;
+
+            var wrapper = document.querySelector('.css-nm4wu0') || el.parentElement;
+            if (!wrapper) return;
+
             var needed = Math.max(
                 wrapper.scrollHeight,
-                parseFloat(getComputedStyle(wrapper).height) || 0
+                wrapper.offsetHeight,
+                parseFloat(getComputedStyle(wrapper).height) || 0,
+                el.scrollHeight,
+                el.offsetHeight
             );
             if (!needed || needed <= 0) return;
 
-            document.documentElement.style.setProperty('height', 'auto', 'important');
-            document.documentElement.style.setProperty('min-height', needed + 'px', 'important');
-            document.body.style.setProperty('height', 'auto', 'important');
-            document.body.style.setProperty('min-height', needed + 'px', 'important');
-            document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
+            var h = document.documentElement;
+            var b = document.body;
+
+            h.style.setProperty('height', needed + 'px', 'important');
+            h.style.setProperty('min-height', needed + 'px', 'important');
+            h.style.setProperty('background', 'transparent', 'important');
+
+            b.style.setProperty('height', needed + 'px', 'important');
+            b.style.setProperty('min-height', needed + 'px', 'important');
+            b.style.setProperty('background', 'transparent', 'important');
         }
 
         enforce();
