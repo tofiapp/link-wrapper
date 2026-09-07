@@ -1,12 +1,20 @@
 package com.example.linkwrapper
 
+import android.app.Activity
+import android.content.Context
+import android.graphics.Typeface
+import android.util.Log
+import android.webkit.JavascriptInterface
+import android.widget.TextView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+
 /**
- * Jednorázový fit grafu: nejdřív zoom podle čisté šířky, po dvou
- * framech výška `.chart-part`. [RESET_JS] odemkne běh při otočení.
+ * Zoom grafu podle šířky. Místo roztahování výšky dočasně dumpne
+ * elementy pod bodem u spodku obrazovky — hledáme bílý překryv.
  */
 internal object ChartFit {
 
-    /** Před opakovaným fitem (orientace) — jinak `__chartFitDone` injekci no-opne. */
+    /** Před opakovaným během (orientace) — jinak `__chartFitDone` injekci no-opne. */
     const val RESET_JS = """
 window.__chartFitDone = false;
 window.__chartZoom = null;
@@ -15,6 +23,37 @@ window.__chartZoom = null;
     const val FIT_JS = """
 (function() {
     if (window.__chartFitDone) return;
+
+    function show(msg) {
+        try {
+            if (window.AndroidDebugBridge && window.AndroidDebugBridge.showResult) {
+                window.AndroidDebugBridge.showResult(msg);
+            }
+        } catch (e) {}
+    }
+
+    function identifyOverlay() {
+        var x = window.innerWidth / 2;
+        var y = window.innerHeight - 60;
+
+        var stack = document.elementsFromPoint(x, y);
+        var out = [];
+        out.push('zoom=' + window.__chartZoom + ' point=' + Math.round(x) + ',' + Math.round(y));
+        stack.slice(0, 8).forEach(function(n, i) {
+            var cs = getComputedStyle(n);
+            var r = n.getBoundingClientRect();
+            out.push(
+                i + ': ' + n.tagName + '.' + (n.className || '-') +
+                ' | rect ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+                ' top=' + Math.round(r.top) +
+                ' | bg=' + cs.backgroundColor +
+                ' pos=' + cs.position +
+                ' z=' + cs.zIndex +
+                ' h=' + cs.height
+            );
+        });
+        return out.join('\n\n');
+    }
 
     function step1_zoom() {
         var el = document.querySelector('.chart-part');
@@ -36,25 +75,15 @@ window.__chartZoom = null;
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
 
-        requestAnimationFrame(function() {
-            requestAnimationFrame(step2_height);
-        });
+        setTimeout(function() {
+            try {
+                show(identifyOverlay());
+            } catch (e) {
+                show('identifyOverlay error: ' + e);
+            }
+            window.__chartFitDone = true;
+        }, 1500);
         return true;
-    }
-
-    function step2_height() {
-        var el = document.querySelector('.chart-part');
-        if (!el) return;
-
-        var rect = el.getBoundingClientRect();
-        var scale = (el.offsetHeight > 0) ? (rect.height / el.offsetHeight) : 1;
-        if (!scale || scale <= 0) scale = 1;
-        var vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-        var target = (vh - rect.top - 8) / scale;
-        if (target > 0) {
-            el.style.setProperty('height', target + 'px', 'important');
-        }
-        window.__chartFitDone = true;
     }
 
     if (!step1_zoom()) {
@@ -68,4 +97,29 @@ window.__chartZoom = null;
     }
 })();
 """
+}
+
+/**
+ * Dočasný most JS → Android pro dump překryvu.
+ * Odstranit spolu s [ChartFit.FIT_JS] debug částí.
+ */
+class DebugBridge(private val context: Context) {
+    @JavascriptInterface
+    fun showResult(result: String) {
+        val activity = context as? Activity ?: return
+        activity.runOnUiThread {
+            if (activity.isFinishing) return@runOnUiThread
+            Log.d("ChartFit", result)
+            val dialog = MaterialAlertDialogBuilder(activity)
+                .setTitle("Chart overlay")
+                .setMessage(result)
+                .setPositiveButton("OK", null)
+                .show()
+            dialog.findViewById<TextView>(android.R.id.message)?.apply {
+                typeface = Typeface.MONOSPACE
+                textSize = 13f
+                setTextIsSelectable(true)
+            }
+        }
+    }
 }

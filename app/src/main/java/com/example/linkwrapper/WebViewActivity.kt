@@ -595,6 +595,7 @@ class WebViewActivity : AppCompatActivity() {
         chartPerfInjected.remove(wv)
         webContainer.removeView(wv)
         wv.stopLoading()
+        wv.removeJavascriptInterface("AndroidDebugBridge")
         wv.onPause()
         wv.webChromeClient = null
         wv.destroy()
@@ -735,6 +736,8 @@ class WebViewActivity : AppCompatActivity() {
         }
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+        // Dočasná diagnostika bílého překryvu — po opravě odstranit.
+        webView.addJavascriptInterface(DebugBridge(this), "AndroidDebugBridge")
         webView.setOnLongClickListener { view ->
             handleWebViewLongClick(view as WebView)
             true
