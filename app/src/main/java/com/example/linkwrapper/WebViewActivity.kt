@@ -595,6 +595,7 @@ class WebViewActivity : AppCompatActivity() {
         chartPerfInjected.remove(wv)
         webContainer.removeView(wv)
         wv.stopLoading()
+        wv.removeJavascriptInterface("AndroidDebugBridge")
         wv.onPause()
         wv.webChromeClient = null
         wv.destroy()
@@ -688,6 +689,8 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
         webView.settings.setGeolocationEnabled(true)
+        // Měřítko: setInitialScale se nevolá. Zoom stránky jde přes CSS
+        // (PageZoom → html/body.style.zoom), ne přes WebSettings.zoom.
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = true
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
@@ -733,6 +736,8 @@ class WebViewActivity : AppCompatActivity() {
         }
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+        // TODO: remove after debugging
+        webView.addJavascriptInterface(DebugBridge(this), "AndroidDebugBridge")
         webView.setOnLongClickListener { view ->
             handleWebViewLongClick(view as WebView)
             true
@@ -880,7 +885,6 @@ class WebViewActivity : AppCompatActivity() {
                 if (view != null) {
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                     injectChartFit(view)
-                    scheduleChartFit()
                 }
                 updateTabMeta(view ?: return, url)
             }

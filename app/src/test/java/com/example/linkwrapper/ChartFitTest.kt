@@ -7,7 +7,7 @@ import org.junit.Test
 class ChartFitTest {
 
     @Test
-    fun jsTargetsEveryChartPart() {
+    fun jsWaitsAndFitsChartPart() {
         val js = ChartFit.FIT_JS
         assertTrue(js.contains("querySelectorAll('.chart-part')"))
         assertTrue(js.contains("charts.forEach"))
@@ -21,17 +21,18 @@ class ChartFitTest {
         assertTrue(js.contains("subtree: true"))
         assertTrue(js.contains("obs.disconnect()"))
         assertTrue(js.contains("15000"))
-        assertTrue(js.contains("target <= 0"))
+        assertTrue(js.contains("visualViewport"))
+        assertTrue(js.contains("pickHeight"))
+        assertTrue(js.contains("AndroidDebugBridge.showResult"))
+        assertTrue(js.contains("1000"))
     }
 
     @Test
-    fun jsDoesNotTouchWidthOrKeepDebugBridge() {
+    fun jsDoesNotTouchWidthOrOtherLayout() {
         val js = ChartFit.FIT_JS
-        assertFalse(js.contains("width"))
         assertFalse(js.contains("querySelectorAll('.highcharts"))
         assertFalse(js.contains("document.body.style.height"))
-        assertFalse(js.contains("AndroidDebugBridge"))
-        assertFalse(js.contains("showResult"))
-        assertFalse(js.contains("offsetHeightBefore"))
+        assertFalse(js.contains("style.width"))
+        assertFalse(js.contains("setProperty('width'"))
     }
 }
