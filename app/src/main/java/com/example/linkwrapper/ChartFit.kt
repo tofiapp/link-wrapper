@@ -9,12 +9,9 @@ import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * Výška kontejneru `.chart-part`. Do SVG se nesahá. Žádný `resize`
- * event — ten spouštěl přepočet, který SVG srazil na výšku kontejneru.
- *
- * Nejdřív se nastaví `height`. Když se SVG do 400 ms zmenší, `height`
- * se sundá a zkusí se `min-height` + `max-height` (některý ResizeObserver
- * čte jen `style.height`).
+ * Diagnostika `.chart-part` bez zásahu do výšky.
+ * Úprava `height` / `min-height` / `max-height` je zakomentovaná —
+ * běží jen výpis po načtení grafu (s opravou zoomu jen na html).
  */
 internal object ChartFit {
 
@@ -28,26 +25,27 @@ internal object ChartFit {
     } catch (e) {}
   }
 
-  function svgEl(el) {
-    return el.querySelector('svg');
-  }
-
-  function svgBoundH(el) {
-    var svg = svgEl(el);
-    return svg ? svg.getBoundingClientRect().height : 'n/a';
-  }
-
-  function svgBoundW(el) {
-    var svg = svgEl(el);
-    return svg ? svg.getBoundingClientRect().width : 'n/a';
-  }
-
-  function svgScrollVars(el) {
-    var svg = svgEl(el);
-    if (!svg) return 'svg: none';
-    var cs = getComputedStyle(svg);
-    return '--scrollTop: ' + JSON.stringify(cs.getPropertyValue('--scrollTop')) +
-      '\n--scrollLeft: ' + JSON.stringify(cs.getPropertyValue('--scrollLeft'));
+  function dump(el, index) {
+    var rect = el.getBoundingClientRect();
+    var scale = (el.offsetHeight > 0) ? (rect.height / el.offsetHeight) : 1;
+    if (!scale || scale <= 0) scale = 1;
+    var svg = el.querySelector('svg');
+    var sr = svg ? svg.getBoundingClientRect() : null;
+    var cs = svg ? getComputedStyle(svg) : null;
+    var vv = window.visualViewport ? window.visualViewport.height : 'n/a';
+    return [
+      'chart ' + index,
+      'scale: ' + scale,
+      'el.getBoundingClientRect().height: ' + rect.height,
+      'el.getBoundingClientRect().width: ' + rect.width,
+      'svg.getBoundingClientRect().height: ' + (sr ? sr.height : 'n/a'),
+      'svg.getBoundingClientRect().width: ' + (sr ? sr.width : 'n/a'),
+      'window.innerWidth: ' + window.innerWidth,
+      'visualViewport.height: ' + vv,
+      '--scrollTop: ' + (cs ? JSON.stringify(cs.getPropertyValue('--scrollTop')) : 'n/a'),
+      '--scrollLeft: ' + (cs ? JSON.stringify(cs.getPropertyValue('--scrollLeft')) : 'n/a'),
+      '--pxPerMeter: ' + (cs ? JSON.stringify(cs.getPropertyValue('--pxPerMeter')) : 'n/a')
+    ].join('\n');
   }
 
   try {
@@ -63,7 +61,6 @@ internal object ChartFit {
     function fixCharts() {
       var charts = document.querySelectorAll('.chart-part');
       if (!charts.length) return false;
-      var tracked = [];
       charts.forEach(function(el, index) {
         var rect = el.getBoundingClientRect();
         var scale = (el.offsetHeight > 0) ? (rect.height / el.offsetHeight) : 1;
@@ -71,52 +68,22 @@ internal object ChartFit {
         var viewportHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
         var availableRendered = viewportHeight - rect.top - 8;
         var targetCss = availableRendered / scale;
-        var beforeSvg = svgBoundH(el);
+        /*
+        HEIGHT INJECTION OFF — baseline bez zásahu do výšky
         if (targetCss > 0) {
           el.style.setProperty('height', targetCss + 'px', 'important');
         }
-        tracked.push({
-          el: el,
-          index: index,
-          scale: scale,
-          targetCss: targetCss,
-          beforeSvg: beforeSvg,
-          applied: 'height (no resize)'
-        });
+        el.style.removeProperty('height');
+        el.style.setProperty('min-height', targetCss + 'px', 'important');
+        el.style.setProperty('max-height', targetCss + 'px', 'important');
+        */
       });
       setTimeout(function() {
-        tracked.forEach(function(p) {
-          p.afterHeight = svgBoundH(p.el);
-          var before = Number(p.beforeSvg);
-          var after = Number(p.afterHeight);
-          if (p.targetCss > 0 && isFinite(before) && isFinite(after) && after < before * 0.9) {
-            p.el.style.removeProperty('height');
-            p.el.style.setProperty('min-height', p.targetCss + 'px', 'important');
-            p.el.style.setProperty('max-height', p.targetCss + 'px', 'important');
-            p.applied = 'min/max-height (SVG shrank after height)';
-          }
-        });
-      }, 400);
-      setTimeout(function() {
         var later = [];
-        tracked.forEach(function(p) {
-          var r = p.el.getBoundingClientRect();
-          later.push(
-            'chart ' + p.index + '\n' +
-            'scale: ' + p.scale + '\n' +
-            'targetCss: ' + p.targetCss + '\n' +
-            'applied: ' + p.applied + '\n' +
-            'svgBoundingHeight BEFORE: ' + p.beforeSvg + '\n' +
-            'svgBoundingHeight po height (~400ms): ' + p.afterHeight + '\n' +
-            'el.getBoundingClientRect().height po 1000ms: ' + r.height + '\n' +
-            'svgBoundingHeight po 1000ms: ' + svgBoundH(p.el) + '\n' +
-            'el.getBoundingClientRect().width: ' + r.width + '\n' +
-            'window.innerWidth: ' + window.innerWidth + '\n' +
-            'svg.getBoundingClientRect().width: ' + svgBoundW(p.el) + '\n' +
-            svgScrollVars(p.el)
-          );
+        charts.forEach(function(el, index) {
+          later.push(dump(el, index));
         });
-        show('PO 1000ms\n\n' + later.join('\n\n'));
+        show(later.join('\n\n'));
       }, 1000);
       return true;
     }
