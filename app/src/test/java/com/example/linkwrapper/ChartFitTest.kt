@@ -7,20 +7,20 @@ import org.junit.Test
 class ChartFitTest {
 
     @Test
-    fun jsHoldsChartPartHeightAndUnlocksOverflowX() {
+    fun jsOnlyUnlocksRootOverflow() {
         val js = ChartFit.FIT_JS
-        assertTrue(js.contains("querySelectorAll('.chart-part')"))
-        assertTrue(js.contains("__chartFixActive"))
-        assertTrue(js.contains("rect.height / el.offsetHeight"))
-        assertTrue(js.contains("setProperty('height'"))
-        assertTrue(js.contains("setProperty('max-height'"))
-        assertTrue(js.contains("overflow-x"))
-        assertTrue(js.contains("attributeFilter: ['style']"))
-        assertTrue(js.contains("setInterval"))
-        assertTrue(ChartFit.RESET_JS.contains("window.__chartFixActive = false"))
+        assertTrue(js.contains("querySelector('.chart-part')"))
+        assertTrue(js.contains("document.documentElement.style.setProperty('overflow'"))
+        assertTrue(js.contains("document.body.style.setProperty('overflow'"))
+        assertTrue(js.contains("'auto'"))
+        assertTrue(js.contains("document.documentElement.style.setProperty('height'"))
+        assertTrue(js.contains("'100%'"))
+        assertTrue(js.contains("new MutationObserver"))
         assertFalse(js.contains("AndroidDebugBridge"))
-        assertFalse(js.contains("dispatchEvent(new Event('resize'))"))
-        assertFalse(js.contains("svg.style.setProperty"))
-        assertFalse(js.contains("setProperty('width'"))
+        assertFalse(js.contains("setProperty('max-height'"))
+        assertFalse(js.contains("setInterval"))
+        assertFalse(js.contains("__chartFixActive"))
+        assertFalse(js.contains("chart-part').style"))
+        assertFalse(js.contains("el.style.setProperty('height'"))
     }
 }
