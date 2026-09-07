@@ -91,6 +91,7 @@ class WebViewActivity : AppCompatActivity() {
         private const val MAX_TABS = 8
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
+        private const val CHART_FIT_DELAY_MS = 300L
     }
 
     private enum class Gate { BROWSER, HOME, LOGIN, VPN }
@@ -156,6 +157,7 @@ class WebViewActivity : AppCompatActivity() {
     private val loginTimeoutRunnable = Runnable {
         if (verifyingLogin) failLogin("Přihlášení vypršelo. Zkuste to znovu.")
     }
+    private val chartFitRunnable = Runnable { injectChartFitIntoAllTabs() }
 
     private val authChallengeCounts = IdentityHashMap<WebView, MutableMap<String, Int>>()
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
@@ -227,6 +229,8 @@ class WebViewActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyPageZoomToAllTabs()
+        // Layout WebView ještě nemusí odpovídat nové orientaci.
+        scheduleChartFit()
     }
 
     override fun onPause() {
@@ -288,6 +292,7 @@ class WebViewActivity : AppCompatActivity() {
         unregisterVpnMonitor()
         mainHandler.removeCallbacks(vpnCheckRunnable)
         mainHandler.removeCallbacks(loginTimeoutRunnable)
+        mainHandler.removeCallbacks(chartFitRunnable)
         trustProbeSeq++
         trustProbeInFlight = false
         AuthProbe.kill(this)
@@ -874,6 +879,8 @@ class WebViewActivity : AppCompatActivity() {
                 if (view != null) authFailedViews.remove(view)
                 if (view != null) {
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
+                    injectChartFit(view)
+                    scheduleChartFit()
                 }
                 updateTabMeta(view ?: return, url)
             }
@@ -1287,6 +1294,25 @@ class WebViewActivity : AppCompatActivity() {
             chartPerfInjected.add(webView)
         } catch (_: Exception) {
         }
+    }
+
+    private fun injectChartFit(webView: WebView) {
+        try {
+            webView.evaluateJavascript(ChartFit.FIT_JS, null)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun injectChartFitIntoAllTabs() {
+        tabs.forEach { tab ->
+            val wv = tab.webView ?: return@forEach
+            injectChartFit(wv)
+        }
+    }
+
+    private fun scheduleChartFit() {
+        mainHandler.removeCallbacks(chartFitRunnable)
+        mainHandler.postDelayed(chartFitRunnable, CHART_FIT_DELAY_MS)
     }
 
     /** Starší WebView bez document-start — stihne to jen další grafy, ne první canvas. */
