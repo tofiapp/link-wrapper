@@ -1297,10 +1297,9 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun injectChartFit(webView: WebView, reset: Boolean = false) {
+    private fun injectChartFit(webView: WebView) {
         try {
-            val js = if (reset) ChartFit.RESET_JS + ChartFit.FIT_JS else ChartFit.FIT_JS
-            webView.evaluateJavascript(js, null)
+            webView.evaluateJavascript(ChartFit.FIT_JS, null)
         } catch (_: Exception) {
         }
     }
@@ -1308,7 +1307,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartFitIntoAllTabs() {
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
-            injectChartFit(wv, reset = true)
+            injectChartFit(wv)
         }
     }
 
