@@ -1,15 +1,13 @@
 package com.example.linkwrapper
 
 /**
- * Zoom podle šířky, pak jednou spočítá cílovou výšku `.chart-part`
- * z nejnižšího SVG `y` a tu hodnotu drží proti přepisu stránkou.
+ * Zoom podle šířky, pak jednou zamkne výšku `.chart-part` na
+ * max SVG `y` + 40 — stránka ji nesmí přepsat přes style.height.
  */
 internal object ChartFit {
 
-    /** Otočení: odpojit hold, odemknout, znovu fitnout. */
+    /** Otočení: odemknout a znovu fitnout (zámek zmizí s elementem). */
     const val RESET_JS = """
-if (window.__chartHeightObs) { window.__chartHeightObs.disconnect(); window.__chartHeightObs = null; }
-if (window.__chartHeightTimer) { clearInterval(window.__chartHeightTimer); window.__chartHeightTimer = null; }
 window.__chartFitDone = false;
 """
 
@@ -55,26 +53,29 @@ window.__chartFitDone = false;
         if (maxY <= 0) return;
 
         var target = maxY + 40;
+        var lockedValue = target + 'px';
 
-        function enforce() {
-            var cur = parseFloat(el.style.height);
-            if (isNaN(cur) || Math.abs(cur - target) > 1) {
-                el.style.setProperty('height', target + 'px', 'important');
-            }
-        }
+        el.style.setProperty('height', lockedValue, 'important');
 
-        enforce();
+        try {
+            var styleObj = el.style;
+            var origSetProperty = styleObj.setProperty.bind(styleObj);
+            styleObj.setProperty = function(prop, value, priority) {
+                if (prop === 'height' || prop === 'min-height' || prop === 'max-height') {
+                    return origSetProperty(prop, lockedValue, 'important');
+                }
+                return origSetProperty(prop, value, priority);
+            };
+            Object.defineProperty(styleObj, 'height', {
+                configurable: true,
+                get: function() { return lockedValue; },
+                set: function() { origSetProperty('height', lockedValue, 'important'); }
+            });
+        } catch (e) {}
 
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         document.documentElement.style.setProperty('height', 'auto', 'important');
         document.body.style.setProperty('height', 'auto', 'important');
-
-        if (window.__chartHeightObs) window.__chartHeightObs.disconnect();
-        window.__chartHeightObs = new MutationObserver(enforce);
-        window.__chartHeightObs.observe(el, { attributes: true, attributeFilter: ['style'] });
-
-        if (window.__chartHeightTimer) clearInterval(window.__chartHeightTimer);
-        window.__chartHeightTimer = setInterval(enforce, 300);
 
         window.__chartFitDone = true;
     }
