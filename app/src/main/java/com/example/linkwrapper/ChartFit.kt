@@ -1,15 +1,13 @@
 package com.example.linkwrapper
 
 /**
- * Zoom grafu podle šířky. `.chart-part` se nemění — html/body
- * dostanou konkrétní výšku obsahu, ať jde doscrollovat.
+ * Zoom podle šířky, pak jednou zvětší `.chart-part` podle nejnižšího
+ * SVG `y`, ať se graf vykreslí v plné délce a stránka se scrolluje.
  */
 internal object ChartFit {
 
     /** Před opakovaným během (orientace) — jinak `__chartFitDone` injekci no-opne. */
     const val RESET_JS = """
-if (window.__chartHeightObs) { window.__chartHeightObs.disconnect(); window.__chartHeightObs = null; }
-if (window.__chartHeightTimer) { clearInterval(window.__chartHeightTimer); window.__chartHeightTimer = null; }
 window.__chartFitDone = false;
 window.__chartZoom = null;
 """
@@ -46,51 +44,24 @@ window.__chartZoom = null;
     function step2_height() {
         var el = document.querySelector('.chart-part');
         if (!el) return;
+        var svg = el.querySelector('svg');
+        if (!svg) return;
 
-        var wrapper = document.querySelector('.css-nm4wu0') || el.parentElement;
-        if (!wrapper) return;
+        var maxY = 0;
+        svg.querySelectorAll('[y]').forEach(function(n) {
+            var v = parseFloat(n.getAttribute('y'));
+            if (!isNaN(v) && v > maxY) maxY = v;
+        });
+        if (maxY <= 0) return;
 
-        function enforce() {
-            var el = document.querySelector('.chart-part');
-            if (!el) return;
+        var target = maxY + 40;
+        window.__chartMaxY = maxY;
 
-            var wrapper = document.querySelector('.css-nm4wu0') || el.parentElement;
-            if (!wrapper) return;
+        el.style.setProperty('height', target + 'px', 'important');
 
-            var needed = Math.max(
-                wrapper.scrollHeight,
-                wrapper.offsetHeight,
-                parseFloat(getComputedStyle(wrapper).height) || 0,
-                el.scrollHeight,
-                el.offsetHeight
-            );
-            if (!needed || needed <= 0) return;
-
-            var h = document.documentElement;
-            var b = document.body;
-
-            h.style.setProperty('height', needed + 'px', 'important');
-            h.style.setProperty('min-height', needed + 'px', 'important');
-            h.style.setProperty('background', 'transparent', 'important');
-
-            b.style.setProperty('height', needed + 'px', 'important');
-            b.style.setProperty('min-height', needed + 'px', 'important');
-            b.style.setProperty('background', 'transparent', 'important');
-
-            var wrapBg = document.querySelector('.css-nm4wu0');
-            if (wrapBg) {
-                wrapBg.style.setProperty('background', 'transparent', 'important');
-            }
-        }
-
-        enforce();
-
-        if (window.__chartHeightObs) window.__chartHeightObs.disconnect();
-        window.__chartHeightObs = new MutationObserver(enforce);
-        window.__chartHeightObs.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
-
-        if (window.__chartHeightTimer) clearInterval(window.__chartHeightTimer);
-        window.__chartHeightTimer = setInterval(enforce, 500);
+        document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
+        document.documentElement.style.setProperty('height', 'auto', 'important');
+        document.body.style.setProperty('height', 'auto', 'important');
 
         window.__chartFitDone = true;
     }
