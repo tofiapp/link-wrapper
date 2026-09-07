@@ -25,6 +25,53 @@ internal object ChartFit {
     } catch (e) {}
   }
 
+  function boxDump(label, node) {
+    if (!node) return label + ': none';
+    var cs = getComputedStyle(node);
+    return label + ': client ' + node.clientWidth + 'x' + node.clientHeight +
+      ' scroll ' + node.scrollWidth + 'x' + node.scrollHeight +
+      ' overflow-x=' + cs.overflowX + ' overflow-y=' + cs.overflowY;
+  }
+
+  function ancestorsDump(el) {
+    var lines = [];
+    var node = el.parentElement;
+    var i = 0;
+    while (node && i < 6) {
+      var cs = getComputedStyle(node);
+      var cls = (typeof node.className === 'string' && node.className) ? node.className : '-';
+      lines.push(
+        'ancestor[' + i + ']: ' + node.tagName + '.' + cls +
+        ' client ' + node.clientWidth + 'x' + node.clientHeight +
+        ' computedH=' + cs.height +
+        ' overflow=' + cs.overflow +
+        ' overflow-x=' + cs.overflowX +
+        ' overflow-y=' + cs.overflowY
+      );
+      node = node.parentElement;
+      i += 1;
+    }
+    return lines.join('\n');
+  }
+
+  function pxPerMeterHunt() {
+    var hits = [];
+    document.querySelectorAll('script').forEach(function(s, i) {
+      if (s.src) hits.push('script src: ' + s.src);
+      var t = s.textContent || '';
+      var idx = t.indexOf('pxPerMeter');
+      if (idx >= 0) {
+        hits.push('inline script[' + i + ']: …' + t.substring(Math.max(0, idx - 60), idx + 100).replace(/\s+/g, ' '));
+      }
+    });
+    document.querySelectorAll('style').forEach(function(s, i) {
+      var t = s.textContent || '';
+      if (t.indexOf('pxPerMeter') >= 0) hits.push('style[' + i + '] contains pxPerMeter');
+    });
+    if (!hits.length) hits.push('pxPerMeter not in inline script/style');
+    return hits.join('\n');
+  }
+
   function dump(el, index) {
     var rect = el.getBoundingClientRect();
     var scale = (el.offsetHeight > 0) ? (rect.height / el.offsetHeight) : 1;
@@ -35,6 +82,7 @@ internal object ChartFit {
     var vv = window.visualViewport ? window.visualViewport.height : 'n/a';
     return [
       'chart ' + index,
+      'location.href: ' + location.href,
       'scale: ' + scale,
       'el.getBoundingClientRect().height: ' + rect.height,
       'el.getBoundingClientRect().width: ' + rect.width,
@@ -44,7 +92,11 @@ internal object ChartFit {
       'visualViewport.height: ' + vv,
       '--scrollTop: ' + (cs ? JSON.stringify(cs.getPropertyValue('--scrollTop')) : 'n/a'),
       '--scrollLeft: ' + (cs ? JSON.stringify(cs.getPropertyValue('--scrollLeft')) : 'n/a'),
-      '--pxPerMeter: ' + (cs ? JSON.stringify(cs.getPropertyValue('--pxPerMeter')) : 'n/a')
+      '--pxPerMeter: ' + (cs ? JSON.stringify(cs.getPropertyValue('--pxPerMeter')) : 'n/a'),
+      boxDump('html', document.documentElement),
+      boxDump('body', document.body),
+      ancestorsDump(el),
+      pxPerMeterHunt()
     ].join('\n');
   }
 
