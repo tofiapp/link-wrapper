@@ -1,15 +1,16 @@
 package com.example.linkwrapper
 
 /**
- * Zoom podle šířky, pak jednou zvětší `.chart-part` podle nejnižšího
- * SVG `y`, ať se graf vykreslí v plné délce a stránka se scrolluje.
+ * Zoom podle šířky, pak jednou spočítá cílovou výšku `.chart-part`
+ * z nejnižšího SVG `y` a tu hodnotu drží proti přepisu stránkou.
  */
 internal object ChartFit {
 
-    /** Před opakovaným během (orientace) — jinak `__chartFitDone` injekci no-opne. */
+    /** Otočení: odpojit hold, odemknout, znovu fitnout. */
     const val RESET_JS = """
+if (window.__chartHeightObs) { window.__chartHeightObs.disconnect(); window.__chartHeightObs = null; }
+if (window.__chartHeightTimer) { clearInterval(window.__chartHeightTimer); window.__chartHeightTimer = null; }
 window.__chartFitDone = false;
-window.__chartZoom = null;
 """
 
     const val FIT_JS = """
@@ -29,7 +30,6 @@ window.__chartZoom = null;
 
         var zoom = winW / contentW;
         if (zoom > 1) zoom = 1;
-        window.__chartZoom = zoom;
         document.body.style.setProperty('zoom', zoom, 'important');
 
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
@@ -55,13 +55,26 @@ window.__chartZoom = null;
         if (maxY <= 0) return;
 
         var target = maxY + 40;
-        window.__chartMaxY = maxY;
 
-        el.style.setProperty('height', target + 'px', 'important');
+        function enforce() {
+            var cur = parseFloat(el.style.height);
+            if (isNaN(cur) || Math.abs(cur - target) > 1) {
+                el.style.setProperty('height', target + 'px', 'important');
+            }
+        }
+
+        enforce();
 
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         document.documentElement.style.setProperty('height', 'auto', 'important');
         document.body.style.setProperty('height', 'auto', 'important');
+
+        if (window.__chartHeightObs) window.__chartHeightObs.disconnect();
+        window.__chartHeightObs = new MutationObserver(enforce);
+        window.__chartHeightObs.observe(el, { attributes: true, attributeFilter: ['style'] });
+
+        if (window.__chartHeightTimer) clearInterval(window.__chartHeightTimer);
+        window.__chartHeightTimer = setInterval(enforce, 300);
 
         window.__chartFitDone = true;
     }

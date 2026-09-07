@@ -231,7 +231,7 @@ class WebViewActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyPageZoomToAllTabs()
-        // Odemknout __chartFitDone a znovu fitnout až po layoutu (~300 ms).
+        // Odemknout hold (observer + interval) a znovu fitnout po ~300 ms.
         scheduleChartFit()
     }
 
