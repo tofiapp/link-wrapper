@@ -7,17 +7,15 @@ import org.junit.Test
 class ChartFitTest {
 
     @Test
-    fun jsFitsByRenderedScaleNotCssMix() {
+    fun jsFitsContainerHeightOnly() {
         val js = ChartFit.FIT_JS
         assertTrue(js.contains("querySelectorAll('.chart-part')"))
         assertTrue(js.contains("charts.forEach"))
-        assertTrue(js.contains("getBoundingClientRect()"))
         assertTrue(js.contains("rect.height / el.offsetHeight"))
         assertTrue(js.contains("availableRendered"))
         assertTrue(js.contains("targetCss"))
         assertTrue(js.contains("setProperty('height'"))
         assertTrue(js.contains("'important'"))
-        assertTrue(js.contains("requestAnimationFrame"))
         assertTrue(js.contains("dispatchEvent(new Event('resize'))"))
         assertTrue(js.contains("new MutationObserver"))
         assertTrue(js.contains("childList: true"))
@@ -25,22 +23,20 @@ class ChartFitTest {
         assertTrue(js.contains("obs.disconnect()"))
         assertTrue(js.contains("15000"))
         assertTrue(js.contains("AndroidDebugBridge.showResult"))
-        assertTrue(js.contains("1000"))
-        assertTrue(js.contains("--pxPerMeter"))
-        assertTrue(js.contains("--yOffset"))
-        assertTrue(js.contains("after self nudge"))
-        assertTrue(js.contains("after svg.style.height"))
-        assertTrue(js.contains("after delayed resize"))
+        assertTrue(js.contains("svgBoundingHeight po 1000ms"))
     }
 
     @Test
-    fun jsDropsOldCssPixelFallback() {
+    fun jsDoesNotTouchSvgOrNudge() {
         val js = ChartFit.FIT_JS
+        assertFalse(js.contains("svg.style.setProperty"))
+        assertFalse(js.contains("viewBox"))
+        assertFalse(js.contains("--pxPerMeter"))
+        assertFalse(js.contains("--yOffset"))
+        assertFalse(js.contains("nudge"))
+        assertFalse(js.contains("requestAnimationFrame"))
         assertFalse(js.contains("pickHeight"))
-        assertFalse(js.contains("documentElement.clientHeight"))
-        assertFalse(js.contains("querySelectorAll('.highcharts"))
-        assertFalse(js.contains("document.body.style.height"))
-        assertFalse(js.contains("style.width"))
         assertFalse(js.contains("setProperty('width'"))
+        assertFalse(js.contains("style.width"))
     }
 }
