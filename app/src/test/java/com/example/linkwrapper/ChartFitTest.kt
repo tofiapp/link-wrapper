@@ -7,7 +7,7 @@ import org.junit.Test
 class ChartFitTest {
 
     @Test
-    fun jsZoomsThenStretchesHtmlBodyToContent() {
+    fun jsZoomsThenGrowsChartPartFromSvgMaxY() {
         val js = ChartFit.FIT_JS
         assertTrue(js.contains("if (window.__chartFitDone) return"))
         assertTrue(js.contains("function step1_zoom()"))
@@ -15,33 +15,27 @@ class ChartFitTest {
         assertTrue(js.contains("requestAnimationFrame(step2_height)"))
         assertTrue(js.contains("winW / contentW"))
         assertTrue(js.contains("document.body.style.setProperty('zoom'"))
-        assertTrue(js.contains("querySelector('.css-nm4wu0')"))
-        assertTrue(js.contains("min-height"))
-        assertTrue(js.contains("wrapper.scrollHeight"))
-        assertTrue(js.contains("wrapper.offsetHeight"))
-        assertTrue(js.contains("el.scrollHeight"))
-        assertTrue(js.contains("el.offsetHeight"))
-        assertTrue(js.contains("h.style.setProperty('height', needed + 'px'"))
-        assertTrue(js.contains("background', 'transparent'"))
-        assertTrue(js.contains("wrapBg.style.setProperty('background', 'transparent'"))
-        assertTrue(js.contains("setInterval(enforce, 500)"))
+        assertTrue(js.contains("querySelectorAll('[y]')"))
+        assertTrue(js.contains("maxY + 40"))
+        assertTrue(js.contains("el.style.setProperty('height', target + 'px'"))
         assertTrue(js.contains("window.__chartFitDone = true"))
-        assertFalse(js.contains("height', 'auto'"))
-        assertFalse(js.contains("guard < 10"))
-        assertFalse(js.contains("max-height', 'none'"))
-        assertFalse(js.contains("overflow', 'visible'"))
-        assertFalse(js.contains("el.style.setProperty('height'"))
+        assertFalse(js.contains("setInterval"))
+        assertFalse(js.contains("enforce"))
+        assertFalse(js.contains("__chartHeightObs"))
+        assertFalse(js.contains("__chartTargetH"))
+        assertFalse(js.contains("viewBox"))
+        assertFalse(js.contains("pxPerMeter"))
         assertFalse(js.contains("identifyOverlay"))
         assertFalse(js.contains("AndroidDebugBridge"))
         assertFalse(js.contains("Math.min"))
     }
 
     @Test
-    fun resetJsUnlocksFitAndClearsHeightHold() {
+    fun resetJsUnlocksFitForOrientationChange() {
         val reset = ChartFit.RESET_JS
         assertTrue(reset.contains("window.__chartFitDone = false"))
         assertTrue(reset.contains("window.__chartZoom = null"))
-        assertTrue(reset.contains("clearInterval(window.__chartHeightTimer)"))
-        assertTrue(reset.contains("__chartHeightObs.disconnect()"))
+        assertFalse(reset.contains("setInterval"))
+        assertFalse(reset.contains("__chartHeightObs"))
     }
 }
