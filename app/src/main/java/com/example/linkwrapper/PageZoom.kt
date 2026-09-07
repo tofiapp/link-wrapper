@@ -6,6 +6,9 @@ import android.content.Context
  * Oddálení webu ve WebView. Bez vlastního nastavení je na výšku stránka
  * o něco větší (snadnější klepnutí) a na šířku o něco menší.
  *
+ * Zoom jen na `html` (`documentElement`). Když je i na `body`, Chromium
+ * hodnoty násobí (84 % × 84 % = 70,5 %). Starý zoom na body se maže.
+ *
  * DSD a PSST Data mají každé svou velikost (v ⋮). Grafy (`dmId`) mají
  * vždy 84 %. Nastavení platí, dokud uživatel nesmaže údaje.
  */
@@ -82,7 +85,7 @@ internal object PageZoom {
   var z = '$z';
   function apply(){
     try { document.documentElement.style.zoom = z; } catch (e) {}
-    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
+    try { if (document.body) document.body.style.zoom = ''; } catch (e) {}
   }
   apply();
   document.addEventListener('DOMContentLoaded', apply);
@@ -112,7 +115,7 @@ internal object PageZoom {
   function apply(){
     var z = pick();
     try { document.documentElement.style.zoom = z; } catch (e) {}
-    try { if (document.body) document.body.style.zoom = z; } catch (e) {}
+    try { if (document.body) document.body.style.zoom = ''; } catch (e) {}
   }
   apply();
   document.addEventListener('DOMContentLoaded', apply);
@@ -122,7 +125,7 @@ internal object PageZoom {
 
     fun setJs(percent: Int): String {
         val z = "${clamp(percent)}%"
-        return "try{document.documentElement.style.zoom='$z';if(document.body)document.body.style.zoom='$z';}catch(e){}"
+        return "try{document.documentElement.style.zoom='$z';if(document.body)document.body.style.zoom='';}catch(e){}"
     }
 
     private fun keyFor(kind: Kind): String? = when (kind) {

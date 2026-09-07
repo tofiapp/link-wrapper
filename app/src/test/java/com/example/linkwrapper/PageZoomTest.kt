@@ -1,6 +1,7 @@
 package com.example.linkwrapper
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -53,5 +54,11 @@ class PageZoomTest {
         val picker = PageZoom.pickerJs(88, 80)
         assertTrue(picker.contains("84%"))
         assertTrue(picker.contains("dmId"))
+        assertTrue(js.contains("document.documentElement.style.zoom"))
+        assertTrue(js.contains("document.body.style.zoom=''"))
+        assertFalse(js.contains("document.body.style.zoom='${PageZoom.MAX_PERCENT}%'"))
+        assertTrue(apply.contains("document.body.style.zoom = ''"))
+        assertTrue(picker.contains("document.body.style.zoom = ''"))
+        assertFalse(picker.contains("document.body.style.zoom = z"))
     }
 }
