@@ -20,11 +20,12 @@ class ChartFitTest {
         assertTrue(js.contains("wrapper.scrollHeight"))
         assertTrue(js.contains("setInterval(enforce, 500)"))
         assertTrue(js.contains("window.__chartFitDone = true"))
+        assertTrue(js.contains("node !== document.body && guard < 10"))
+        assertTrue(js.contains("max-height', 'none'"))
+        assertTrue(js.contains("overflow', 'visible'"))
         assertFalse(js.contains("identifyOverlay"))
         assertFalse(js.contains("AndroidDebugBridge"))
         assertFalse(js.contains("elementsFromPoint"))
-        assertFalse(js.contains("el.style.removeProperty('height')"))
-        assertFalse(js.contains("el.style.setProperty('height'"))
         assertFalse(js.contains("Math.min"))
     }
 
