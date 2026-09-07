@@ -1,13 +1,15 @@
 package com.example.linkwrapper
 
 /**
- * Zoom podle šířky, pak jednou zamkne výšku `.chart-part` na
- * max SVG `y` + 40 — stránka ji nesmí přepsat přes style.height.
+ * Zoom podle šířky, pak zamkne výšku `.chart-part` i proti
+ * `setAttribute('style', …)` — předchozí zámek na style.height
+ * stránka obešla a getter pak lhát observeru.
  */
 internal object ChartFit {
 
-    /** Otočení: odemknout a znovu fitnout (zámek zmizí s elementem). */
+    /** Otočení: odpojit zámek, odemknout, znovu fitnout. */
     const val RESET_JS = """
+if (window.__chartFitLockObs) { window.__chartFitLockObs.disconnect(); window.__chartFitLockObs = null; }
 window.__chartFitDone = false;
 """
 
@@ -54,24 +56,131 @@ window.__chartFitDone = false;
 
         var target = maxY + 40;
         var lockedValue = target + 'px';
+        var origSetAttribute = el.setAttribute.bind(el);
+        var origSetAttributeNS = el.setAttributeNS.bind(el);
+        var origRemoveAttribute = el.removeAttribute.bind(el);
+        var styleObj = el.style;
+        var origSetProperty = styleObj.setProperty.bind(styleObj);
+        var origRemoveProperty = styleObj.removeProperty.bind(styleObj);
 
-        el.style.setProperty('height', lockedValue, 'important');
+        function mergeLocked(css) {
+            var s = String(css == null ? '' : css);
+            s = s.replace(/(?:^|;)\s*(?:min-|max-)?height\s*:[^;]*/gi, '');
+            s = s.replace(/;;+/g, ';').replace(/^;|;${'$'}/g, '');
+            return (s ? s + ';' : '') +
+                'height:' + lockedValue + ' !important;' +
+                'min-height:' + lockedValue + ' !important;' +
+                'max-height:none !important';
+        }
+
+        function attrHeight() {
+            var m = String(el.getAttribute('style') || '').match(/(?:^|;)\s*height\s*:\s*([^;!]+)/i);
+            return m ? parseFloat(m[1]) : NaN;
+        }
+
+        var applying = false;
+        function applyLocked(fromCss) {
+            if (applying) return;
+            applying = true;
+            try {
+                origSetAttribute('style', mergeLocked(fromCss != null ? fromCss : el.getAttribute('style')));
+            } finally {
+                applying = false;
+            }
+        }
+
+        applyLocked();
+
+        window.__chartFitLockedEls = window.__chartFitLockedEls || new WeakMap();
+        window.__chartFitLockedEls.set(el, applyLocked);
+        if (!window.__chartFitProtoHooked) {
+            window.__chartFitProtoHooked = true;
+            var pSet = Element.prototype.setAttribute;
+            Element.prototype.setAttribute = function(name, value) {
+                var lock = window.__chartFitLockedEls.get(this);
+                if (lock && String(name).toLowerCase() === 'style') {
+                    lock(value);
+                    return;
+                }
+                return pSet.apply(this, arguments);
+            };
+            var pSetNS = Element.prototype.setAttributeNS;
+            Element.prototype.setAttributeNS = function(ns, name, value) {
+                var lock = window.__chartFitLockedEls.get(this);
+                var local = String(name || '').split(':').pop();
+                if (lock && String(local).toLowerCase() === 'style') {
+                    lock(value);
+                    return;
+                }
+                return pSetNS.apply(this, arguments);
+            };
+            var pRem = Element.prototype.removeAttribute;
+            Element.prototype.removeAttribute = function(name) {
+                var lock = window.__chartFitLockedEls.get(this);
+                if (lock && String(name).toLowerCase() === 'style') {
+                    lock('');
+                    return;
+                }
+                return pRem.apply(this, arguments);
+            };
+        }
 
         try {
-            var styleObj = el.style;
-            var origSetProperty = styleObj.setProperty.bind(styleObj);
+            el.setAttribute = function(name, value) {
+                if (String(name).toLowerCase() === 'style') {
+                    applyLocked(value);
+                    return;
+                }
+                return origSetAttribute(name, value);
+            };
+            el.setAttributeNS = function(ns, name, value) {
+                var local = String(name || '').split(':').pop();
+                if (String(local).toLowerCase() === 'style') {
+                    applyLocked(value);
+                    return;
+                }
+                return origSetAttributeNS(ns, name, value);
+            };
+            el.removeAttribute = function(name) {
+                if (String(name).toLowerCase() === 'style') {
+                    applyLocked('');
+                    return;
+                }
+                return origRemoveAttribute(name);
+            };
             styleObj.setProperty = function(prop, value, priority) {
                 if (prop === 'height' || prop === 'min-height' || prop === 'max-height') {
-                    return origSetProperty(prop, lockedValue, 'important');
+                    applyLocked();
+                    return;
                 }
                 return origSetProperty(prop, value, priority);
+            };
+            styleObj.removeProperty = function(prop) {
+                if (prop === 'height' || prop === 'min-height' || prop === 'max-height') {
+                    applyLocked();
+                    return '';
+                }
+                return origRemoveProperty(prop);
             };
             Object.defineProperty(styleObj, 'height', {
                 configurable: true,
                 get: function() { return lockedValue; },
-                set: function() { origSetProperty('height', lockedValue, 'important'); }
+                set: function() { applyLocked(); }
+            });
+            Object.defineProperty(styleObj, 'cssText', {
+                configurable: true,
+                get: function() { return el.getAttribute('style') || ''; },
+                set: function(v) { applyLocked(v); }
             });
         } catch (e) {}
+
+        if (window.__chartFitLockObs) window.__chartFitLockObs.disconnect();
+        window.__chartFitLockObs = new MutationObserver(function() {
+            if (applying) return;
+            var cur = attrHeight();
+            if (isNaN(cur) || Math.abs(cur - target) > 1) applyLocked();
+        });
+        window.__chartFitLockObs.observe(el, { attributes: true, attributeFilter: ['style'] });
 
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         document.documentElement.style.setProperty('height', 'auto', 'important');
