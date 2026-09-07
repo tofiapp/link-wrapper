@@ -108,7 +108,8 @@
             <FrameLayout
                 android:id="@+id/webContainer"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent" />
+                android:layout_height="match_parent"
+                android:background="@android:color/transparent" />
 
             <include layout="@layout/layout_home_screen" />
             <include layout="@layout/layout_login_screen" />
