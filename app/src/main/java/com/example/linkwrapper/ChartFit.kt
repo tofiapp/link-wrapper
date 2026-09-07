@@ -9,14 +9,12 @@ import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * Výška SVG grafu ve WebView. Šířka `.chart-part` se na tabletu už
- * přizpůsobí.
+ * Výška kontejneru `.chart-part`. SVG uvnitř je delší než obrazovka
+ * a scrolluje se přes `--scrollTop` — do SVG, viewBoxu ani CSS
+ * proměnných grafu se nesahá. Šířka se nemění.
  *
- * [FIT_JS] bere scale z getBoundingClientRect / offsetHeight a výšku
- * počítá ve vykreslených pixelech od horní hrany po spodek viewportu.
- * Měřítko se měří, nehádá — [PageZoom] má zoom jen na html.
- *
- * Graf se kreslí až po onPageFinished, proto čeká MutationObserver.
+ * [FIT_JS] měří scale z getBoundingClientRect / offsetHeight a nastaví
+ * jen výšku kontejneru na dostupný viewport.
  */
 internal object ChartFit {
 
@@ -30,89 +28,9 @@ internal object ChartFit {
     } catch (e) {}
   }
 
-  function svgDump(el) {
-    var svg = el.querySelector('svg');
-    if (!svg) return 'svg: none';
-    var cs = getComputedStyle(svg);
-    return [
-      'svgTag: ' + svg.tagName,
-      'svgWidthAttr: ' + svg.getAttribute('width'),
-      'svgHeightAttr: ' + svg.getAttribute('height'),
-      'svgViewBox: ' + svg.getAttribute('viewBox'),
-      'svgStyleHeight: ' + JSON.stringify(svg.style.height),
-      'svgOffsetHeight: ' + svg.offsetHeight,
-      'svgBoundingHeight: ' + svg.getBoundingClientRect().height,
-      '--pxPerMeter: ' + JSON.stringify(cs.getPropertyValue('--pxPerMeter')),
-      '--yOffset: ' + JSON.stringify(cs.getPropertyValue('--yOffset')),
-      '--chartTop: ' + JSON.stringify(cs.getPropertyValue('--chartTop')),
-      '--scrollTop: ' + JSON.stringify(cs.getPropertyValue('--scrollTop'))
-    ].join('\n');
-  }
-
   function svgBound(el) {
     var svg = el.querySelector('svg');
     return svg ? svg.getBoundingClientRect().height : 'n/a';
-  }
-
-  function nudgeParent(parent) {
-    if (!parent) return;
-    var orig = parent.style.height;
-    parent.style.height = (parent.clientHeight - 1) + 'px';
-    requestAnimationFrame(function() {
-      parent.style.height = orig || '';
-      requestAnimationFrame(function() {
-        window.dispatchEvent(new Event('resize'));
-      });
-    });
-  }
-
-  function measure(el) {
-    var rect = el.getBoundingClientRect();
-    var scale = (el.offsetHeight > 0) ? (rect.height / el.offsetHeight) : 1;
-    if (!scale || scale <= 0) scale = 1;
-    var viewportHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
-    var availableRendered = viewportHeight - rect.top - 8;
-    var targetCss = availableRendered / scale;
-    return {
-      scale: scale,
-      rectTop: rect.top,
-      viewportHeight: viewportHeight,
-      availableRendered: availableRendered,
-      targetCss: targetCss
-    };
-  }
-
-  function runSteps(el, targetCss, steps) {
-    function rec(label) {
-      steps.push(label + ': ' + svgBound(el));
-    }
-    if (targetCss > 0) {
-      el.style.setProperty('height', targetCss + 'px', 'important');
-      rec('after container height');
-      nudgeParent(el.parentElement);
-    }
-    setTimeout(function() {
-      rec('after parent nudge');
-      var keep = (targetCss > 0) ? (targetCss + 'px') : el.style.height;
-      el.style.setProperty('height', (targetCss - 1) + 'px', 'important');
-      requestAnimationFrame(function() {
-        el.style.setProperty('height', keep, 'important');
-        requestAnimationFrame(function() {
-          rec('after self nudge');
-          setTimeout(function() {
-            var svg = el.querySelector('svg');
-            if (svg && targetCss > 0) {
-              svg.style.setProperty('height', targetCss + 'px', 'important');
-            }
-            rec('after svg.style.height');
-            setTimeout(function() {
-              window.dispatchEvent(new Event('resize'));
-              rec('after delayed resize');
-            }, 250);
-          }, 50);
-        });
-      });
-    }, 50);
   }
 
   try {
@@ -128,33 +46,30 @@ internal object ChartFit {
     function fixCharts() {
       var charts = document.querySelectorAll('.chart-part');
       if (!charts.length) return false;
-      var befores = [];
-      var plans = [];
+      var reports = [];
+      var tracked = [];
       charts.forEach(function(el, index) {
-        var m = measure(el);
-        befores.push(
-          'chart ' + index + '\n' +
-          'scale: ' + m.scale + '\n' +
-          'rect.top: ' + m.rectTop + '\n' +
-          'viewportHeight: ' + m.viewportHeight + '\n' +
-          'availableRendered: ' + m.availableRendered + '\n' +
-          'targetCss: ' + m.targetCss + '\n' +
-          svgDump(el)
-        );
-        var steps = [];
-        plans.push({ el: el, index: index, targetCss: m.targetCss, steps: steps });
-        runSteps(el, m.targetCss, steps);
+        var rect = el.getBoundingClientRect();
+        var scale = (el.offsetHeight > 0) ? (rect.height / el.offsetHeight) : 1;
+        if (!scale || scale <= 0) scale = 1;
+        var viewportHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+        var availableRendered = viewportHeight - rect.top - 8;
+        var targetCss = availableRendered / scale;
+        if (targetCss > 0) {
+          el.style.setProperty('height', targetCss + 'px', 'important');
+        }
+        reports.push('chart ' + index + '\nscale: ' + scale + '\ntargetCss: ' + targetCss);
+        tracked.push(el);
       });
-      show('PŘED nastavením výšky\n\n' + befores.join('\n\n'));
+      window.dispatchEvent(new Event('resize'));
+      show(reports.join('\n\n'));
       setTimeout(function() {
         var later = [];
-        plans.forEach(function(p) {
+        tracked.forEach(function(el, index) {
           later.push(
-            'chart ' + p.index + '\n' +
-            'el.style.height po 1000ms: ' + JSON.stringify(p.el.style.height) + '\n' +
-            'el.getBoundingClientRect().height po 1000ms: ' + p.el.getBoundingClientRect().height + '\n' +
-            'kroky svgBoundingHeight:\n' + p.steps.join('\n') + '\n' +
-            svgDump(p.el)
+            'chart ' + index + '\n' +
+            'el.getBoundingClientRect().height po 1000ms: ' + el.getBoundingClientRect().height + '\n' +
+            'svgBoundingHeight po 1000ms: ' + svgBound(el)
           );
         });
         show('PO 1000ms\n\n' + later.join('\n\n'));
