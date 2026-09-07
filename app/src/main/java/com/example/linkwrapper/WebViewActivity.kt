@@ -595,7 +595,6 @@ class WebViewActivity : AppCompatActivity() {
         chartPerfInjected.remove(wv)
         webContainer.removeView(wv)
         wv.stopLoading()
-        wv.removeJavascriptInterface("AndroidDebugBridge")
         wv.onPause()
         wv.webChromeClient = null
         wv.destroy()
@@ -736,8 +735,6 @@ class WebViewActivity : AppCompatActivity() {
         }
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
-        // TODO: remove after debugging
-        webView.addJavascriptInterface(DebugBridge(this), "AndroidDebugBridge")
         webView.setOnLongClickListener { view ->
             handleWebViewLongClick(view as WebView)
             true
@@ -1300,9 +1297,10 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun injectChartFit(webView: WebView) {
+    private fun injectChartFit(webView: WebView, reset: Boolean = false) {
         try {
-            webView.evaluateJavascript(ChartFit.FIT_JS, null)
+            val js = if (reset) ChartFit.RESET_JS + ChartFit.FIT_JS else ChartFit.FIT_JS
+            webView.evaluateJavascript(js, null)
         } catch (_: Exception) {
         }
     }
@@ -1310,7 +1308,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun injectChartFitIntoAllTabs() {
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
-            injectChartFit(wv)
+            injectChartFit(wv, reset = true)
         }
     }
 
