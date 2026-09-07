@@ -9,6 +9,7 @@ import android.content.DialogInterface
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.graphics.Rect
 import android.os.Message
 import android.net.ConnectivityManager
@@ -200,6 +201,7 @@ class WebViewActivity : AppCompatActivity() {
 
         progressBar = findViewById(R.id.progressBar)
         webContainer = findViewById(R.id.webContainer)
+        webContainer.setBackgroundColor(Color.TRANSPARENT)
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
@@ -717,6 +719,8 @@ class WebViewActivity : AppCompatActivity() {
         // Chromium má vlastní compositor. Hardware vrstva kolem WebView
         // při posunu grafu pokaždé nahrává celou texturu → cukání.
         webView.setLayerType(View.LAYER_TYPE_NONE, null)
+        // Default WebView is opaque white; page JS cannot paint that away.
+        webView.setBackgroundColor(Color.TRANSPARENT)
         webView.settings.offscreenPreRaster = false
         webView.overScrollMode = View.OVER_SCROLL_NEVER
         webView.isNestedScrollingEnabled = false
@@ -880,6 +884,7 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 if (view != null) authFailedViews.remove(view)
                 if (view != null) {
+                    view.setBackgroundColor(Color.TRANSPARENT)
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                     injectChartFit(view)
                 }
