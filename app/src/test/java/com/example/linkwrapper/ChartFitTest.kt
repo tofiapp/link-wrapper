@@ -16,18 +16,22 @@ class ChartFitTest {
         assertTrue(js.contains("'important'"))
         assertTrue(js.contains("requestAnimationFrame"))
         assertTrue(js.contains("dispatchEvent(new Event('resize'))"))
-        assertTrue(js.contains("AndroidDebugBridge.showResult"))
-        assertTrue(js.contains("setTimeout"))
-        assertTrue(js.contains("offsetHeightBefore"))
-        assertTrue(js.contains("styleHeightAfter"))
-        assertTrue(js.contains("offsetHeightDelayed"))
+        assertTrue(js.contains("new MutationObserver"))
+        assertTrue(js.contains("childList: true"))
+        assertTrue(js.contains("subtree: true"))
+        assertTrue(js.contains("obs.disconnect()"))
+        assertTrue(js.contains("15000"))
+        assertTrue(js.contains("target <= 0"))
     }
 
     @Test
-    fun jsDoesNotTouchWidthOrOtherLayout() {
+    fun jsDoesNotTouchWidthOrKeepDebugBridge() {
         val js = ChartFit.FIT_JS
         assertFalse(js.contains("width"))
         assertFalse(js.contains("querySelectorAll('.highcharts"))
         assertFalse(js.contains("document.body.style.height"))
+        assertFalse(js.contains("AndroidDebugBridge"))
+        assertFalse(js.contains("showResult"))
+        assertFalse(js.contains("offsetHeightBefore"))
     }
 }
