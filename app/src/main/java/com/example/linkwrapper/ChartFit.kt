@@ -1,8 +1,8 @@
 package com.example.linkwrapper
 
 /**
- * Zoom grafu podle šířky. html/body a mezilehlé kontejnery se
- * roztáhnou na výšku wrapperu, aby výřez grafu nebyl oříznutý.
+ * Zoom grafu podle šířky. Výšku `.chart-part` nemění — html/body
+ * se roztáhnou na skutečnou výšku wrapperu, ať jde doscrollovat.
  */
 internal object ChartFit {
 
@@ -51,32 +51,17 @@ window.__chartZoom = null;
         if (!wrapper) return;
 
         function enforce() {
-            if (window.__chartHeightObs) window.__chartHeightObs.disconnect();
             var needed = Math.max(
                 wrapper.scrollHeight,
                 parseFloat(getComputedStyle(wrapper).height) || 0
             );
-            if (needed && needed > 0) {
-                document.documentElement.style.setProperty('height', 'auto', 'important');
-                document.documentElement.style.setProperty('min-height', needed + 'px', 'important');
-                document.body.style.setProperty('height', 'auto', 'important');
-                document.body.style.setProperty('min-height', needed + 'px', 'important');
-                document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
+            if (!needed || needed <= 0) return;
 
-                var node = el;
-                var guard = 0;
-                while (node && node !== document.body && guard < 10) {
-                    node.style.setProperty('height', 'auto', 'important');
-                    node.style.setProperty('max-height', 'none', 'important');
-                    node.style.setProperty('min-height', needed + 'px', 'important');
-                    node.style.setProperty('overflow', 'visible', 'important');
-                    node = node.parentElement;
-                    guard++;
-                }
-            }
-            if (window.__chartHeightObs) {
-                window.__chartHeightObs.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
-            }
+            document.documentElement.style.setProperty('height', 'auto', 'important');
+            document.documentElement.style.setProperty('min-height', needed + 'px', 'important');
+            document.body.style.setProperty('height', 'auto', 'important');
+            document.body.style.setProperty('min-height', needed + 'px', 'important');
+            document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         }
 
         enforce();
