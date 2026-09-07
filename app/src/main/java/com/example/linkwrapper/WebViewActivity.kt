@@ -157,7 +157,7 @@ class WebViewActivity : AppCompatActivity() {
     private val loginTimeoutRunnable = Runnable {
         if (verifyingLogin) failLogin("Přihlášení vypršelo. Zkuste to znovu.")
     }
-    private val chartFitRunnable = Runnable { injectChartFitIntoAllTabs() }
+    private val chartFitRunnable = Runnable { injectChartFitIntoAllTabs(unlock = true) }
 
     private val authChallengeCounts = IdentityHashMap<WebView, MutableMap<String, Int>>()
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
@@ -229,7 +229,7 @@ class WebViewActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyPageZoomToAllTabs()
-        // Layout WebView ještě nemusí odpovídat nové orientaci.
+        // Odemknout __chartFitDone a znovu fitnout až po layoutu (~300 ms).
         scheduleChartFit()
     }
 
@@ -1297,17 +1297,18 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun injectChartFit(webView: WebView) {
+    private fun injectChartFit(webView: WebView, unlock: Boolean = false) {
         try {
-            webView.evaluateJavascript(ChartFit.FIT_JS, null)
+            val js = if (unlock) ChartFit.RESET_JS + ChartFit.FIT_JS else ChartFit.FIT_JS
+            webView.evaluateJavascript(js, null)
         } catch (_: Exception) {
         }
     }
 
-    private fun injectChartFitIntoAllTabs() {
+    private fun injectChartFitIntoAllTabs(unlock: Boolean = false) {
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
-            injectChartFit(wv)
+            injectChartFit(wv, unlock)
         }
     }
 
