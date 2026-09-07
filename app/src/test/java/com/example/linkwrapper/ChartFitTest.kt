@@ -26,6 +26,11 @@ class ChartFitTest {
         assertTrue(js.contains("15000"))
         assertTrue(js.contains("AndroidDebugBridge.showResult"))
         assertTrue(js.contains("1000"))
+        assertTrue(js.contains("--pxPerMeter"))
+        assertTrue(js.contains("--yOffset"))
+        assertTrue(js.contains("after self nudge"))
+        assertTrue(js.contains("after svg.style.height"))
+        assertTrue(js.contains("after delayed resize"))
     }
 
     @Test

@@ -690,7 +690,7 @@ class WebViewActivity : AppCompatActivity() {
         webView.settings.domStorageEnabled = true
         webView.settings.setGeolocationEnabled(true)
         // Měřítko: setInitialScale se nevolá. Zoom stránky jde přes CSS
-        // (PageZoom → html/body.style.zoom), ne přes WebSettings.zoom.
+        // (PageZoom → jen html.style.zoom), ne přes WebSettings.zoom.
         webView.settings.useWideViewPort = true
         webView.settings.loadWithOverviewMode = true
         webView.settings.cacheMode = WebSettings.LOAD_DEFAULT
