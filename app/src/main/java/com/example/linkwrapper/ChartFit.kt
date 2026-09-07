@@ -9,12 +9,12 @@ import android.widget.TextView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * Výška kontejneru `.chart-part`. SVG uvnitř je delší než obrazovka
- * a scrolluje se přes `--scrollTop` — do SVG, viewBoxu ani CSS
- * proměnných grafu se nesahá. Šířka se nemění.
+ * Výška kontejneru `.chart-part`. Do SVG se nesahá. Žádný `resize`
+ * event — ten spouštěl přepočet, který SVG srazil na výšku kontejneru.
  *
- * [FIT_JS] měří scale z getBoundingClientRect / offsetHeight a nastaví
- * jen výšku kontejneru na dostupný viewport.
+ * Nejdřív se nastaví `height`. Když se SVG do 400 ms zmenší, `height`
+ * se sundá a zkusí se `min-height` + `max-height` (některý ResizeObserver
+ * čte jen `style.height`).
  */
 internal object ChartFit {
 
@@ -28,9 +28,26 @@ internal object ChartFit {
     } catch (e) {}
   }
 
-  function svgBound(el) {
-    var svg = el.querySelector('svg');
+  function svgEl(el) {
+    return el.querySelector('svg');
+  }
+
+  function svgBoundH(el) {
+    var svg = svgEl(el);
     return svg ? svg.getBoundingClientRect().height : 'n/a';
+  }
+
+  function svgBoundW(el) {
+    var svg = svgEl(el);
+    return svg ? svg.getBoundingClientRect().width : 'n/a';
+  }
+
+  function svgScrollVars(el) {
+    var svg = svgEl(el);
+    if (!svg) return 'svg: none';
+    var cs = getComputedStyle(svg);
+    return '--scrollTop: ' + JSON.stringify(cs.getPropertyValue('--scrollTop')) +
+      '\n--scrollLeft: ' + JSON.stringify(cs.getPropertyValue('--scrollLeft'));
   }
 
   try {
@@ -46,7 +63,6 @@ internal object ChartFit {
     function fixCharts() {
       var charts = document.querySelectorAll('.chart-part');
       if (!charts.length) return false;
-      var reports = [];
       var tracked = [];
       charts.forEach(function(el, index) {
         var rect = el.getBoundingClientRect();
@@ -55,21 +71,49 @@ internal object ChartFit {
         var viewportHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
         var availableRendered = viewportHeight - rect.top - 8;
         var targetCss = availableRendered / scale;
+        var beforeSvg = svgBoundH(el);
         if (targetCss > 0) {
           el.style.setProperty('height', targetCss + 'px', 'important');
         }
-        reports.push('chart ' + index + '\nscale: ' + scale + '\ntargetCss: ' + targetCss);
-        tracked.push(el);
+        tracked.push({
+          el: el,
+          index: index,
+          scale: scale,
+          targetCss: targetCss,
+          beforeSvg: beforeSvg,
+          applied: 'height (no resize)'
+        });
       });
-      window.dispatchEvent(new Event('resize'));
-      show(reports.join('\n\n'));
+      setTimeout(function() {
+        tracked.forEach(function(p) {
+          p.afterHeight = svgBoundH(p.el);
+          var before = Number(p.beforeSvg);
+          var after = Number(p.afterHeight);
+          if (p.targetCss > 0 && isFinite(before) && isFinite(after) && after < before * 0.9) {
+            p.el.style.removeProperty('height');
+            p.el.style.setProperty('min-height', p.targetCss + 'px', 'important');
+            p.el.style.setProperty('max-height', p.targetCss + 'px', 'important');
+            p.applied = 'min/max-height (SVG shrank after height)';
+          }
+        });
+      }, 400);
       setTimeout(function() {
         var later = [];
-        tracked.forEach(function(el, index) {
+        tracked.forEach(function(p) {
+          var r = p.el.getBoundingClientRect();
           later.push(
-            'chart ' + index + '\n' +
-            'el.getBoundingClientRect().height po 1000ms: ' + el.getBoundingClientRect().height + '\n' +
-            'svgBoundingHeight po 1000ms: ' + svgBound(el)
+            'chart ' + p.index + '\n' +
+            'scale: ' + p.scale + '\n' +
+            'targetCss: ' + p.targetCss + '\n' +
+            'applied: ' + p.applied + '\n' +
+            'svgBoundingHeight BEFORE: ' + p.beforeSvg + '\n' +
+            'svgBoundingHeight po height (~400ms): ' + p.afterHeight + '\n' +
+            'el.getBoundingClientRect().height po 1000ms: ' + r.height + '\n' +
+            'svgBoundingHeight po 1000ms: ' + svgBoundH(p.el) + '\n' +
+            'el.getBoundingClientRect().width: ' + r.width + '\n' +
+            'window.innerWidth: ' + window.innerWidth + '\n' +
+            'svg.getBoundingClientRect().width: ' + svgBoundW(p.el) + '\n' +
+            svgScrollVars(p.el)
           );
         });
         show('PO 1000ms\n\n' + later.join('\n\n'));
