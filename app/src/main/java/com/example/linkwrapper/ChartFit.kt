@@ -10,19 +10,14 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
  * Výška SVG grafu ve WebView. Šířka `.chart-part` se na tabletu už
- * přizpůsobí; výška zůstává na původní hodnotě ze stránky.
+ * přizpůsobí.
  *
- * Graf se kreslí až po onPageFinished, proto [FIT_JS] čeká přes
- * MutationObserver. Dočasně nejdřív ukáže rozměry v dialogu, pak zkusí
- * výšku z rodiče / předků / visualViewport.
+ * CSS zoom je na html i body (viz [PageZoom]) — měřítko se násobí.
+ * [FIT_JS] proto bere scale z getBoundingClientRect / offsetHeight
+ * a výšku počítá ve vykreslených pixelech od horní hrany elementu
+ * po spodek viewportu, pak ji převede zpět na CSS px.
  *
- * Měřítko WebView (viz createWebView + [PageZoom]):
- * - setInitialScale: nevolá se
- * - useWideViewPort = true
- * - loadWithOverviewMode = true
- * - textZoom = 100
- * - setSupportZoom = false, builtInZoomControls = false
- * - CSS zoom za běhu: html/body.style.zoom (grafy 84 %, jinak 88/80 %)
+ * Graf se kreslí až po onPageFinished, proto čeká MutationObserver.
  */
 internal object ChartFit {
 
@@ -36,69 +31,6 @@ internal object ChartFit {
     } catch (e) {}
   }
 
-  function usable(v, current) {
-    return typeof v === 'number' && isFinite(v) && v > 0 && v > current;
-  }
-
-  function pickHeight(el) {
-    var current = el.offsetHeight || 0;
-    var parent = el.parentElement;
-    if (parent && usable(parent.clientHeight, current)) {
-      return { value: parent.clientHeight, source: 'parent.clientHeight' };
-    }
-    var node = parent;
-    var i = 0;
-    while (node && i < 6) {
-      if (usable(node.clientHeight, current)) {
-        return { value: node.clientHeight, source: 'ancestor[' + i + '] ' + node.tagName + ' clientHeight' };
-      }
-      node = node.parentElement;
-      i += 1;
-    }
-    var vv = (window.visualViewport ? window.visualViewport.height : 0);
-    if (usable(vv, current)) {
-      return { value: vv, source: 'visualViewport.height' };
-    }
-    if (usable(document.documentElement.clientHeight, current)) {
-      return { value: document.documentElement.clientHeight, source: 'documentElement.clientHeight' };
-    }
-    return null;
-  }
-
-  function collect(el, index) {
-    var parent = el.parentElement;
-    var lines = ['chart ' + index];
-    lines.push('el.style.height: ' + JSON.stringify(el.style.height));
-    lines.push('el.offsetHeight: ' + el.offsetHeight);
-    lines.push('el.clientHeight: ' + el.clientHeight);
-    lines.push('el.getBoundingClientRect().height: ' + el.getBoundingClientRect().height);
-    if (!parent) {
-      lines.push('parent: none');
-      return lines.join('\n');
-    }
-    lines.push('parentTag: ' + parent.tagName + '.' + (parent.className || '-'));
-    lines.push('parent.clientHeight: ' + parent.clientHeight);
-    lines.push('parent.offsetHeight: ' + parent.offsetHeight);
-    lines.push('parent.getBoundingClientRect().height: ' + parent.getBoundingClientRect().height);
-    lines.push('parent computed height: ' + getComputedStyle(parent).height);
-    lines.push('parent computed overflow: ' + getComputedStyle(parent).overflow);
-    lines.push('window.innerHeight: ' + window.innerHeight);
-    lines.push('document.documentElement.clientHeight: ' + document.documentElement.clientHeight);
-    lines.push('devicePixelRatio: ' + window.devicePixelRatio);
-    lines.push('visualViewport.height: ' + (window.visualViewport ? window.visualViewport.height : 'n/a'));
-    lines.push('visualViewport.scale: ' + (window.visualViewport ? window.visualViewport.scale : 'n/a'));
-    lines.push('html.style.zoom: ' + JSON.stringify(document.documentElement.style.zoom));
-    lines.push('body.style.zoom: ' + JSON.stringify(document.body ? document.body.style.zoom : ''));
-    var node = parent;
-    var i = 0;
-    while (node && i < 6) {
-      lines.push('ancestor[' + i + ']: ' + node.tagName + '.' + (node.className || '-') + ' = ' + node.clientHeight + 'px (computed: ' + getComputedStyle(node).height + ')');
-      node = node.parentElement;
-      i += 1;
-    }
-    return lines.join('\n');
-  }
-
   function nudge(parent) {
     if (!parent) return;
     var orig = parent.style.height;
@@ -109,6 +41,28 @@ internal object ChartFit {
         window.dispatchEvent(new Event('resize'));
       });
     });
+  }
+
+  function fitOne(el, index) {
+    var rect = el.getBoundingClientRect();
+    var scale = (el.offsetHeight > 0) ? (rect.height / el.offsetHeight) : 1;
+    if (!scale || scale <= 0) scale = 1;
+    var viewportHeight = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    var availableRendered = viewportHeight - rect.top - 8;
+    var targetCss = availableRendered / scale;
+    var lines = [
+      'chart ' + index,
+      'scale: ' + scale,
+      'rect.top: ' + rect.top,
+      'viewportHeight: ' + viewportHeight,
+      'availableRendered: ' + availableRendered,
+      'targetCss: ' + targetCss
+    ];
+    if (targetCss > 0) {
+      el.style.setProperty('height', targetCss + 'px', 'important');
+      nudge(el.parentElement);
+    }
+    return lines.join('\n');
   }
 
   try {
@@ -127,15 +81,7 @@ internal object ChartFit {
       var reports = [];
       var tracked = [];
       charts.forEach(function(el, index) {
-        reports.push(collect(el, index));
-        var picked = pickHeight(el);
-        if (picked) {
-          reports.push('chosen: ' + picked.source + ' = ' + picked.value);
-          el.style.setProperty('height', picked.value + 'px', 'important');
-          nudge(el.parentElement);
-        } else {
-          reports.push('chosen: none (no candidate > current height)');
-        }
+        reports.push(fitOne(el, index));
         tracked.push(el);
       });
       show('PŘED / právě nastaveno\n\n' + reports.join('\n\n'));
@@ -145,7 +91,7 @@ internal object ChartFit {
           later.push(
             'chart ' + index + '\n' +
             'el.style.height po 1000ms: ' + JSON.stringify(el.style.height) + '\n' +
-            'el.offsetHeight po 1000ms: ' + el.offsetHeight
+            'el.getBoundingClientRect().height po 1000ms: ' + el.getBoundingClientRect().height
           );
         });
         show('PO 1000ms\n\n' + later.join('\n\n'));
