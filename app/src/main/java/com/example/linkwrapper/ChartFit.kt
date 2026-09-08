@@ -1,10 +1,14 @@
 package com.example.linkwrapper
 
 /**
- * Graf: schovat `.chart-part`, srovnat šířku, zamknout výšku, teprve pak ukázat.
+ * Graf: krátce schovat `.chart-part`, srovnat šířku, zamknout výšku, hned ukázat.
  *
- * Celé html se neschovává (to bránilo načtení). Háčky na výšku jdou až
- * když `.chart-part` existuje, ne na document-start.
+ * Čekat na SVG **pod** `opacity:0` nejde — knihovna do neviditelného
+ * kontejneru graf nenakreslí, zámek se nedočká a stránka zůstane bez
+ * grafu. Odhalení je proto po dvou snímcích (jako dřív), ne po SVG.
+ * Výška se po odhalení dál jen zvedá, ať stránka graf znovu nesrazí.
+ *
+ * Celé html se neschovává. Háčky na výšku až když `.chart-part` existuje.
  *
  * ## Srovnání na šířku — neměnit, na tabletu sedí
  *
@@ -20,10 +24,6 @@ package com.example.linkwrapper
  *    (84 % × fit).
  * 6. `overflow-x: hidden`, `overflow-y: auto` — pryč vodorovný posun,
  *    svislý zůstane.
- *
- * Výška je jiný problém: stránka po prvním snímku srazí `.chart-part`
- * (celý graf → pryč). Proto se graf drží neviditelný, výška se jen
- * zvedá, a odhalí se až po zámku.
  */
 internal object ChartFit {
 
@@ -41,7 +41,9 @@ internal object ChartFit {
     val RESET_JS = """
 if (window.__chartFitLockObs) { window.__chartFitLockObs.disconnect(); window.__chartFitLockObs = null; }
 if (window.__chartFitDomObs) { window.__chartFitDomObs.disconnect(); window.__chartFitDomObs = null; }
+if (window.__chartFitFailsafe) { clearTimeout(window.__chartFitFailsafe); window.__chartFitFailsafe = null; }
 window.__chartFitDone = false;
+window.__chartFitSettling = false;
 window.__chartFitFloorH = 0;
 window.__chartFitDmId = null;
 $HIDE_JS
@@ -49,7 +51,7 @@ $HIDE_JS
 
     /**
      * Document-start u `dmId` (i po SPA `pushState`): schová `.chart-part`
-     * hned, ať první snímek není celý graf. Nečeká na FIT.
+     * před prvním snímkem. FIT ho zase ukáže — nesmí čekat na SVG.
      */
     val BOOTSTRAP_JS = """
 (function(){
@@ -104,15 +106,21 @@ $HIDE_JS
     function showChart() {
         var s = document.getElementById('__chartFitHideStyle');
         if (s && s.parentNode) s.parentNode.removeChild(s);
+        if (window.__chartFitFailsafe) {
+            clearTimeout(window.__chartFitFailsafe);
+            window.__chartFitFailsafe = null;
+        }
     }
 
     var dm = currentDmId();
     if (window.__chartFitDmId && window.__chartFitDmId !== dm) {
         window.__chartFitDone = false;
+        window.__chartFitSettling = false;
         window.__chartFitFloorH = 0;
     }
     window.__chartFitDmId = dm;
     if (window.__chartFitDone) return;
+    if (window.__chartFitSettling) return;
     if (isChartUrl()) hideChart();
 
     function isChartPart(el) {
@@ -162,9 +170,7 @@ $HIDE_JS
             'overflow:visible !important';
     }
 
-    window.__chartFitStyleToEl = window.__chartFitStyleToEl || new WeakMap();
     window.__chartFitApplying = window.__chartFitApplying || new WeakSet();
-    window.__chartFitStyled = window.__chartFitStyled || new WeakSet();
 
     function applyLocked(el, fromCss) {
         if (!isChartPart(el) || window.__chartFitApplying.has(el)) return false;
@@ -195,63 +201,10 @@ $HIDE_JS
             }
             return window.__chartFitSetAttr.apply(this, arguments);
         };
-        var pSetNS = Element.prototype.setAttributeNS;
-        Element.prototype.setAttributeNS = function(ns, name, value) {
-            var local = String(name || '').split(':').pop();
-            if (isChartPart(this) && String(local).toLowerCase() === 'style') {
-                if (applyLocked(this, value)) return;
-            }
-            return pSetNS.apply(this, arguments);
-        };
-        var pRem = Element.prototype.removeAttribute;
-        Element.prototype.removeAttribute = function(name) {
-            if (isChartPart(this) && String(name).toLowerCase() === 'style') {
-                if (applyLocked(this, '')) return;
-            }
-            return pRem.apply(this, arguments);
-        };
     }
 
     function remember(el) {
         if (!isChartPart(el)) return;
-        try { window.__chartFitStyleToEl.set(el.style, el); } catch (e) {}
-        if (window.__chartFitStyled.has(el)) {
-            applyLocked(el);
-            if (window.__chartFitLockObs) {
-                try { window.__chartFitLockObs.observe(el, { attributes: true, attributeFilter: ['style'] }); } catch (e) {}
-            }
-            return;
-        }
-        window.__chartFitStyled.add(el);
-        try {
-            var styleObj = el.style;
-            var origSetProperty = styleObj.setProperty.bind(styleObj);
-            var origRemoveProperty = styleObj.removeProperty.bind(styleObj);
-            styleObj.setProperty = function(prop, value, priority) {
-                if (prop === 'height' || prop === 'min-height' || prop === 'max-height' || prop === 'overflow') {
-                    applyLocked(el);
-                    return;
-                }
-                return origSetProperty(prop, value, priority);
-            };
-            styleObj.removeProperty = function(prop) {
-                if (prop === 'height' || prop === 'min-height' || prop === 'max-height' || prop === 'overflow') {
-                    applyLocked(el);
-                    return '';
-                }
-                return origRemoveProperty(prop);
-            };
-            Object.defineProperty(styleObj, 'height', {
-                configurable: true,
-                get: function() { return (window.__chartFitFloorH || 0) + 'px'; },
-                set: function() { applyLocked(el); }
-            });
-            Object.defineProperty(styleObj, 'cssText', {
-                configurable: true,
-                get: function() { return el.getAttribute('style') || ''; },
-                set: function(v) { applyLocked(el, v); }
-            });
-        } catch (e) {}
         applyLocked(el);
         if (window.__chartFitLockObs) {
             try { window.__chartFitLockObs.observe(el, { attributes: true, attributeFilter: ['style'] }); } catch (e) {}
@@ -267,6 +220,21 @@ $HIDE_JS
         });
     }
 
+    function finishFit() {
+        var el = document.querySelector('.chart-part');
+        if (el) remember(el);
+        window.__chartFitDone = true;
+        window.__chartFitSettling = false;
+        showChart();
+        var t0 = Date.now();
+        function hold() {
+            var part = document.querySelector('.chart-part');
+            if (part) remember(part);
+            if (Date.now() - t0 < 2000) requestAnimationFrame(hold);
+        }
+        requestAnimationFrame(hold);
+    }
+
     /**
      * Šířka — neměnit. Nejdřív čistý zoom, pak scrollWidth / innerWidth,
      * výsledek max 1 na body. Viz komentář u ChartFit.
@@ -274,7 +242,6 @@ $HIDE_JS
     function step1_zoom() {
         var el = document.querySelector('.chart-part');
         if (!el) return false;
-        hideChart();
 
         document.documentElement.style.zoom = '';
         document.body.style.zoom = '';
@@ -290,73 +257,44 @@ $HIDE_JS
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
 
-        waitStarted = Date.now();
         requestAnimationFrame(function() {
-            requestAnimationFrame(step2_height);
+            requestAnimationFrame(finishFit);
         });
         return true;
     }
 
-    var waitStarted = Date.now();
-    var readyAt = 0;
-    var locking = false;
-
-    function finishLocked() {
-        if (locking) return;
-        var el = document.querySelector('.chart-part');
-        if (el) remember(el);
-        if (!(window.__chartFitFloorH > 0)) {
-            showChart();
-            window.__chartFitDone = true;
-            return;
-        }
-        locking = true;
-        window.__chartFitDone = true;
-        showChart();
+    if (isChartUrl() && !window.__chartFitFailsafe) {
+        window.__chartFitFailsafe = setTimeout(function() {
+            window.__chartFitFailsafe = null;
+            if (!window.__chartFitDone) finishFit();
+        }, 1200);
     }
 
-    function step2_height() {
-        if (window.__chartFitDone) return;
-        var el = document.querySelector('.chart-part');
-        if (el) remember(el);
-        var floor = window.__chartFitFloorH || 0;
-        if (floor > 0 && !readyAt) readyAt = Date.now();
-        var waited = Date.now() - waitStarted;
-        var settled = readyAt && (Date.now() - readyAt > 400);
-        if (settled || waited > 2500) {
-            finishLocked();
-            return;
-        }
-        requestAnimationFrame(step2_height);
-    }
-
+    window.__chartFitSettling = true;
     if (!step1_zoom()) {
+        window.__chartFitSettling = false;
         if (!isChartUrl()) {
             showChart();
+            window.__chartFitDone = true;
             return;
         }
         var root = document.body || document.documentElement;
         if (!root) {
             showChart();
+            window.__chartFitDone = true;
             return;
         }
         if (!window.__chartFitDomObs) {
             window.__chartFitDomObs = new MutationObserver(function() {
-                document.querySelectorAll('.chart-part').forEach(remember);
-                if (!window.__chartFitDone) step1_zoom();
+                if (window.__chartFitDone || window.__chartFitSettling) return;
+                if (step1_zoom()) {
+                    window.__chartFitSettling = true;
+                    window.__chartFitDomObs.disconnect();
+                    window.__chartFitDomObs = null;
+                }
             });
             window.__chartFitDomObs.observe(root, { childList: true, subtree: true });
         }
-        setTimeout(function() {
-            if (window.__chartFitDomObs) {
-                window.__chartFitDomObs.disconnect();
-                window.__chartFitDomObs = null;
-            }
-            if (!window.__chartFitDone) {
-                step1_zoom();
-                finishLocked();
-            }
-        }, 20000);
     }
 })();
 """
