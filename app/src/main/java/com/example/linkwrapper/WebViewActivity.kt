@@ -249,16 +249,14 @@ class WebViewActivity : AppCompatActivity() {
         super.onResume()
         val tab = activeTab
         val wv = tab?.webView
-        val detached = wv != null && wv.parent == null && tab != null && !tab.isHome &&
-            gate == Gate.BROWSER
-        val reveal = needsPinnedWebViewReveal
-        needsPinnedWebViewReveal = false
-        if (reveal || detached) {
-            if (tab != null && wv != null && !tab.isHome) {
-                revealActiveBrowserWebView(wv)
-                return
-            }
+        if (tab != null && !tab.isHome && wv != null && gate == Gate.BROWSER &&
+            (needsPinnedWebViewReveal || wv.parent == null)
+        ) {
+            needsPinnedWebViewReveal = false
+            revealActiveBrowserWebView(wv)
+            return
         }
+        needsPinnedWebViewReveal = false
         (activeWebView ?: tabs.firstNotNullOfOrNull { it.webView })?.resumeTimers()
         activeWebView?.onResume()
     }
