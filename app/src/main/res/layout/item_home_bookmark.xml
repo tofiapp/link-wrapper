@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="0dp"
+    android:layout_height="72dp"
+    android:layout_weight="1"
+    android:background="@drawable/bg_home_tile"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center_vertical"
+    android:orientation="vertical"
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="10dp">
+
+    <TextView
+        android:id="@+id/homeBookmarkTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:gravity="center"
+        android:maxLines="2"
+        android:textColor="@color/ink"
+        android:textIsSelectable="false"
+        android:textSize="15sp" />
+</LinearLayout>
