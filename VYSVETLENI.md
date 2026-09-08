@@ -38,7 +38,7 @@ přihlášení, karty, certifikáty, tlačítka nahoře.
 Domovská adresa:
 
 ```
-https://test.psst.tudc.cz/HSI.Psst.Data
+https://psst.tudc.cz/PsstData
 ```
 
 ### Tablety bez prohlížeče (Chrome / Samsung Internet / Firefox)

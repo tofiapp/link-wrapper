@@ -18,7 +18,7 @@ class PageZoomTest {
         assertEquals(84, PageZoom.CHART_PERCENT)
         assertEquals(
             PageZoom.Kind.Chart,
-            PageZoom.kindFor("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12")
+            PageZoom.kindFor("https://psst.tudc.cz/PsstData?dmId=12")
         )
         assertEquals(
             PageZoom.Kind.Psst,
