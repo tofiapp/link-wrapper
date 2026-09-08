@@ -16,14 +16,13 @@ class AuthHostsTest {
     }
 
     @Test
-    fun rejectsNonPsstIncludingDsd() {
+    fun rejectsNonPsstHosts() {
         assertFalse(AuthHosts.allows(null))
         assertFalse(AuthHosts.allows(""))
         assertFalse(AuthHosts.allows("evil.com"))
         assertFalse(AuthHosts.allows("tudc.cz"))
         assertFalse(AuthHosts.allows("notpsst.tudc.cz"))
-        assertFalse(AuthHosts.allows("dsd.tudc.cz"))
-        assertFalse(AuthHosts.allows("www.dsd.tudc.cz"))
+        assertFalse(AuthHosts.allows("portal.tudc.cz"))
         assertFalse(AuthHosts.allows("psst.tudc.cz.attacker.com"))
         assertFalse(AuthHosts.allows("google.com"))
     }
@@ -31,7 +30,7 @@ class AuthHostsTest {
     @Test
     fun tudcHelper() {
         assertTrue(AuthHosts.isTudc("foo.bar.tudc.cz"))
-        assertTrue(AuthHosts.isTudc("dsd.tudc.cz"))
+        assertTrue(AuthHosts.isTudc("portal.tudc.cz"))
         assertTrue(AuthHosts.isTudc("psst.tudc.cz"))
         assertFalse(AuthHosts.isTudc("evil.com"))
         assertFalse(AuthHosts.isTudc("tudc.cz.attacker.com"))

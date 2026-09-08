@@ -22,7 +22,9 @@ class PsstDataLayoutTest {
         assertTrue(js.contains("flex:1 1 0%"))
         assertTrue(js.contains("overflow:auto"))
         assertTrue(js.contains("getBoundingClientRect().top"))
-        assertTrue(js.contains("innerHeight - top"))
+        assertTrue(js.contains("innerHeight - top + 32"))
+        assertTrue(js.contains("h < 240"))
+        assertTrue(js.contains("gap:8px"))
         assertFalse(js.contains("grid-rows-3:repeat"))
     }
 }

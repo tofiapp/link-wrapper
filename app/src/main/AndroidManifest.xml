@@ -46,8 +46,6 @@
                 <data android:scheme="http" android:host="psst.tudc.cz" />
                 <data android:scheme="https" android:host="test.psst.tudc.cz" />
                 <data android:scheme="http" android:host="test.psst.tudc.cz" />
-                <data android:scheme="https" android:host="dsd.tudc.cz" />
-                <data android:scheme="http" android:host="dsd.tudc.cz" />
             </intent-filter>
 
             <!-- Ostatní adresy: nabídka v „Otevřít pomocí“. -->

@@ -21,12 +21,10 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 | VPN, bez relace | nativní **Domů** |
 | relace | Domů / otevřené karty |
 | klepnutí na PSST Data bez relace | formulář, ověření v `:authprobe`, pak web |
-| klepnutí na DSD | web s vlastním formulářem; údaje z PSST se **neposílají** |
 | komu jde HTTP auth | jen `psst.tudc.cz` / `test.psst.tudc.cz` |
 | **domeček** | aktuální karta se změní na **Domů** |
 | **+** | nová karta **Domů**; aktuální web zůstane |
 | dlouhé podržení karty / odkazu | dialog **Otevřít na druhé kartě** |
-| dočasný HTTP 401 u DSD | žádný dialog |
 | Vymazat údaje | prefs, cookies, velikost stránek, profil pryč, nový proces, znovu Domů |
 
 Špatné heslo se **do hlavního WebView nedostane**.
@@ -41,7 +39,7 @@ pro `tudc.cz`. Na zařízení se obě jmenují **Obálka**.
 | co | proč |
 | --- | --- |
 | `TRIAL_HOME_LOGIN` | celkové přihlášení ve zkušební nefungovalo |
-| `AuthHosts.allows` jen PSST | DSD si drží vlastní formulář, údaje z PSST tam nejdou |
+| `AuthHosts.allows` jen PSST | heslo nesmí jít na cizí 401 |
 
 **Ponecháno schválně:** názvy flavorů `pinned` / `systemtrust` (CI a
 názvy APK). `Session` pořád maže stará `session_gate` prefs. Keystore,
@@ -54,8 +52,8 @@ VPN brána, dva APK vedle sebe.
 | soubor | role |
 | --- | --- |
 | `WebViewActivity.kt` | jediná obrazovka: VPN, Domů / login, karty, web |
-| `Destinations.kt` | PSST / DSD / Domů, popisek karty |
-| `PageZoom.kt` | DSD a PSST zvlášť; grafy vždy 84 % |
+| `Destinations.kt` | PSST / Domů, popisek karty |
+| `PageZoom.kt` | PSST Data; grafy vždy 84 % |
 | `Session.kt` + `SecretStore.kt` | šifrované údaje, Keystore AES-256-GCM |
 | `AuthProbeActivity.kt` + `AuthHandoff.kt` | ověření hesla v jiném procesu |
 | `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
@@ -72,8 +70,8 @@ Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`, `PageZoomTest`.
 ## D. Přihlášení a údaje (stále platí)
 
 Ověření mimo hlavní proces, Keystore, `allowBackup=false`, `FLAG_SECURE`
-na formuláři. Obě APK posílají heslo jen na PSST hosty. DSD si drží
-vlastní formulář. Podrobnosti v `BEZPECNOST.md`.
+na formuláři. Obě APK posílají heslo jen na PSST hosty. Podrobnosti
+v `BEZPECNOST.md`.
 
 Reverse engineering APK **heslo nedá** — klíč je v čipu tabletu, ne v APK.
 

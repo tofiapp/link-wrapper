@@ -165,7 +165,7 @@ Všechno se rozhoduje v jedné funkci: `refreshGate()` v `WebViewActivity.kt`.
                             (údaje = tudc.cz)
 ```
 
-**Obě APK:** Domů i bez přihlášení. Údaje jen pro PSST. DSD má vlastní formulář.
+**Obě APK:** Domů i bez přihlášení. Údaje jen pro PSST.
 Dřív appka pinovala firemní CA v APK — to už není, viz `AUDIT.md`.
 
 ---
@@ -259,7 +259,7 @@ kartu.
 
 Název karty **není** `document.title` z webu. Graf by pořád přepisoval
 titulek na „graf“ a lišta by se skládala dokola (sekání). Místo toho
-`Destinations.tabTitle`: Domů / PSST Data / DSD / **Graf {dmId}** u grafu
+`Destinations.tabTitle`: Domů / PSST Data / **Graf {dmId}** u grafu
 ze sdílení, jinak název serveru.
 
 Neaktivní karta se **vyjme z obrazovky** (`removeView`) a dostane

@@ -8,31 +8,30 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Na tabletu se appka jmenuje **Obálka** (běžná i zkušební APK).
 - Po spuštění (a po VPN) nativní **Domů**.
   PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
-  `test.psst.tudc.cz`). **DSD** má vlastní formulář na webu; údaje z PSST
-  se tam neposílají.
+  `test.psst.tudc.cz`).
 - Údaje se uloží v aplikaci, dokud je v ⋮ nesmažete.
   **Zkušební APK:** weby si cookies a NTLM mezi sebou nepředávají
   (každý host má vlastní zásobník). V ⋮ je **Neukládat přihlášení**
   (výchozí zapnuto) — jméno a heslo k PSST zůstanou jen do vypnutí
   aplikace.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
-  relace na otevřených stránkách. Pak jste na obou webech odhlášení.
-- **Karty** nahoře v liště. **Domeček** změní aktuální kartu (DSD, PSST,
+  relace na otevřených stránkách. Pak jste na webu odhlášení.
+- **Karty** nahoře v liště. **Domeček** změní aktuální kartu (PSST,
   graf) na **Domů**. **+** otevře novou kartu **Domů**, aktuální web zůstane.
-  Křížek je jen když je karet víc. Dlaždice na Domů mají jen název
-  (PSST Data, DSD), bez adresy. Karta DSD se jmenuje **DSD**.
+  Křížek je jen když je karet víc. Dlaždice na Domů má jen název
+  (PSST Data), bez adresy.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
   na pozadí nesežerou tablet. Dlouhé podržení karty nebo odkazu otevře
   dialog **Otevřít na druhé kartě**. Přiblížení webu: výchozí na výšku
-  88 %, na šířku 80 %; v ⋮ → **Velikost stránek** zvlášť pro DSD a zvlášť
-  pro PSST Data (drží se do Vymazat údaje). Grafy (`dmId`) mají vždy 84 %
+  88 %, na šířku 80 %; v ⋮ → **Velikost stránek** pro PSST Data
+  (drží se do Vymazat údaje). Grafy (`dmId`) mají vždy 84 %
   a karta ze sdílení se jmenuje **Graf …** podle `dmId`.
   Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
   hover/tooltip při tažení.
 - Nabídka **⋮**: zadat adresu, přenačíst, velikost stránek, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
-  `test.psst.tudc.cz` / `dsd.tudc.cz`). Externí odkaz otevře **novou kartu**.
+  `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
 - **VPN brána**: bez Cisco AnyConnect hláška přes celou obrazovku — karty
   ani lišta nejdou použít. Po připojení se vrátí Domů nebo otevřené karty.
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
@@ -107,13 +106,10 @@ Tok:
 2. VPN → nativní **Domů** i bez přihlášení.
 3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
    Údaje platí jen pro `psst.tudc.cz` / `test.psst.tudc.cz`.
-4. **DSD** → web s vlastním přihlášením, údaje z PSST se tam
-   neposílají. Dočasný HTTP 401 při handshake se neukazuje
-   (žádný dialog „Přístup odepřen“).
-5. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache, velikost stránek
+4. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache, velikost stránek
    i Chromium profil se smažou a proces se restartuje (NTLM jinak v procesu
    přežije). Pak znovu Domů.
-6. Špatné heslo se ověří v odděleném procesu a do prohlížeče se nedostane.
+5. Špatné heslo se ověří v odděleném procesu a do prohlížeče se nedostane.
 
 | Typ na serveru | Šance ve WebView |
 | --- | --- |

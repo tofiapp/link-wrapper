@@ -12,16 +12,20 @@ class DestinationsTest {
     fun mapsKnownHosts() {
         assertEquals("psst", Destinations.forHost("test.psst.tudc.cz")?.id)
         assertEquals("psst", Destinations.forHost("psst.tudc.cz")?.id)
-        assertEquals("dsd", Destinations.forHost("dsd.tudc.cz")?.id)
-        assertEquals("dsd", Destinations.forHost("www.dsd.tudc.cz")?.id)
         assertNull(Destinations.forHost("evil.com"))
         assertNull(Destinations.forHost("tudc.cz"))
     }
 
     @Test
+    fun homeHasOnlyPsstTile() {
+        assertEquals(listOf("psst"), Destinations.apps.map { it.id })
+        assertTrue(Destinations.apps.single().requiresAppLogin)
+    }
+
+    @Test
     fun onlyPsstUsesAppLogin() {
         assertTrue(Destinations.forHost("test.psst.tudc.cz")!!.requiresAppLogin)
-        assertFalse(Destinations.forHost("dsd.tudc.cz")!!.requiresAppLogin)
+        assertTrue(Destinations.forHost("psst.tudc.cz")!!.requiresAppLogin)
     }
 
     @Test
@@ -41,15 +45,12 @@ class DestinationsTest {
         assertTrue(Destinations.isPsstDataHome("https://test.psst.tudc.cz/PsstData"))
         assertFalse(Destinations.isPsstDataHome("https://psst.tudc.cz/HSI.Psst.Data?dmId=12"))
         assertFalse(Destinations.isPsstDataHome("https://psst.tudc.cz/PsstData?dmId=12"))
-        assertFalse(Destinations.isPsstDataHome(Destinations.DSD_URL))
         assertTrue(AuthHosts.allows("psst.tudc.cz"))
     }
 
     @Test
     fun tabTitleUsesAppNameNotHost() {
         assertEquals("Domů", Destinations.tabTitle(Destinations.HOME_URL))
-        assertEquals("DSD", Destinations.tabTitle(Destinations.DSD_URL))
-        assertEquals("DSD", Destinations.tabTitle("https://dsd.tudc.cz/foo?x=1"))
         assertEquals("PSST Data", Destinations.tabTitle(Destinations.PSST_URL))
         assertEquals("example.com", Destinations.tabTitle("https://example.com/path"))
     }
@@ -67,7 +68,7 @@ class DestinationsTest {
         assertTrue(Destinations.isChart("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12"))
         assertTrue(Destinations.isChart("https://psst.tudc.cz/PsstData?dmId=12"))
         assertFalse(Destinations.isChart(Destinations.PSST_URL))
-        assertFalse(Destinations.isChart("https://dsd.tudc.cz/?dmId=12"))
+        assertFalse(Destinations.isChart("https://example.com/?dmId=12"))
         assertEquals("12", Destinations.dmId("https://test.psst.tudc.cz/HSI.Psst.Data?dmid=12"))
     }
 }

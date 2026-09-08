@@ -67,7 +67,7 @@ V **běžné APK** se údaje posílají jen na `psst.tudc.cz` a
 `test.psst.tudc.cz` (a jejich subdomény). Cizí 401 heslo nedostane.
 
 Obě APK posílají údaje jen na `psst.tudc.cz` a `test.psst.tudc.cz`
-(a jejich subdomény). DSD ani cizí 401 heslo nedostane.
+(a jejich subdomény). Cizí 401 heslo nedostane.
 
 ### 4. SSL „pokračuj“ / pinning v APK (vysoké, odstraněno)
 
