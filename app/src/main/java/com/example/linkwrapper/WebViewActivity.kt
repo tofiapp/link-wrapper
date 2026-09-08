@@ -98,7 +98,7 @@ class WebViewActivity : AppCompatActivity() {
         private const val CHART_FIT_DELAY_MS = 300L
     }
 
-    private enum class Gate { BROWSER, HOME, LOGIN, VPN }
+    private enum class Gate { BROWSER, HOME, LOGIN }
 
     private lateinit var toolbar: MaterialToolbar
     private lateinit var progressBar: LinearProgressIndicator
@@ -109,7 +109,7 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var loginOverlay: View
     private lateinit var loginTitle: View
     private lateinit var loginFormColumn: View
-    private lateinit var vpnGateOverlay: View
+    private lateinit var connectionBanner: View
     private lateinit var loginFormScroll: View
     private lateinit var certBanner: View
     private lateinit var usernameLayout: TextInputLayout
@@ -121,6 +121,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private lateinit var homeOverlay: View
     private lateinit var homeAppList: LinearLayout
+    private lateinit var homeBookmarkList: LinearLayout
     private lateinit var homeVersion: TextView
 
     private val tabs = mutableListOf<BrowserTab>()
@@ -159,8 +160,9 @@ class WebViewActivity : AppCompatActivity() {
     private var trustProbeInFlight = false
     private var lastTrustProbeAt = 0L
     private var lastTrustResult: DeviceTrust.Result? = null
+    private var connectionBannerVisible = false
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val vpnCheckRunnable = Runnable { refreshGate() }
+    private val vpnCheckRunnable = Runnable { refreshConnectionBanner() }
     private val loginTimeoutRunnable = Runnable {
         if (verifyingLogin) failLogin("Přihlášení vypršelo. Zkuste to znovu.")
     }
@@ -221,6 +223,7 @@ class WebViewActivity : AppCompatActivity() {
 
         pendingStartUrl = explicitUrlFromIntent(intent)
         refreshGate()
+        refreshConnectionBanner()
     }
 
     override fun onStart() {
@@ -268,14 +271,14 @@ class WebViewActivity : AppCompatActivity() {
 
         val url = explicitUrlFromIntent(intent)
         if (url == null) {
-            if (tabs.isEmpty() && gate == Gate.BROWSER && isVpnActive()) {
+            if (tabs.isEmpty() && gate == Gate.BROWSER) {
                 presentHome()
             }
             return
         }
         pendingResumeUrl = url
         pendingStartUrl = url
-        if (!isVpnActive() || verifyingLogin) {
+        if (verifyingLogin) {
             return
         }
         refreshGate()
@@ -321,15 +324,12 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Bez VPN → varování.
      * Domů i bez relace; přihlášení k PSST až po dlaždici.
+     * Výpadek VPN/sítě neschová obrazovku — jen pruh nahoře.
      */
     private fun refreshGate() {
         if (isFinishing) return
-        if (!isVpnActive()) {
-            enterVpnGate()
-            return
-        }
+        refreshConnectionBanner()
         if (verifyingLogin) {
             presentLogin()
             return
@@ -364,9 +364,9 @@ class WebViewActivity : AppCompatActivity() {
     private fun presentLogin() {
         gate = Gate.LOGIN
         progressBar.visibility = View.GONE
-        hideVpnGate()
         loginOverlay.visibility = View.VISIBLE
         loginOverlay.bringToFront()
+        raiseConnectionBanner()
         loginFormColumn.visibility = View.VISIBLE
         loginFormScroll.visibility = View.VISIBLE
         loginTitle.visibility = View.VISIBLE
@@ -415,32 +415,6 @@ class WebViewActivity : AppCompatActivity() {
         }
         val target = activeTab ?: tabs.last()
         selectTab(target.id)
-    }
-
-    private fun enterVpnGate() {
-        dismissWarningDialog()
-        tabs.forEach { tab ->
-            tab.webView?.stopLoading()
-            tab.webView?.onPause()
-        }
-        if ((gate == Gate.BROWSER || gate == Gate.HOME) && tabs.isNotEmpty()) {
-            savedTabUrls = tabs.map { it.url }
-            savedActiveTabIndex = tabs.indexOfFirst { it.id == activeTabId }.coerceAtLeast(0)
-        }
-        if (verifyingLogin) {
-            failLogin(null, stayOnForm = false)
-        }
-        gate = Gate.VPN
-        hideKeyboard()
-        hideHomeOverlay()
-        hideLoginOverlay()
-        progressBar.visibility = View.GONE
-        if (::vpnGateOverlay.isInitialized) {
-            vpnGateOverlay.visibility = View.VISIBLE
-            vpnGateOverlay.bringToFront()
-        }
-        attachImeLayoutListener(false)
-        setSensitiveScreen(false)
     }
 
     private fun restoreSavedTabsOrStart() {
@@ -547,6 +521,8 @@ class WebViewActivity : AppCompatActivity() {
                 homeOverlay.visibility = View.VISIBLE
                 homeOverlay.bringToFront()
             }
+            populateHomeBookmarks()
+            raiseConnectionBanner()
             tabs.forEach { tab ->
                 val wv = tab.webView ?: return@forEach
                 wv.onPause()
@@ -1265,7 +1241,7 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    // ── VPN ─────────────────────────────────────────────────────────────
+    // ── VPN / síť ───────────────────────────────────────────────────────
 
     private fun isVpnActive(): Boolean {
         return try {
@@ -1274,6 +1250,72 @@ class WebViewActivity : AppCompatActivity() {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
         } catch (e: Exception) {
             false
+        }
+    }
+
+    /** VPN i běžný internet — bez toho interní stránky nejedou. */
+    private fun isConnectionOk(): Boolean {
+        return try {
+            val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun refreshConnectionBanner() {
+        if (isConnectionOk()) hideConnectionBanner()
+        else showConnectionBanner()
+    }
+
+    private fun showConnectionBanner() {
+        if (!::connectionBanner.isInitialized) return
+        connectionBanner.bringToFront()
+        if (connectionBannerVisible && connectionBanner.visibility == View.VISIBLE) return
+        connectionBannerVisible = true
+        connectionBanner.animate().cancel()
+        connectionBanner.visibility = View.VISIBLE
+        connectionBanner.post {
+            if (!connectionBannerVisible) return@post
+            val h = connectionBanner.height.toFloat()
+            if (h <= 0f) {
+                connectionBanner.translationY = 0f
+                return@post
+            }
+            connectionBanner.translationY = -h
+            connectionBanner.animate().translationY(0f).setDuration(220).start()
+        }
+    }
+
+    private fun hideConnectionBanner() {
+        if (!::connectionBanner.isInitialized) return
+        if (!connectionBannerVisible && connectionBanner.visibility != View.VISIBLE) return
+        connectionBannerVisible = false
+        connectionBanner.animate().cancel()
+        val h = connectionBanner.height.toFloat()
+        if (h <= 0f || connectionBanner.visibility != View.VISIBLE) {
+            connectionBanner.visibility = View.GONE
+            connectionBanner.translationY = 0f
+            return
+        }
+        connectionBanner.animate()
+            .translationY(-h)
+            .setDuration(180)
+            .withEndAction {
+                if (!connectionBannerVisible) {
+                    connectionBanner.visibility = View.GONE
+                    connectionBanner.translationY = 0f
+                }
+            }
+            .start()
+    }
+
+    private fun raiseConnectionBanner() {
+        if (::connectionBanner.isInitialized && connectionBannerVisible) {
+            connectionBanner.bringToFront()
         }
     }
 
@@ -1397,7 +1439,7 @@ class WebViewActivity : AppCompatActivity() {
         loginOverlay = findViewById(R.id.loginOverlay)
         loginTitle = findViewById(R.id.loginTitle)
         loginFormColumn = findViewById(R.id.loginFormColumn)
-        vpnGateOverlay = findViewById(R.id.vpnGateOverlay)
+        connectionBanner = findViewById(R.id.connectionBanner)
         loginFormScroll = findViewById(R.id.loginFormScroll)
         certBanner = findViewById(R.id.certBanner)
         usernameLayout = findViewById(R.id.usernameLayout)
@@ -1419,6 +1461,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun bindHomeUi() {
         homeOverlay = findViewById(R.id.homeOverlay)
         homeAppList = findViewById(R.id.homeAppList)
+        homeBookmarkList = findViewById(R.id.homeBookmarkList)
         homeVersion = findViewById(R.id.homeVersion)
         val version = try {
             packageManager.getPackageInfo(packageName, 0).versionName
@@ -1445,6 +1488,48 @@ class WebViewActivity : AppCompatActivity() {
             item.setOnClickListener { openDestination(app) }
             homeAppList.addView(item)
         }
+        populateHomeBookmarks()
+    }
+
+    private fun populateHomeBookmarks() {
+        if (!::homeBookmarkList.isInitialized) return
+        homeBookmarkList.removeAllViews()
+        val items = if (TrialSettings.isTrial()) TrialBookmarks.load(this) else emptyList()
+        if (items.isEmpty()) {
+            homeBookmarkList.visibility = View.GONE
+            return
+        }
+        homeBookmarkList.visibility = View.VISIBLE
+        val inflater = LayoutInflater.from(this)
+        val gap = (10 * resources.displayMetrics.density).toInt()
+        items.chunked(2).forEach { rowItems ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = gap }
+            }
+            rowItems.forEachIndexed { index, bookmark ->
+                val card = inflater.inflate(R.layout.item_home_bookmark, row, false)
+                card.findViewById<TextView>(R.id.homeBookmarkTitle).text = bookmark.title
+                val cardH = (72 * resources.displayMetrics.density).toInt()
+                val lp = LinearLayout.LayoutParams(0, cardH, 1f)
+                if (index > 0) lp.marginStart = gap
+                card.layoutParams = lp
+                card.setOnClickListener { openSavedUrl(bookmark.url) }
+                row.addView(card)
+            }
+            if (rowItems.size == 1) {
+                val spacer = View(this)
+                spacer.layoutParams = LinearLayout.LayoutParams(0, 0, 1f).apply {
+                    marginStart = gap
+                }
+                row.addView(spacer)
+            }
+            homeBookmarkList.addView(row)
+        }
     }
 
     private fun hideHomeOverlay() {
@@ -1453,11 +1538,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun openDestination(app: Destinations.AppLink) {
-        if (!isVpnActive()) {
-            pendingStartUrl = app.url
-            enterVpnGate()
-            return
-        }
         if (app.requiresAppLogin && !Session.isActive(this)) {
             pendingStartUrl = app.url
             presentLogin()
@@ -1487,19 +1567,10 @@ class WebViewActivity : AppCompatActivity() {
         loginFormScroll.visibility = View.GONE
         setCertBannerVisible(false)
         updateLoginButton()
-        hideVpnGate()
-    }
-
-    private fun hideVpnGate() {
-        if (::vpnGateOverlay.isInitialized) vpnGateOverlay.visibility = View.GONE
     }
 
     private fun submitLogin() {
         if (verifyingLogin) return
-        if (!isVpnActive()) {
-            enterVpnGate()
-            return
-        }
 
         val user = usernameInput.text?.toString()?.trim().orEmpty()
         val pass = passwordInput.text?.toString().orEmpty()
@@ -1594,7 +1665,7 @@ class WebViewActivity : AppCompatActivity() {
         } else if (missingCerts) {
             passwordLayout.error = null
         }
-        if (stayOnForm && isVpnActive()) presentLogin()
+        if (stayOnForm) presentLogin()
     }
 
     private fun setCertBannerVisible(visible: Boolean) {
@@ -1830,7 +1901,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun shouldSuppressPageErrorDialogs(): Boolean {
-        return gate != Gate.BROWSER || !isVpnActive() || verifyingLogin
+        return gate != Gate.BROWSER || !isConnectionOk() || verifyingLogin
     }
 
     private fun dismissWarningDialog() {
@@ -1956,11 +2027,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun openSavedUrl(url: String) {
-        if (!isVpnActive()) {
-            pendingStartUrl = url
-            enterVpnGate()
-            return
-        }
         if (needsAppLogin(url)) {
             pendingStartUrl = url
             presentLogin()
@@ -1977,7 +2043,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun showTrialBookmarkMenu() {
-        if (!TrialSettings.isTrial() || gate == Gate.VPN) return
+        if (!TrialSettings.isTrial()) return
         dismissBookmarkPopup()
         val content = layoutInflater.inflate(R.layout.popup_trial_bookmarks, null)
         val width = (300 * resources.displayMetrics.density).toInt()
@@ -2008,6 +2074,7 @@ class WebViewActivity : AppCompatActivity() {
                     Toast.makeText(this, "Složka je plná", Toast.LENGTH_SHORT).show()
                     return@promptBookmarkLabel
                 }
+                populateHomeBookmarks()
                 if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                 else Toast.makeText(this, "Uloženo", Toast.LENGTH_SHORT).show()
             }
@@ -2029,11 +2096,13 @@ class WebViewActivity : AppCompatActivity() {
             row.findViewById<View>(R.id.bookmarkRename).setOnClickListener {
                 promptBookmarkLabel("Popisek", item.title) { title ->
                     TrialBookmarks.rename(this, item.id, title)
+                    populateHomeBookmarks()
                     if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                 }
             }
             row.findViewById<View>(R.id.bookmarkDelete).setOnClickListener {
                 TrialBookmarks.remove(this, item.id)
+                populateHomeBookmarks()
                 if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
             }
             list.addView(row)
@@ -2135,22 +2204,19 @@ class WebViewActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         hideKeyboard()
         if (item.itemId == R.id.action_logout) {
-            if (gate == Gate.VPN) return true
             confirmLogout()
             return true
         }
         if (item.itemId == R.id.action_home) {
-            if (gate == Gate.VPN) return true
             if (verifyingLogin) failLogin(null, stayOnForm = false)
             openHomeWindow()
             return true
         }
         if (item.itemId == R.id.action_folders) {
-            if (gate == Gate.VPN || verifyingLogin) return true
+            if (verifyingLogin) return true
             showTrialBookmarkMenu()
             return true
         }
-        if (gate == Gate.VPN) return true
         if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings) {
             return true
         }
@@ -2160,7 +2226,6 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_new_tab -> {
-                if (gate == Gate.VPN) return true
                 if (verifyingLogin) failLogin(null, stayOnForm = false)
                 openNewHomeTab()
                 true
@@ -2172,7 +2237,6 @@ class WebViewActivity : AppCompatActivity() {
                 true
             }
             R.id.action_page_size -> {
-                if (gate == Gate.VPN) return true
                 showPageSizeDialog()
                 true
             }
@@ -2192,10 +2256,6 @@ class WebViewActivity : AppCompatActivity() {
         }
         if (bookmarkPopup?.isShowing == true) {
             dismissBookmarkPopup()
-            return
-        }
-        if (gate == Gate.VPN) {
-            super.onBackPressed()
             return
         }
         if (gate == Gate.HOME) {

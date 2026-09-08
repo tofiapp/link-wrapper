@@ -124,9 +124,9 @@
                 app:trackColor="@android:color/transparent"
                 app:trackCornerRadius="0dp"
                 app:trackThickness="2dp" />
+
+            <include layout="@layout/layout_vpn_gate" />
         </FrameLayout>
     </LinearLayout>
-
-    <include layout="@layout/layout_vpn_gate" />
 
 </FrameLayout>
