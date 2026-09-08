@@ -469,7 +469,7 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    /** Domeček: aktuální karta (DSD, PSST, graf) se změní na Domů. */
+    /** Domeček: aktuální karta (PSST, graf) se změní na Domů. */
     private fun openHomeWindow() {
         val tab = activeTab
         if (tab?.pinned == true) {
@@ -1534,14 +1534,9 @@ class WebViewActivity : AppCompatActivity() {
         val psstStart = PageZoom.snap(
             PageZoom.storedPercent(this, PageZoom.Kind.Psst) ?: PageZoom.percent(landscape)
         )
-        val dsdStart = PageZoom.snap(
-            PageZoom.storedPercent(this, PageZoom.Kind.Dsd) ?: PageZoom.percent(landscape)
-        )
         val view = LayoutInflater.from(this).inflate(R.layout.dialog_page_size, null)
         val psstValue = view.findViewById<TextView>(R.id.pageSizePsstValue)
         val psstSlider = view.findViewById<Slider>(R.id.pageSizePsstSlider)
-        val dsdValue = view.findViewById<TextView>(R.id.pageSizeDsdValue)
-        val dsdSlider = view.findViewById<Slider>(R.id.pageSizeDsdSlider)
         fun bind(
             slider: Slider,
             label: TextView,
@@ -1560,13 +1555,11 @@ class WebViewActivity : AppCompatActivity() {
             }
         }
         bind(psstSlider, psstValue, psstStart, PageZoom.Kind.Psst)
-        bind(dsdSlider, dsdValue, dsdStart, PageZoom.Kind.Dsd)
         MaterialAlertDialogBuilder(this)
             .setTitle("Velikost stránek")
             .setView(view)
             .setPositiveButton("Uložit") { _, _ ->
                 PageZoom.setPercent(this, PageZoom.Kind.Psst, psstSlider.value.toInt())
-                PageZoom.setPercent(this, PageZoom.Kind.Dsd, dsdSlider.value.toInt())
                 applyPageZoomToAllTabs()
             }
             .setNegativeButton("Zrušit") { _, _ ->
@@ -1845,8 +1838,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun pageZoomJs(): String {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         return PageZoom.pickerJs(
-            PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape),
-            PageZoom.percentFor(this, PageZoom.Kind.Dsd, landscape)
+            PageZoom.percentFor(this, PageZoom.Kind.Psst, landscape)
         )
     }
 
@@ -1915,8 +1907,17 @@ class WebViewActivity : AppCompatActivity() {
             item.isLongClickable = false
             item.setOnLongClickListener { true }
             item.findViewById<TextView>(R.id.homeAppTitle).setOnLongClickListener { true }
-            val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
-            if (index > 0) lp.marginStart = gap
+            val lp = if (Destinations.apps.size == 1) {
+                val half = ((homeAppList.width.takeIf { it > 0 }
+                    ?: (resources.displayMetrics.widthPixels
+                        - (80 * resources.displayMetrics.density).toInt())) / 2)
+                    .coerceAtLeast((240 * resources.displayMetrics.density).toInt())
+                LinearLayout.LayoutParams(half, LinearLayout.LayoutParams.MATCH_PARENT)
+            } else {
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
+                    if (index > 0) marginStart = gap
+                }
+            }
             item.layoutParams = lp
             item.setOnClickListener { openDestination(app) }
             homeAppList.addView(item)
@@ -2420,8 +2421,8 @@ class WebViewActivity : AppCompatActivity() {
         val steps = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             "1. Klepni na „Otevírání odkazů\"\n" +
                 "2. Zapni „Otevírat podporované odkazy\"\n" +
-                "3. V „Podporované webové adresy\" zaškrtni psst.tudc.cz, " +
-                "test.psst.tudc.cz a dsd.tudc.cz"
+                "3. V „Podporované webové adresy\" zaškrtni psst.tudc.cz a " +
+                "test.psst.tudc.cz"
         } else {
             "1. Klepni na „Otevírat ve výchozím nastavení\"\n" +
                 "2. Zvol „Otevírat v této aplikaci\""

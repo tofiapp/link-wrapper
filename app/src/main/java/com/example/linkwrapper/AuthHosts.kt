@@ -3,7 +3,7 @@ package com.example.linkwrapper
 /**
  * Servery, kterým smí aplikace poslat uložené jméno a heslo.
  *
- * Jen PSST. DSD má vlastní formulář — údaje z PSST se tam neposílají.
+ * Jen PSST. Na jiné hostitele se údaje z PSST neposílají.
  * Catch-all „Otevřít pomocí“ umí načíst i cizí HTTPS — bez tohoto
  * seznamu by WebView na 401 odeslalo účet na útočníkův server.
  */

@@ -9,12 +9,12 @@ import android.content.Context
  * Zoom jen na `html` (`documentElement`). Když je i na `body`, Chromium
  * hodnoty násobí (84 % × 84 % = 70,5 %). Starý zoom na body se maže.
  *
- * DSD a PSST Data mají každé svou velikost (v ⋮). Grafy (`dmId`) mají
- * vždy 84 %. Nastavení platí, dokud uživatel nesmaže údaje.
+ * PSST Data má vlastní velikost (v ⋮). Grafy (`dmId`) mají vždy 84 %.
+ * Nastavení platí, dokud uživatel nesmaže údaje.
  */
 internal object PageZoom {
 
-    enum class Kind { Psst, Dsd, Chart, Other }
+    enum class Kind { Psst, Chart, Other }
 
     const val PORTRAIT_PERCENT = 88
     const val LANDSCAPE_PERCENT = 80
@@ -26,7 +26,8 @@ internal object PageZoom {
     private const val PREFS = "page_prefs"
     private const val KEY_SIZE_LEGACY = "page_size_percent"
     private const val KEY_PSST = "page_size_psst"
-    private const val KEY_DSD = "page_size_dsd"
+    /** Starý klíč z dřívější druhé dlaždice; při startu se jen smaže. */
+    private const val KEY_RETIRED_PAGE_SIZE = "page_size_dsd"
 
     fun percent(landscape: Boolean): Int =
         if (landscape) LANDSCAPE_PERCENT else PORTRAIT_PERCENT
@@ -35,7 +36,6 @@ internal object PageZoom {
         if (Destinations.isChart(url)) return Kind.Chart
         return when (Destinations.forUrl(url)?.id) {
             "psst" -> Kind.Psst
-            "dsd" -> Kind.Dsd
             else -> Kind.Other
         }
     }
@@ -47,7 +47,6 @@ internal object PageZoom {
         return when (kind) {
             Kind.Chart -> CHART_PERCENT
             Kind.Psst -> storedPercent(context, Kind.Psst) ?: percent(landscape)
-            Kind.Dsd -> storedPercent(context, Kind.Dsd) ?: percent(landscape)
             Kind.Other -> percent(landscape)
         }
     }
@@ -93,22 +92,18 @@ internal object PageZoom {
 """
     }
 
-    /** Vybere zoom podle hostitele a dmId — běží na začátku dokumentu. */
-    fun pickerJs(psstPercent: Int, dsdPercent: Int): String {
+    /** Vybere zoom podle dmId — běží na začátku dokumentu. */
+    fun pickerJs(psstPercent: Int): String {
         val psst = "${clamp(psstPercent)}%"
-        val dsd = "${clamp(dsdPercent)}%"
         val chart = "$CHART_PERCENT%"
         return """
 (function(){
   var PSST = '$psst';
-  var DSD = '$dsd';
   var CHART = '$chart';
   function pick(){
     try {
-      var h = (location.hostname || '').toLowerCase();
       var q = location.search || '';
       if (/(?:^|[?&])dmId=/i.test(q)) return CHART;
-      if (h === 'dsd.tudc.cz' || h.endsWith('.dsd.tudc.cz')) return DSD;
       return PSST;
     } catch (e) { return PSST; }
   }
@@ -130,19 +125,25 @@ internal object PageZoom {
 
     private fun keyFor(kind: Kind): String? = when (kind) {
         Kind.Psst -> KEY_PSST
-        Kind.Dsd -> KEY_DSD
         else -> null
     }
 
-    /** Starší společná velikost se jednorázově zkopíruje na PSST i DSD. */
+    /** Starší společná velikost se jednorázově zkopíruje na PSST. */
     private fun migrateLegacy(context: Context) {
         val prefs = prefs(context)
-        if (!prefs.contains(KEY_SIZE_LEGACY)) return
-        val shared = snap(prefs.getInt(KEY_SIZE_LEGACY, PORTRAIT_PERCENT))
-        val editor = prefs.edit().remove(KEY_SIZE_LEGACY)
-        if (!prefs.contains(KEY_PSST)) editor.putInt(KEY_PSST, shared)
-        if (!prefs.contains(KEY_DSD)) editor.putInt(KEY_DSD, shared)
-        editor.commit()
+        val editor = prefs.edit()
+        var changed = false
+        if (prefs.contains(KEY_RETIRED_PAGE_SIZE)) {
+            editor.remove(KEY_RETIRED_PAGE_SIZE)
+            changed = true
+        }
+        if (prefs.contains(KEY_SIZE_LEGACY)) {
+            val shared = snap(prefs.getInt(KEY_SIZE_LEGACY, PORTRAIT_PERCENT))
+            editor.remove(KEY_SIZE_LEGACY)
+            if (!prefs.contains(KEY_PSST)) editor.putInt(KEY_PSST, shared)
+            changed = true
+        }
+        if (changed) editor.commit()
     }
 
     private fun prefs(context: Context) =

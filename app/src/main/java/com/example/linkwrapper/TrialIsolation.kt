@@ -9,10 +9,10 @@ import java.net.URI
 /**
  * Zkušební APK: weby si mezi sebou nepředávají přihlášení.
  *
- * Zásobník cookies je podle **cílové appky** (PSST / DSD / cizí host),
+ * Zásobník cookies je podle **cílové appky** (PSST / cizí host),
  * ne podle přesného hostname. `psst.tudc.cz` a `test.psst.tudc.cz` proto
  * sdílí cookies i NTLM — graf ze sdílení je na testovacím hostu, dlaždice
- * na produkčním. DSD má vlastní zásobník. Cizí HTTPS host je sám o sobě.
+ * na produkčním. Cizí HTTPS host je sám o sobě.
  *
  * Při přepnutí **mezi** zásobníky se cookies toho cíle obnoví a cizí
  * zmizí. HTTP auth se maže jen při přepnutí na jinou appku, ne mezi
@@ -36,8 +36,8 @@ internal object TrialIsolation {
     }
 
     /**
-     * Skupina zásobníku: `psst`, `dsd`, nebo přesný hostname.
-     * PSST produkce i test patří k sobě; DSD ne.
+     * Skupina zásobníku: `psst`, nebo přesný hostname.
+     * PSST produkce i test patří k sobě.
      */
     fun familyKey(host: String?): String? {
         val h = host?.lowercase()?.trim('.') ?: return null
@@ -46,7 +46,7 @@ internal object TrialIsolation {
         return h
     }
 
-    /** NTLM z appky na všechny hostitele stejné appky (PSST vs DSD vs cizí). */
+    /** NTLM z appky na všechny hostitele stejné appky (PSST vs cizí). */
     fun allowsBoundAuth(authHost: String?, boundHost: String?): Boolean {
         val a = familyKey(authHost) ?: return false
         val b = familyKey(boundHost) ?: return false
@@ -126,7 +126,6 @@ internal object TrialIsolation {
     private fun hostsForFamily(family: String): Set<String> {
         val known = when (family) {
             "psst" -> setOf("psst.tudc.cz", "test.psst.tudc.cz")
-            "dsd" -> setOf("dsd.tudc.cz")
             else -> setOf(family)
         }
         return (familyHosts[family] ?: emptySet()) + known

@@ -11,7 +11,7 @@ import java.io.File
 data class Credentials(val username: String, val password: String)
 
 /**
- * Přihlášení k PSST (NTLM). DSD si drží vlastní relaci v cookies.
+ * Přihlášení k PSST (NTLM).
  *
  * Údaje se uloží až po ověření na PSST, šifrované klíčem z Android
  * Keystore. V běžné APK platí, dokud uživatel v nabídce nesmaže údaje.
@@ -36,7 +36,7 @@ object Session {
 
     /**
      * Jednorázově smaže HTTP auth / uložená hesla ve WebView.
-     * Zkušební build dřív posílal údaje na celé tudc.cz (včetně DSD)
+     * Zkušební build dřív posílal údaje na celé tudc.cz
      * a Chromium si je držel i po sjednocení přihlášení.
      */
     fun dropSharedHttpAuthOnce(context: Context) {

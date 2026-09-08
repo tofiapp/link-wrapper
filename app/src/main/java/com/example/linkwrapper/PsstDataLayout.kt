@@ -48,6 +48,7 @@ internal object PsstDataLayout {
             'div.grid[class*="grid-rows-3"]{' +
             'grid-template-columns:repeat(2,minmax(0,1fr))!important;' +
             'grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;' +
+            'gap:8px!important;' +
             'min-height:0!important;' +
             '}' +
             'div.grid[class*="grid-rows-3"]>:nth-child(3){' +
@@ -72,8 +73,8 @@ internal object PsstDataLayout {
         grids().forEach(function(grid) {
             grid.setAttribute(ATTR, '1');
             var top = grid.getBoundingClientRect().top;
-            var h = Math.floor(window.innerHeight - top - 8);
-            if (h < 180) h = 180;
+            var h = Math.floor(window.innerHeight - top + 32);
+            if (h < 240) h = 240;
             grid.style.setProperty('height', h + 'px', 'important');
             grid.style.setProperty('max-height', h + 'px', 'important');
         });

@@ -6,15 +6,13 @@ import java.net.URLDecoder
 /**
  * Dlaždice na nativní obrazovce Domů.
  *
- * PSST používá aplikační přihlášení (NTLM). DSD má vlastní formulář
- * a údaje z PSST se tam neposílají.
+ * PSST používá aplikační přihlášení (NTLM).
  *
  * Adresa s `dmId` na PSST je graf (sdílení / „Otevřít pomocí“).
  */
 internal object Destinations {
 
     const val PSST_URL = "https://psst.tudc.cz/PsstData"
-    const val DSD_URL = "https://dsd.tudc.cz/"
     /** Stejný host a stejná NTLM pravidla (`AuthHosts`) jako dlaždice PSST Data. */
     const val LOGIN_URL = PSST_URL
     const val HOME_URL = "app://home"
@@ -27,17 +25,13 @@ internal object Destinations {
     )
 
     val apps: List<AppLink> = listOf(
-        AppLink("psst", "PSST Data", PSST_URL, requiresAppLogin = true),
-        AppLink("dsd", "DSD", DSD_URL, requiresAppLogin = false)
+        AppLink("psst", "PSST Data", PSST_URL, requiresAppLogin = true)
     )
 
     fun forHost(host: String?): AppLink? {
         val h = host?.lowercase()?.trim('.') ?: return null
         if (h == "psst.tudc.cz" || h == "test.psst.tudc.cz" || h.endsWith(".psst.tudc.cz")) {
             return apps.first { it.id == "psst" }
-        }
-        if (h == "dsd.tudc.cz" || h.endsWith(".dsd.tudc.cz")) {
-            return apps.first { it.id == "dsd" }
         }
         return null
     }

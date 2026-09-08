@@ -25,8 +25,8 @@ class PageZoomTest {
             PageZoom.kindFor(Destinations.PSST_URL)
         )
         assertEquals(
-            PageZoom.Kind.Dsd,
-            PageZoom.kindFor(Destinations.DSD_URL)
+            PageZoom.Kind.Other,
+            PageZoom.kindFor("https://example.com/")
         )
     }
 
@@ -51,7 +51,7 @@ class PageZoomTest {
         assertTrue(js.contains("${PageZoom.MAX_PERCENT}%"))
         val apply = PageZoom.applyJs(1)
         assertTrue(apply.contains("${PageZoom.MIN_PERCENT}%"))
-        val picker = PageZoom.pickerJs(88, 80)
+        val picker = PageZoom.pickerJs(88)
         assertTrue(picker.contains("84%"))
         assertTrue(picker.contains("dmId"))
         assertTrue(js.contains("document.documentElement.style.zoom"))
