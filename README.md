@@ -51,8 +51,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
    (`.github/workflows/build.yml`), který appku sestaví, očísluje a podepíše.
 4. Stáhni APK jedním z těchto způsobů:
    - **Releases** (pohodlnější): v repozitáři záložka **Releases** → nejnovější
-     verze → soubory `LinkWrapper-pinned-1.0.N.apk` (běžná) a
-     `LinkWrapper-systemtrust-1.0.N-system.apk` (zkušební, stejné přihlášení).
+     verze → soubory `LinkWrapper-1.0.N.apk` (běžná) a
+     `LinkWrapper-1.0.N-test.apk` (zkušební, stejné přihlášení).
    - **Actions**: záložka **Actions** → poslední běh → dole v sekci
      **Artifacts** najdeš `LinkWrapper-1.0.N` → stáhni zip, uvnitř je APK.
 5. Ten `.apk` nahraj do tabletu (email sám sobě, Google Drive, USB…) a nainstaluj.
