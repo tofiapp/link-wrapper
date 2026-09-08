@@ -31,6 +31,16 @@ class DestinationsTest {
     }
 
     @Test
+    fun homeTileOpensProductionPsstData() {
+        assertEquals("https://psst.tudc.cz/PsstData", Destinations.PSST_URL)
+        assertEquals(Destinations.PSST_URL, Destinations.LOGIN_URL)
+        assertEquals(Destinations.PSST_URL, Destinations.apps.first { it.id == "psst" }.url)
+        assertTrue(Destinations.apps.first { it.id == "psst" }.requiresAppLogin)
+        assertFalse(Destinations.isChart(Destinations.PSST_URL))
+        assertTrue(AuthHosts.allows("psst.tudc.cz"))
+    }
+
+    @Test
     fun tabTitleUsesAppNameNotHost() {
         assertEquals("Domů", Destinations.tabTitle(Destinations.HOME_URL))
         assertEquals("DSD", Destinations.tabTitle(Destinations.DSD_URL))
@@ -50,6 +60,7 @@ class DestinationsTest {
             Destinations.tabTitle("https://psst.tudc.cz/HSI.Psst.Data?foo=1&dmId=45")
         )
         assertTrue(Destinations.isChart("https://test.psst.tudc.cz/HSI.Psst.Data?dmId=12"))
+        assertTrue(Destinations.isChart("https://psst.tudc.cz/PsstData?dmId=12"))
         assertFalse(Destinations.isChart(Destinations.PSST_URL))
         assertFalse(Destinations.isChart("https://dsd.tudc.cz/?dmId=12"))
         assertEquals("12", Destinations.dmId("https://test.psst.tudc.cz/HSI.Psst.Data?dmid=12"))

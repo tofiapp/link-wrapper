@@ -13,8 +13,9 @@ import java.net.URLDecoder
  */
 internal object Destinations {
 
-    const val PSST_URL = "https://test.psst.tudc.cz/HSI.Psst.Data"
+    const val PSST_URL = "https://psst.tudc.cz/PsstData"
     const val DSD_URL = "https://dsd.tudc.cz/"
+    /** Stejný host a stejná NTLM pravidla (`AuthHosts`) jako dlaždice PSST Data. */
     const val LOGIN_URL = PSST_URL
     const val HOME_URL = "app://home"
 
