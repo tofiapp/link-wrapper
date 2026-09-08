@@ -514,6 +514,7 @@ class WebViewActivity : AppCompatActivity() {
         )
         tabs.add(tab)
         selectTab(tab.id)
+        TrialIsolation.onNavigate(this, url)
         webView.loadUrl(url)
     }
 
@@ -549,6 +550,7 @@ class WebViewActivity : AppCompatActivity() {
         hideHomeOverlay()
         attachImeLayoutListener(false)
         setSensitiveScreen(false)
+        TrialIsolation.onNavigate(this, target.url)
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
             val selected = tab.id == tabId
@@ -742,7 +744,7 @@ class WebViewActivity : AppCompatActivity() {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, false)
         }
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)
+        TrialIsolation.applyThirdPartyCookies(webView)
         webView.setOnLongClickListener { view ->
             handleWebViewLongClick(view as WebView)
             true
@@ -807,7 +809,7 @@ class WebViewActivity : AppCompatActivity() {
                 // Nová výzva = předchozí 401 byl handshake (NTLM), ne konečné odmítnutí.
                 authFailedViews.remove(webView)
 
-                val creds = pendingCredentials ?: Session.credentials(this@WebViewActivity)
+                val creds = pendingCredentials ?: Session.credentialsFor(this@WebViewActivity, host)
                 val canAuto = creds != null && (verifyingLogin || gate == Gate.BROWSER)
                 if (canAuto) {
                     val count = bumpAuthCount(webView)
@@ -863,18 +865,9 @@ class WebViewActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 if (view != null) {
-                    if (Destinations.isChart(url)) {
-                        view.evaluateJavascript(ChartFit.HIDE_JS, null)
-                    }
+                    TrialIsolation.onNavigate(this@WebViewActivity, url)
                     injectChartPerfFallback(view)
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
-                }
-            }
-
-            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
-                super.doUpdateVisitedHistory(view, url, isReload)
-                if (view != null && Destinations.isChart(url)) {
-                    injectChartFit(view)
                 }
             }
 
@@ -972,6 +965,7 @@ class WebViewActivity : AppCompatActivity() {
         tab.url = url
         tab.title = tabLabel(url)
         selectTab(tab.id)
+        TrialIsolation.onNavigate(this, url)
         tab.webView?.loadUrl(url)
     }
 
@@ -1308,7 +1302,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                ChartFit.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1341,7 +1335,7 @@ class WebViewActivity : AppCompatActivity() {
         if (webView in chartPerfInjected) return
         try {
             webView.evaluateJavascript(
-                ChartFit.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 null
             )
             chartPerfInjected.add(webView)
@@ -1853,6 +1847,7 @@ class WebViewActivity : AppCompatActivity() {
         AuthProbe.kill(this)
 
         Session.end(this)
+        TrialIsolation.reset()
         Session.wipeBrowser(this, tabs.mapNotNull { it.webView })
         destroyAllTabs()
         Session.deleteChromiumProfile(this)

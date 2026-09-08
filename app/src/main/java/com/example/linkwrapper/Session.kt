@@ -31,6 +31,9 @@ object Session {
     @Volatile
     private var memoryOnly: Credentials? = null
 
+    @Volatile
+    private var boundHost: String? = null
+
     /**
      * Jednorázově smaže HTTP auth / uložená hesla ve WebView.
      * Zkušební build dřív posílal údaje na celé tudc.cz (včetně DSD)
@@ -68,9 +71,22 @@ object Session {
         return Credentials(user, pass)
     }
 
+    /** Zkušební APK: NTLM jen na hostitele, na kterého šlo přihlášení. */
+    fun credentialsFor(context: Context, host: String?): Credentials? {
+        val creds = credentials(context) ?: return null
+        if (!TrialSettings.isTrial()) return creds
+        if (!TrialIsolation.allowsBoundAuth(host, boundHost)) return null
+        return creds
+    }
+
     /** Uloží ověřené údaje. Na disk jen šifrovaně; jinak jen v RAM. */
     fun start(context: Context, username: String, password: String) {
         memoryOnly = Credentials(username, password)
+        boundHost = try {
+            java.net.URI(Destinations.LOGIN_URL).host?.lowercase()?.trim('.')
+        } catch (_: Exception) {
+            null
+        }
         if (TrialSettings.ephemeralLogin(context)) {
             forgetDisk(context)
             return
@@ -114,6 +130,7 @@ object Session {
     /** Úplné smazání relace. Nic z hesla nesmí zůstat v prefs. */
     fun end(context: Context) {
         memoryOnly = null
+        boundHost = null
         AuthHandoff.clear(context)
         PageZoom.clear(context)
         prefs(context).edit().clear().commit()

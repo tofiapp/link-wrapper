@@ -7,8 +7,8 @@ import android.content.Context
  * Běžná APK volbu nemá — údaje jdou na disk jako doteď.
  *
  * Zapnuté = jméno a heslo zůstanou jen v RAM (stejné `Session.memory`
- * jako když Keystore neumí zapsat). Po zabití procesu je potřeba
- * přihlášení znovu. Přepínač samotný se pamatuje.
+ * jako když Keystore neumí zapsat). Ve zkušební je to **výchozí**.
+ * Po zabití procesu je potřeba přihlášení znovu. Přepínač se pamatuje.
  */
 internal object TrialSettings {
 
@@ -18,7 +18,7 @@ internal object TrialSettings {
     private const val KEY_EPHEMERAL = "ephemeral_login"
 
     fun ephemeralLogin(context: Context): Boolean =
-        isTrial() && prefs(context).getBoolean(KEY_EPHEMERAL, false)
+        isTrial() && prefs(context).getBoolean(KEY_EPHEMERAL, true)
 
     fun setEphemeralLogin(context: Context, enabled: Boolean) {
         if (!isTrial()) return
