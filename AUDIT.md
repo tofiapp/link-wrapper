@@ -21,11 +21,11 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 | VPN, bez relace | nativní **Domů** |
 | relace | Domů / otevřené karty |
 | klepnutí na PSST Data bez relace | formulář, ověření v `:authprobe`, pak web |
+| odchod na pozadí | relace a cookies pryč; karty v liště zůstanou |
 | komu jde HTTP auth | jen `psst.tudc.cz` / `test.psst.tudc.cz` |
 | **domeček** | aktuální karta se změní na **Domů** |
 | **+** | nová karta **Domů**; aktuální web zůstane |
 | dlouhé podržení karty / odkazu | dialog **Otevřít na druhé kartě** |
-| Vymazat údaje | prefs, cookies, velikost stránek, profil pryč, nový proces, znovu Domů |
 
 Špatné heslo se **do hlavního WebView nedostane**.
 
@@ -93,8 +93,7 @@ vrstva kolem WebView je vypnutá.
 | Root / MDM / dump RAM u přihlášené appky | heslo jde získat; Keystore to na rootnutém tabletu neochrání |
 | Max. 8 karet | žerou RAM; stav karet se po zabití procesu neukládá |
 | `mailto:` / `tel:` | nenačtou se (jen `https` / `about`) |
-| Catch-all `https` filtr | appka se nabídne i u cizího webu; **běžná APK heslo tam nepošle** |
-| Zkušební APK + cizí `*.tudc.cz` | HTTP 401 na podvrženém `tudc.cz` hostu dostane stejné údaje |
+| Catch-all `https` filtr | appka se nabídne i u cizího webu; heslo tam **nepošle** (jen PSST) |
 | VPN detekce | `TRANSPORT_VPN`; split-tunnel umí lhát |
 | Tablety bez firemní CA | weby `tudc.cz` se nenačtou (pinning v APK už není) |
 | `values-night` | appka je světlá; systémový tmavý režim může rozházet systémové dialogy |

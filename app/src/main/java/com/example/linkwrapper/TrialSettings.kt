@@ -1,15 +1,16 @@
 package com.example.linkwrapper
 
 /**
- * Jen zkušební APK (`systemtrust`).
+ * Obě APK (běžná i test) se chovají stejně.
  *
  * Přihlášení k PSST zůstane jen v RAM — žádný přepínač v menu.
  * Jakmile jde appka na pozadí, relace i cookies se smažou ([TrialIdle]);
- * otevřené karty zůstanou. Běžná APK ukládá údaje na disk.
+ * otevřené karty zůstanou. Flavor (`pinned` / `systemtrust`) jen odděluje
+ * soubor APK a `applicationId`, ať jdou nainstalovat vedle sebe.
  */
 internal object TrialSettings {
 
-    fun isTrial(): Boolean = BuildConfig.FLAVOR == "systemtrust"
+    fun isTrial(): Boolean = true
 
-    fun ephemeralLogin(): Boolean = isTrial()
+    fun ephemeralLogin(): Boolean = true
 }

@@ -9,13 +9,11 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Po spuštění (a po VPN) nativní **Domů**.
   PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
   `test.psst.tudc.cz`).
-- Údaje se uloží v aplikaci, dokud je v ⋮ nesmažete.
-  **Zkušební APK:** weby si cookies a NTLM mezi sebou nepředávají
-  (každý host má vlastní zásobník). V ⋮ je **Neukládat přihlášení**
-  (výchozí zapnuto) — jméno a heslo k PSST zůstanou jen do vypnutí
-  aplikace.
-- **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
-  relace na otevřených stránkách. Pak jste na webu odhlášení.
+- Údaje k PSST zůstanou jen v RAM. Jakmile jde appka na pozadí
+  (přepnutí pryč, minimalizace), relace i cookies se smažou; otevřené
+  karty v liště zůstanou. Weby si cookies a NTLM mezi sebou nepředávají.
+  **Běžná i zkušební APK se chovají stejně** — liší se jen soubor
+  (`LinkWrapper-1.0.N.apk` vs `LinkWrapper-1.0.N-test.apk`) a id instalace.
 - **Karty** nahoře v liště. **Domeček** změní aktuální kartu (PSST,
   graf) na **Domů**. **+** otevře novou kartu **Domů**, aktuální web zůstane.
   Křížek je jen když je karet víc. Dlaždice na Domů má jen název
@@ -27,7 +25,7 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   vyplní zbytek displeje (i v běžné APK).
   Přiblížení webu: výchozí na výšku
   88 %, na šířku 80 %; v ⋮ → **Velikost stránek** pro PSST Data
-  (drží se do Vymazat údaje). Grafy (`dmId`) mají vždy 84 %
+  (drží se, dokud nesmažete údaje / dokud appka nejde na pozadí). Grafy (`dmId`) mají vždy 84 %
   a karta ze sdílení se jmenuje **Graf …** podle `dmId`.
   Posun grafu: WebView bez hardware vrstvy,
   stropnuté DPI (tablet jinak kreslí 4× víc pixelů než PC) a vypnutý
@@ -109,9 +107,8 @@ Tok:
 2. VPN → nativní **Domů** i bez přihlášení.
 3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
    Údaje platí jen pro `psst.tudc.cz` / `test.psst.tudc.cz`.
-4. **⋮ → Vymazat údaje** → prefs, cookies, HTTP auth cache, velikost stránek
-   i Chromium profil se smažou a proces se restartuje (NTLM jinak v procesu
-   přežije). Pak znovu Domů.
+4. Minimalizace / odchod na pozadí → relace a cookies pryč, karty zůstanou.
+   Další stránka PSST znovu požádá o přihlášení (připnutý už načtený graf ne).
 5. Špatné heslo se ověří v odděleném procesu a do prohlížeče se nedostane.
 
 | Typ na serveru | Šance ve WebView |

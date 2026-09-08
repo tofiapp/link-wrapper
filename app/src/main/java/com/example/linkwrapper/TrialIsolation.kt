@@ -7,7 +7,7 @@ import android.webkit.WebViewDatabase
 import java.net.URI
 
 /**
- * Zkušební APK: weby si mezi sebou nepředávají přihlášení.
+ * Obě APK: weby si mezi sebou nepředávají přihlášení.
  *
  * Zásobník cookies je podle **cílové appky** (PSST / cizí host),
  * ne podle přesného hostname. `psst.tudc.cz` a `test.psst.tudc.cz` proto
@@ -17,8 +17,6 @@ import java.net.URI
  * Při přepnutí **mezi** zásobníky se cookies toho cíle obnoví a cizí
  * zmizí. HTTP auth se maže jen při přepnutí na jinou appku, ne mezi
  * hostiteli stejné appky. Third-party cookies jsou vypnuté.
- *
- * Běžná APK tohle nedělá.
  */
 internal object TrialIsolation {
 
