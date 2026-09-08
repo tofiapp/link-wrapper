@@ -11,6 +11,7 @@ import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
 import android.os.Message
 import android.net.ConnectivityManager
 import android.net.Network
@@ -26,6 +27,7 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
@@ -50,6 +52,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -135,6 +138,8 @@ class WebViewActivity : AppCompatActivity() {
     private var dialogShown = false
     private var urlDialog: AlertDialog? = null
     private var warningDialog: AlertDialog? = null
+    private var bookmarkPopup: PopupWindow? = null
+    private var bookmarkLabelDialog: AlertDialog? = null
 
     /** Čekající HTTP auth, když uživatel právě vyplňuje formulář. */
     private var pendingAuthHandler: HttpAuthHandler? = null
@@ -212,7 +217,7 @@ class WebViewActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         WebView.setWebContentsDebuggingEnabled(false)
         Session.dropSharedHttpAuthOnce(this)
-        if (TrialSettings.ephemeralLogin(this)) Session.forgetDisk(this)
+        if (TrialSettings.ephemeralLogin()) Session.forgetDisk(this)
 
         pendingStartUrl = explicitUrlFromIntent(intent)
         refreshGate()
@@ -220,6 +225,8 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onStart() {
         super.onStart()
+        consumeTrialIdleTimeout()
+        if (isFinishing) return
         registerVpnMonitor()
         scheduleVpnCheck()
     }
@@ -233,17 +240,22 @@ class WebViewActivity : AppCompatActivity() {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         applyPageZoomToAllTabs()
+        dismissBookmarkPopup()
         // Zámek zmizí s elementem; odemknout a znovu fitnout po ~300 ms.
         scheduleChartFit()
     }
 
     override fun onPause() {
+        dismissBookmarkPopup()
         tabs.forEach { it.webView?.onPause() }
         tabs.firstNotNullOfOrNull { it.webView }?.pauseTimers()
         super.onPause()
     }
 
     override fun onStop() {
+        if (!isFinishing && TrialSettings.isTrial() && !verifyingLogin) {
+            TrialIdle.markBackground(this)
+        }
         unregisterVpnMonitor()
         mainHandler.removeCallbacks(vpnCheckRunnable)
         super.onStop()
@@ -297,6 +309,9 @@ class WebViewActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(vpnCheckRunnable)
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         mainHandler.removeCallbacks(chartFitRunnable)
+        dismissBookmarkPopup()
+        bookmarkLabelDialog?.dismiss()
+        bookmarkLabelDialog = null
         trustProbeSeq++
         trustProbeInFlight = false
         AuthProbe.kill(this)
@@ -357,7 +372,7 @@ class WebViewActivity : AppCompatActivity() {
         loginTitle.visibility = View.VISIBLE
         refreshCertBanner()
         loginEphemeralHint.visibility =
-            if (TrialSettings.ephemeralLogin(this)) View.VISIBLE else View.GONE
+            if (TrialSettings.ephemeralLogin()) View.VISIBLE else View.GONE
         updateLoginButton()
         if (!verifyingLogin && loginButton.isEnabled) {
             if (usernameInput.text.isNullOrEmpty()) usernameInput.requestFocus()
@@ -1858,6 +1873,7 @@ class WebViewActivity : AppCompatActivity() {
         savedActiveTabIndex = 0
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         AuthProbe.kill(this)
+        TrialIdle.clear(this)
 
         Session.end(this)
         TrialIsolation.reset()
@@ -1917,6 +1933,155 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Zkušební: po minutě na pozadí pryč relace, cookies i cache.
+     * Uložené odkazy ve složce zůstanou. Restart procesu zabije NTLM pool.
+     */
+    private fun consumeTrialIdleTimeout(): Boolean {
+        if (!TrialSettings.isTrial() || verifyingLogin) return false
+        if (!TrialIdle.shouldWipe(this)) {
+            TrialIdle.clear(this)
+            return false
+        }
+        TrialIdle.clear(this)
+        clearStoredData()
+        return true
+    }
+
+    private fun currentSaveableUrl(): String? {
+        if (gate != Gate.BROWSER) return null
+        val url = activeTab?.takeUnless { it.isHome }?.url ?: return null
+        if (url.isBlank() || url == Destinations.HOME_URL) return null
+        return url
+    }
+
+    private fun openSavedUrl(url: String) {
+        if (!isVpnActive()) {
+            pendingStartUrl = url
+            enterVpnGate()
+            return
+        }
+        if (needsAppLogin(url)) {
+            pendingStartUrl = url
+            presentLogin()
+            return
+        }
+        enterBrowser()
+        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
+        if (existing != null) {
+            selectTab(existing.id)
+            return
+        }
+        if (activeTab?.isHome == true) loadInActiveTab(url)
+        else openInNewTab(url)
+    }
+
+    private fun showTrialBookmarkMenu() {
+        if (!TrialSettings.isTrial() || gate == Gate.VPN) return
+        dismissBookmarkPopup()
+        val content = layoutInflater.inflate(R.layout.popup_trial_bookmarks, null)
+        val width = (300 * resources.displayMetrics.density).toInt()
+        val popup = PopupWindow(content, width, ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        popup.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        popup.isOutsideTouchable = true
+        popup.elevation = 12f * resources.displayMetrics.density
+        popup.setOnDismissListener { bookmarkPopup = null }
+        bookmarkPopup = popup
+        bindTrialBookmarkMenu(content, popup)
+        val anchor = toolbar.findViewById<View>(R.id.action_folders) ?: toolbar
+        popup.showAsDropDown(anchor, 0, 0, Gravity.END)
+    }
+
+    private fun bindTrialBookmarkMenu(content: View, popup: PopupWindow) {
+        val save = content.findViewById<TextView>(R.id.bookmarkSave)
+        val divider = content.findViewById<View>(R.id.bookmarkDivider)
+        val empty = content.findViewById<TextView>(R.id.bookmarkEmpty)
+        val list = content.findViewById<LinearLayout>(R.id.bookmarkList)
+        val scroll = content.findViewById<View>(R.id.bookmarkScroll)
+        val saveUrl = currentSaveableUrl()
+        save.visibility = if (saveUrl != null) View.VISIBLE else View.GONE
+        save.setOnClickListener {
+            val url = currentSaveableUrl() ?: return@setOnClickListener
+            promptBookmarkLabel("Uložit stránku", tabLabel(url)) { title ->
+                val added = TrialBookmarks.add(this, title, url)
+                if (added == null) {
+                    Toast.makeText(this, "Složka je plná", Toast.LENGTH_SHORT).show()
+                    return@promptBookmarkLabel
+                }
+                if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                else Toast.makeText(this, "Uloženo", Toast.LENGTH_SHORT).show()
+            }
+        }
+        val items = TrialBookmarks.load(this)
+        list.removeAllViews()
+        empty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        divider.visibility = if (saveUrl != null && items.isNotEmpty()) View.VISIBLE else View.GONE
+        val maxH = (320 * resources.displayMetrics.density).toInt()
+        scroll.layoutParams = scroll.layoutParams.apply { height = if (items.size > 6) maxH else ViewGroup.LayoutParams.WRAP_CONTENT }
+        val inflater = LayoutInflater.from(this)
+        items.forEach { item ->
+            val row = inflater.inflate(R.layout.item_trial_bookmark, list, false)
+            row.findViewById<TextView>(R.id.bookmarkTitle).text = item.title
+            row.setOnClickListener {
+                dismissBookmarkPopup()
+                openSavedUrl(item.url)
+            }
+            row.findViewById<View>(R.id.bookmarkRename).setOnClickListener {
+                promptBookmarkLabel("Popisek", item.title) { title ->
+                    TrialBookmarks.rename(this, item.id, title)
+                    if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                }
+            }
+            row.findViewById<View>(R.id.bookmarkDelete).setOnClickListener {
+                TrialBookmarks.remove(this, item.id)
+                if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+            }
+            list.addView(row)
+        }
+    }
+
+    private fun promptBookmarkLabel(title: String, initial: String, onSave: (String) -> Unit) {
+        val view = layoutInflater.inflate(R.layout.dialog_bookmark_label, null)
+        val layout = view.findViewById<TextInputLayout>(R.id.bookmarkLabelLayout)
+        val input = view.findViewById<TextInputEditText>(R.id.bookmarkLabelInput)
+        input.setText(initial)
+        input.setSelection(input.text?.length ?: 0)
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setView(view)
+            .setPositiveButton("Uložit", null)
+            .setNegativeButton("Zrušit", null)
+            .create()
+        bookmarkLabelDialog?.dismiss()
+        bookmarkLabelDialog = dialog
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val label = input.text?.toString().orEmpty().trim()
+                if (label.isEmpty()) {
+                    layout.error = "Zadejte popisek"
+                    return@setOnClickListener
+                }
+                layout.error = null
+                dialog.dismiss()
+                onSave(label)
+            }
+        }
+        dialog.setOnDismissListener {
+            if (bookmarkLabelDialog === dialog) bookmarkLabelDialog = null
+        }
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+        input.requestFocus()
+    }
+
+    private fun dismissBookmarkPopup() {
+        try {
+            bookmarkPopup?.dismiss()
+        } catch (_: Exception) {
+        }
+        bookmarkPopup = null
+    }
+
     @SuppressLint("RestrictedApi")
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_webview, menu)
@@ -1936,21 +2101,20 @@ class WebViewActivity : AppCompatActivity() {
             R.id.action_reload,
             R.id.action_page_size,
             R.id.action_link_settings,
-            R.id.action_ephemeral_login
+            R.id.action_folders
         ).forEach { id ->
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
         }
 
-        menu?.findItem(R.id.action_ephemeral_login)?.let { item ->
-            item.isVisible = TrialSettings.isTrial()
-            item.isChecked = TrialSettings.ephemeralLogin(this)
-        }
-
-        menu?.findItem(R.id.action_logout)?.let { item ->
-            val title = SpannableString("Vymazat údaje")
-            title.setSpan(ForegroundColorSpan(alert), 0, title.length, 0)
-            item.title = title
-            item.icon?.mutate()?.setTint(alert)
+        menu?.findItem(R.id.action_folders)?.isVisible = TrialSettings.isTrial()
+        menu?.setGroupVisible(R.id.group_logout, !TrialSettings.isTrial())
+        if (!TrialSettings.isTrial()) {
+            menu?.findItem(R.id.action_logout)?.let { item ->
+                val title = SpannableString("Vymazat údaje")
+                title.setSpan(ForegroundColorSpan(alert), 0, title.length, 0)
+                item.title = title
+                item.icon?.mutate()?.setTint(alert)
+            }
         }
         toolbar.post {
             val lp = toolbar.layoutParams
@@ -1963,10 +2127,8 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
-        menu?.findItem(R.id.action_ephemeral_login)?.let { item ->
-            item.isVisible = TrialSettings.isTrial()
-            item.isChecked = TrialSettings.ephemeralLogin(this)
-        }
+        menu?.findItem(R.id.action_folders)?.isVisible = TrialSettings.isTrial()
+        menu?.setGroupVisible(R.id.group_logout, !TrialSettings.isTrial())
         return super.onPrepareOptionsMenu(menu)
     }
 
@@ -1983,11 +2145,13 @@ class WebViewActivity : AppCompatActivity() {
             openHomeWindow()
             return true
         }
+        if (item.itemId == R.id.action_folders) {
+            if (gate == Gate.VPN || verifyingLogin) return true
+            showTrialBookmarkMenu()
+            return true
+        }
         if (gate == Gate.VPN) return true
-        if (gate == Gate.LOGIN &&
-            item.itemId != R.id.action_link_settings &&
-            item.itemId != R.id.action_ephemeral_login
-        ) {
+        if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings) {
             return true
         }
         return when (item.itemId) {
@@ -2016,16 +2180,6 @@ class WebViewActivity : AppCompatActivity() {
                 openLinkSettings()
                 true
             }
-            R.id.action_ephemeral_login -> {
-                if (!TrialSettings.isTrial()) return true
-                val enabled = !item.isChecked
-                item.isChecked = enabled
-                TrialSettings.setEphemeralLogin(this, enabled)
-                if (gate == Gate.LOGIN) {
-                    loginEphemeralHint.visibility = if (enabled) View.VISIBLE else View.GONE
-                }
-                true
-            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -2034,6 +2188,10 @@ class WebViewActivity : AppCompatActivity() {
     override fun onBackPressed() {
         if (isImeVisible()) {
             hideKeyboard()
+            return
+        }
+        if (bookmarkPopup?.isShowing == true) {
+            dismissBookmarkPopup()
             return
         }
         if (gate == Gate.VPN) {

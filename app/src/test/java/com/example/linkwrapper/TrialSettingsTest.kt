@@ -12,4 +12,9 @@ class TrialSettingsTest {
             TrialSettings.isTrial()
         )
     }
+
+    @Test
+    fun trialLoginIsAlwaysEphemeral() {
+        assertEquals(TrialSettings.isTrial(), TrialSettings.ephemeralLogin())
+    }
 }
