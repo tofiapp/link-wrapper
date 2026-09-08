@@ -47,6 +47,19 @@ internal object Destinations {
     fun isChart(url: String?): Boolean =
         forUrl(url)?.id == "psst" && !dmId(url).isNullOrBlank()
 
+    /** Dlaždice PSST Data — ne graf ze sdílení (`dmId`). */
+    fun isPsstDataHome(url: String?): Boolean {
+        if (url.isNullOrBlank() || isChart(url)) return false
+        if (forUrl(url)?.id != "psst") return false
+        val path = try {
+            URI(url).path
+        } catch (_: Exception) {
+            null
+        } ?: return false
+        val p = path.trim('/').lowercase()
+        return p == "psstdata" || p.endsWith("/psstdata")
+    }
+
     fun dmId(url: String?): String? {
         if (url.isNullOrBlank()) return null
         val query = try {

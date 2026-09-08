@@ -254,6 +254,7 @@ class WebViewActivity : AppCompatActivity() {
         applyPageZoomToAllTabs()
         dismissBookmarkPopup()
         dismissActionSheet()
+        injectPsstDataLayoutIntoAllTabs()
         // Zámek zmizí s elementem; odemknout a znovu fitnout po ~300 ms.
         scheduleChartFit()
     }
@@ -1050,6 +1051,7 @@ class WebViewActivity : AppCompatActivity() {
                     view.setBackgroundColor(Color.TRANSPARENT)
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                     injectChartFit(view)
+                    injectPsstDataLayout(view, url)
                     onPrefetchFinished(view)
                 }
                 updateTabMeta(view ?: return, url)
@@ -1756,6 +1758,23 @@ class WebViewActivity : AppCompatActivity() {
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
             injectChartFit(wv, unlock)
+        }
+    }
+
+    private fun injectPsstDataLayout(webView: WebView, url: String? = webView.url) {
+        if (!TrialSettings.isTrial()) return
+        val resolved = url ?: tabs.find { it.webView === webView }?.url
+        if (!Destinations.isPsstDataHome(resolved)) return
+        try {
+            webView.evaluateJavascript(PsstDataLayout.APPLY_JS, null)
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun injectPsstDataLayoutIntoAllTabs() {
+        tabs.forEach { tab ->
+            val wv = tab.webView ?: return@forEach
+            injectPsstDataLayout(wv)
         }
     }
 

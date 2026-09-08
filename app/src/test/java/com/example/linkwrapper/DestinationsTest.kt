@@ -37,6 +37,11 @@ class DestinationsTest {
         assertEquals(Destinations.PSST_URL, Destinations.apps.first { it.id == "psst" }.url)
         assertTrue(Destinations.apps.first { it.id == "psst" }.requiresAppLogin)
         assertFalse(Destinations.isChart(Destinations.PSST_URL))
+        assertTrue(Destinations.isPsstDataHome(Destinations.PSST_URL))
+        assertTrue(Destinations.isPsstDataHome("https://test.psst.tudc.cz/PsstData"))
+        assertFalse(Destinations.isPsstDataHome("https://psst.tudc.cz/HSI.Psst.Data?dmId=12"))
+        assertFalse(Destinations.isPsstDataHome("https://psst.tudc.cz/PsstData?dmId=12"))
+        assertFalse(Destinations.isPsstDataHome(Destinations.DSD_URL))
         assertTrue(AuthHosts.allows("psst.tudc.cz"))
     }
 
