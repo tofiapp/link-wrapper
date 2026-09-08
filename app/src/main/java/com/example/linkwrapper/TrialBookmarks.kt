@@ -13,7 +13,7 @@ data class TrialBookmark(
 )
 
 /**
- * Zkušební složka: uložené URL a popisky. Přežije minutový wipe relace
+ * Zkušební složka: uložené URL a popisky. Přežije wipe relace
  * — smaže se jen přihlášení, ne tenhle seznam.
  */
 internal object TrialBookmarks {
