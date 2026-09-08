@@ -51,6 +51,7 @@ import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
@@ -84,7 +85,8 @@ private class BrowserTab(
     var webView: WebView?,
     var title: String,
     var url: String,
-    var isHome: Boolean = false
+    var isHome: Boolean = false,
+    var pinned: Boolean = false
 )
 
 class WebViewActivity : AppCompatActivity() {
@@ -358,9 +360,11 @@ class WebViewActivity : AppCompatActivity() {
         }
         if (lastContentGate == Gate.BROWSER || savedTabUrls.isNotEmpty()) {
             presentBrowser()
+            maybePresentTrialLogin()
             return
         }
         presentHome()
+        maybePresentTrialLogin()
     }
 
     private fun needsAppLogin(url: String): Boolean {
@@ -390,6 +394,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun presentHome() {
+        restorePinnedTabs()
         if (tabs.isEmpty() || activeTab == null) {
             openNewHomeTab()
             return
@@ -410,12 +415,13 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun presentBrowser() {
-        hideLoginOverlay()
+        if (!shouldHoldTrialLogin()) hideLoginOverlay()
         attachImeLayoutListener(false)
         setSensitiveScreen(false)
         if (tabs.isEmpty()) {
             restoreSavedTabsOrStart()
         }
+        restorePinnedTabs()
         if (tabs.isEmpty()) {
             openNewHomeTab()
             return
@@ -448,6 +454,13 @@ class WebViewActivity : AppCompatActivity() {
 
     /** Domeček: aktuální karta (DSD, PSST, graf) se změní na Domů. */
     private fun openHomeWindow() {
+        val tab = activeTab
+        if (tab?.pinned == true) {
+            val home = tabs.firstOrNull { it.isHome }
+            if (home != null) selectTab(home.id)
+            else openNewHomeTab()
+            return
+        }
         convertActiveTabToHome()
     }
 
@@ -457,6 +470,10 @@ class WebViewActivity : AppCompatActivity() {
             openNewHomeTab()
             return
         }
+        if (tab.pinned) {
+            openHomeWindow()
+            return
+        }
         if (tab.isHome) {
             selectTab(tab.id)
             return
@@ -464,6 +481,7 @@ class WebViewActivity : AppCompatActivity() {
         destroyWebView(tab)
         hideKeyboard()
         tab.isHome = true
+        tab.pinned = false
         tab.title = "Domů"
         tab.url = Destinations.HOME_URL
         selectTab(tab.id)
@@ -486,7 +504,8 @@ class WebViewActivity : AppCompatActivity() {
             url = Destinations.HOME_URL,
             isHome = true
         )
-        tabs.add(tab)
+        val at = tabs.indexOfLast { it.isHome } + 1
+        tabs.add(at.coerceAtLeast(0), tab)
         selectTab(tab.id)
     }
 
@@ -495,6 +514,11 @@ class WebViewActivity : AppCompatActivity() {
     private fun openInNewTab(url: String) {
         if (url == Destinations.HOME_URL) {
             openNewHomeTab()
+            return
+        }
+        val existing = tabs.filter { it.pinned }.find { samePage(it.url, url) }
+        if (existing != null) {
+            selectTab(existing.id)
             return
         }
         if (tabs.size >= MAX_TABS) {
@@ -520,10 +544,11 @@ class WebViewActivity : AppCompatActivity() {
         val target = tabs.find { it.id == tabId } ?: return
         if (tabId != activeTabId) hideKeyboard()
         activeTabId = tabId
+        val holdLogin = shouldHoldTrialLogin()
+        if (!holdLogin) hideLoginOverlay()
         if (target.isHome) {
             gate = Gate.HOME
             lastContentGate = Gate.HOME
-            hideLoginOverlay()
             hideKeyboard()
             progressBar.visibility = View.GONE
             if (::homeOverlay.isInitialized) {
@@ -534,22 +559,20 @@ class WebViewActivity : AppCompatActivity() {
             raiseConnectionBanner()
             tabs.forEach { tab ->
                 val wv = tab.webView ?: return@forEach
-                wv.onPause()
-                wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, true)
-                (wv.parent as? ViewGroup)?.removeView(wv)
+                parkBackgroundWebView(tab, wv)
             }
             attachImeLayoutListener(false)
-            setSensitiveScreen(false)
+            if (!holdLogin) setSensitiveScreen(false)
             refreshTabStrip()
+            if (holdLogin) presentLogin()
             return
         }
 
         gate = Gate.BROWSER
         lastContentGate = Gate.BROWSER
-        hideLoginOverlay()
         hideHomeOverlay()
         attachImeLayoutListener(false)
-        setSensitiveScreen(false)
+        if (!holdLogin) setSensitiveScreen(false)
         TrialIsolation.onNavigate(this, target.url)
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
@@ -568,12 +591,22 @@ class WebViewActivity : AppCompatActivity() {
                 wv.onResume()
                 wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             } else {
-                wv.onPause()
-                wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, true)
-                (wv.parent as? ViewGroup)?.removeView(wv)
+                parkBackgroundWebView(tab, wv)
             }
         }
         refreshTabStrip()
+        if (holdLogin) presentLogin()
+    }
+
+    private fun parkBackgroundWebView(tab: BrowserTab, wv: WebView) {
+        wv.onPause()
+        // Připnuté karty nesmí WebView zahodit, i když zrovna nejsou vidět.
+        if (tab.pinned) {
+            wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        } else {
+            wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, true)
+        }
+        (wv.parent as? ViewGroup)?.removeView(wv)
     }
 
     private fun closeTab(tabId: Long) {
@@ -581,6 +614,7 @@ class WebViewActivity : AppCompatActivity() {
         val index = tabs.indexOfFirst { it.id == tabId }
         if (index < 0) return
         val closing = tabs[index]
+        if (closing.pinned) return
         tabs.removeAt(index)
         destroyTab(closing)
 
@@ -713,10 +747,15 @@ class WebViewActivity : AppCompatActivity() {
     private fun refreshTabStrip() {
         tabStrip.removeAllViews()
         val inflater = LayoutInflater.from(this)
-        for (tab in tabs) {
+        val shown = tabs.sortedWith(
+            compareBy<BrowserTab> { TrialPins.stripGroup(it.isHome, it.pinned) }
+                .thenBy { tabs.indexOf(it) }
+        )
+        for (tab in shown) {
             val item = inflater.inflate(R.layout.item_browser_tab, tabStrip, false)
             val root = item.findViewById<View>(R.id.tabRoot)
             val title = item.findViewById<TextView>(R.id.tabTitle)
+            val pin = item.findViewById<ImageView>(R.id.tabPin)
             val close = item.findViewById<ImageButton>(R.id.tabClose)
             val selected = tab.id == activeTabId
 
@@ -724,15 +763,19 @@ class WebViewActivity : AppCompatActivity() {
             title.setTextColor(
                 ContextCompat.getColor(this, if (selected) R.color.accent else R.color.ink_soft)
             )
+            pin.visibility = if (tab.pinned) View.VISIBLE else View.GONE
+            pin.imageTintList = android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(this, if (selected) R.color.accent else R.color.ink_faint)
+            )
             root.setBackgroundResource(
                 if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
             )
             root.setOnClickListener { selectTab(tab.id) }
             root.setOnLongClickListener {
-                showLinkOrTabActions(tab.url, tab.title)
+                showTabActions(tab)
                 true
             }
-            val showClose = tabs.size > 1
+            val showClose = tabs.size > 1 && !tab.pinned
             close.visibility = if (showClose) View.VISIBLE else View.GONE
             val padEnd = ((if (showClose) 4 else 14) * resources.displayMetrics.density).toInt()
             root.setPaddingRelative(root.paddingStart, root.paddingTop, padEnd, root.paddingBottom)
@@ -744,7 +787,7 @@ class WebViewActivity : AppCompatActivity() {
             tabStrip.addView(item)
         }
         tabScroll.post {
-            val idx = tabs.indexOfFirst { it.id == activeTabId }
+            val idx = shown.indexOfFirst { it.id == activeTabId }
             if (idx >= 0 && idx < tabStrip.childCount) {
                 val child = tabStrip.getChildAt(idx)
                 tabScroll.smoothScrollTo((child.left - 24).coerceAtLeast(0), 0)
@@ -764,6 +807,7 @@ class WebViewActivity : AppCompatActivity() {
                 tab.title = label
                 stripChanged = true
             }
+            if (tab.pinned) persistPinsFromTabs()
         }
         if (stripChanged) refreshTabStrip()
     }
@@ -1043,6 +1087,14 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         dialogShown = false
+        if (tab.pinned) {
+            if (samePage(tab.url, url)) {
+                selectTab(tab.id)
+                return
+            }
+            openInNewTab(url)
+            return
+        }
         if (tab.isHome) {
             val webView = takePrefetch(url) ?: createWebView()
             tab.webView = webView
@@ -1167,6 +1219,117 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showTabActions(tab: BrowserTab) {
+        if (tab.isHome) {
+            Toast.makeText(this, "Domů nelze poslat na druhou kartu", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val labels = mutableListOf<String>()
+        if (TrialSettings.isTrial()) {
+            labels.add(if (tab.pinned) "Odepnout" else "Připnout nahoru")
+        }
+        labels.add("Otevřít na druhé kartě")
+        labels.add("Kopírovat adresu")
+        MaterialAlertDialogBuilder(this)
+            .setTitle(tab.title)
+            .setItems(labels.toTypedArray()) { _, which ->
+                var i = 0
+                if (TrialSettings.isTrial()) {
+                    if (which == i) {
+                        setTabPinned(tab, !tab.pinned)
+                        return@setItems
+                    }
+                    i++
+                }
+                when (which) {
+                    i -> openOnOtherTab(tab.url)
+                    i + 1 -> copyUrlToClipboard(tab.url)
+                }
+            }
+            .setNegativeButton("Zrušit", null)
+            .show()
+    }
+
+    private fun setTabPinned(tab: BrowserTab, pinned: Boolean) {
+        if (!TrialSettings.isTrial() || tab.isHome) return
+        if (pinned == tab.pinned) return
+        if (pinned) {
+            if (tabs.count { it.pinned } >= TrialPins.MAX_ITEMS) {
+                Toast.makeText(
+                    this,
+                    "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet",
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+            tab.pinned = true
+            tabs.remove(tab)
+            val at = tabs.indexOfLast { it.isHome || it.pinned } + 1
+            tabs.add(at.coerceAtLeast(0), tab)
+            Toast.makeText(this, "Karta zůstane otevřená", Toast.LENGTH_SHORT).show()
+        } else {
+            tab.pinned = false
+        }
+        persistPinsFromTabs()
+        refreshTabStrip()
+    }
+
+    private fun persistPinsFromTabs() {
+        if (!TrialSettings.isTrial()) return
+        TrialPins.save(
+            this,
+            tabs.filter { it.pinned && !it.isHome }.map { TrialPin(it.title, it.url) }
+        )
+    }
+
+    /** Obnoví připnuté karty po startu procesu. Bez relace se URL nenačítá. */
+    private fun restorePinnedTabs() {
+        if (!TrialSettings.isTrial()) return
+        val pins = TrialPins.load(this)
+        if (pins.isEmpty()) return
+        val load = Session.isActive(this)
+        for (pin in pins) {
+            val existing = tabs.filter { !it.isHome }.find { samePage(it.url, pin.url) }
+            if (existing != null) {
+                existing.pinned = true
+                continue
+            }
+            if (tabs.size >= MAX_TABS) break
+            val webView = if (load) (takePrefetch(pin.url) ?: createWebView()) else createWebView()
+            val tab = BrowserTab(
+                id = nextTabId++,
+                webView = webView,
+                title = pin.title.ifBlank { tabLabel(pin.url) },
+                url = pin.url,
+                pinned = true
+            )
+            val at = tabs.indexOfLast { it.isHome || it.pinned } + 1
+            tabs.add(at.coerceAtLeast(0), tab)
+            try {
+                webView.onPause()
+                webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, true)
+            } catch (_: Exception) {
+            }
+            if (load && (webView.url.isNullOrBlank() || webView.url == "about:blank")) {
+                TrialIsolation.onNavigate(this, pin.url)
+                webView.loadUrl(pin.url)
+            }
+        }
+        persistPinsFromTabs()
+    }
+
+    private fun loadPinnedTabsAfterLogin() {
+        tabs.filter { it.pinned && !it.isHome }.forEach { tab ->
+            val wv = tab.webView ?: run {
+                val created = takePrefetch(tab.url) ?: createWebView()
+                tab.webView = created
+                created
+            }
+            TrialIsolation.onNavigate(this, tab.url)
+            wv.loadUrl(tab.url)
+        }
+    }
+
     /**
      * Stejnou adresu otevře na jiné kartě a nechá aktuální na místě.
      * Prázdná karta Domů má přednost; jinak nová karta, případně přepis
@@ -1183,7 +1346,7 @@ class WebViewActivity : AppCompatActivity() {
                 if (currentId != -1L) selectTab(currentId)
             }
             else -> {
-                val other = tabs.firstOrNull { it.id != currentId }
+                val other = tabs.firstOrNull { it.id != currentId && !it.pinned }
                 if (other == null) {
                     Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
                     return
@@ -1365,8 +1528,31 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun refreshConnectionBanner() {
-        if (isConnectionOk()) hideConnectionBanner()
-        else showConnectionBanner()
+        if (isConnectionOk()) {
+            hideConnectionBanner()
+            maybePresentTrialLogin()
+        } else {
+            showConnectionBanner()
+        }
+    }
+
+    private fun shouldHoldTrialLogin(): Boolean {
+        if (!TrialSettings.isTrial() || !::loginOverlay.isInitialized) return false
+        return TrialPins.shouldPromptLogin(
+            sessionActive = Session.isActive(this),
+            connectionOk = isConnectionOk(),
+            hasPinnedTabs = tabs.any { it.pinned }
+        )
+    }
+
+    private fun maybePresentTrialLogin() {
+        if (!shouldHoldTrialLogin()) return
+        if (verifyingLogin) return
+        if (loginOverlay.visibility == View.VISIBLE) {
+            raiseConnectionBanner()
+            return
+        }
+        presentLogin()
     }
 
     private fun showConnectionBanner() {
@@ -1727,10 +1913,18 @@ class WebViewActivity : AppCompatActivity() {
         usernameInput.setText("")
         passwordInput.setText("")
         AuthProbe.kill(this)
+        loadPinnedTabsAfterLogin()
         val url = pendingStartUrl
         pendingStartUrl = null
         pendingResumeUrl = null
         if (url.isNullOrBlank() || url == Destinations.HOME_URL) {
+            val stay = activeTab
+            if (stay != null && stay.pinned) {
+                enterBrowser()
+                selectTab(stay.id)
+                startBookmarkPrefetch()
+                return
+            }
             presentHome()
             startBookmarkPrefetch()
             return
@@ -2108,8 +2302,9 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Zkušební: po minutě na pozadí pryč relace, cookies i cache.
-     * Uložené odkazy ve složce zůstanou. Restart procesu zabije NTLM pool.
+     * Zkušební: po minutě na pozadí pryč relace a cookies.
+     * Připnuté karty i jejich WebView zůstanou; proces se nerestartuje.
+     * Až bude zase VPN, vyskočí přihlášení.
      */
     private fun consumeTrialIdleTimeout(): Boolean {
         if (!TrialSettings.isTrial() || verifyingLogin) return false
@@ -2118,8 +2313,43 @@ class WebViewActivity : AppCompatActivity() {
             return false
         }
         TrialIdle.clear(this)
-        clearStoredData()
+        endTrialSessionKeepPinnedTabs()
         return true
+    }
+
+    private fun endTrialSessionKeepPinnedTabs() {
+        cancelPendingAuth()
+        pendingCredentials = null
+        verifyingLogin = false
+        pendingResumeUrl = null
+        pendingStartUrl = null
+        savedTabUrls = emptyList()
+        savedActiveTabIndex = 0
+        mainHandler.removeCallbacks(loginTimeoutRunnable)
+        AuthProbe.kill(this)
+
+        Session.end(this)
+        TrialIsolation.reset()
+        Session.clearAuthCaches(this)
+        destroyPrefetchViews()
+
+        val activeId = activeTabId
+        val toClose = tabs.filter { !it.isHome && !it.pinned }
+        toClose.forEach { tab ->
+            tabs.remove(tab)
+            destroyTab(tab)
+        }
+        persistPinsFromTabs()
+
+        if (tabs.isEmpty()) {
+            openNewHomeTab()
+        } else if (tabs.none { it.id == activeId }) {
+            val next = tabs.firstOrNull { it.pinned } ?: tabs.firstOrNull { it.isHome } ?: tabs.first()
+            selectTab(next.id)
+        } else {
+            refreshTabStrip()
+        }
+        maybePresentTrialLogin()
     }
 
     private fun currentSaveableUrl(): String? {

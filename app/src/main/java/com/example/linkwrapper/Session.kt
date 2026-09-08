@@ -149,21 +149,10 @@ object Session {
     }
 
     /**
-     * Vyčistí cookies, HTTP auth cache a data otevřených WebView.
-     * NTLM relace v procesu Chromium tím ještě nemusí zmizet — po smazání
-     * údajů je potřeba smazat profil a restartovat proces.
+     * Smaže cookies a HTTP auth. WebView se nenačítají znovu — připnuté
+     * karty ve zkušební APK tak zůstanou vizuálně otevřené.
      */
-    fun wipeBrowser(context: Context, webViews: Collection<WebView>) {
-        webViews.forEach { wv ->
-            try {
-                wv.stopLoading()
-                wv.clearCache(true)
-                wv.clearHistory()
-                wv.clearFormData()
-                wv.clearSslPreferences()
-            } catch (_: Exception) {
-            }
-        }
+    fun clearAuthCaches(context: Context) {
         try {
             @Suppress("DEPRECATION")
             val db = WebViewDatabase.getInstance(context)
@@ -172,10 +161,6 @@ object Session {
             db.clearFormData()
             @Suppress("DEPRECATION")
             db.clearUsernamePassword()
-        } catch (_: Exception) {
-        }
-        try {
-            WebStorage.getInstance().deleteAllData()
         } catch (_: Exception) {
         }
         try {
@@ -192,6 +177,29 @@ object Session {
             } catch (_: Exception) {
             }
         }
+    }
+
+    /**
+     * Vyčistí cookies, HTTP auth cache a data otevřených WebView.
+     * NTLM relace v procesu Chromium tím ještě nemusí zmizet — po smazání
+     * údajů je potřeba smazat profil a restartovat proces.
+     */
+    fun wipeBrowser(context: Context, webViews: Collection<WebView>) {
+        webViews.forEach { wv ->
+            try {
+                wv.stopLoading()
+                wv.clearCache(true)
+                wv.clearHistory()
+                wv.clearFormData()
+                wv.clearSslPreferences()
+            } catch (_: Exception) {
+            }
+        }
+        try {
+            WebStorage.getInstance().deleteAllData()
+        } catch (_: Exception) {
+        }
+        clearAuthCaches(context)
     }
 
     fun deleteChromiumProfile(context: Context) {

@@ -14,6 +14,16 @@
     android:paddingStart="14dp"
     android:paddingEnd="14dp">
 
+    <ImageView
+        android:id="@+id/tabPin"
+        android:layout_width="14dp"
+        android:layout_height="14dp"
+        android:layout_marginEnd="6dp"
+        android:contentDescription="Připnutá karta"
+        android:src="@drawable/ic_pin"
+        android:visibility="gone"
+        app:tint="@color/accent" />
+
     <TextView
         android:id="@+id/tabTitle"
         android:layout_width="wrap_content"
