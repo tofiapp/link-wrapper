@@ -96,6 +96,7 @@ class WebViewActivity : AppCompatActivity() {
         private const val MAX_AUTH_ROUNDS = 16
         private const val LOGIN_TIMEOUT_MS = 15_000L
         private const val CHART_FIT_DELAY_MS = 300L
+        private const val MAX_PREFETCH = 8
     }
 
     private enum class Gate { BROWSER, HOME, LOGIN }
@@ -121,6 +122,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private lateinit var homeOverlay: View
     private lateinit var homeAppList: LinearLayout
+    private lateinit var homeBookmarkHeader: View
     private lateinit var homeBookmarkList: LinearLayout
     private lateinit var homeVersion: TextView
 
@@ -171,6 +173,9 @@ class WebViewActivity : AppCompatActivity() {
     private val authChallengeCounts = IdentityHashMap<WebView, MutableMap<String, Int>>()
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
     private val chartPerfInjected = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
+    private val prefetchViews = LinkedHashMap<String, WebView>()
+    private var prefetchLoading = false
+    private val prefetchRunnable = Runnable { pumpBookmarkPrefetch() }
 
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
@@ -312,12 +317,14 @@ class WebViewActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(vpnCheckRunnable)
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         mainHandler.removeCallbacks(chartFitRunnable)
+        mainHandler.removeCallbacks(prefetchRunnable)
         dismissBookmarkPopup()
         bookmarkLabelDialog?.dismiss()
         bookmarkLabelDialog = null
         trustProbeSeq++
         trustProbeInFlight = false
         AuthProbe.kill(this)
+        destroyPrefetchViews()
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         super.onDestroy()
@@ -494,7 +501,7 @@ class WebViewActivity : AppCompatActivity() {
             Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
             return
         }
-        val webView = createWebView()
+        val webView = takePrefetch(url) ?: createWebView()
         val tab = BrowserTab(
             id = nextTabId++,
             webView = webView,
@@ -503,8 +510,10 @@ class WebViewActivity : AppCompatActivity() {
         )
         tabs.add(tab)
         selectTab(tab.id)
-        TrialIsolation.onNavigate(this, url)
-        webView.loadUrl(url)
+        if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
+            TrialIsolation.onNavigate(this, url)
+            webView.loadUrl(url)
+        }
     }
 
     private fun selectTab(tabId: Long) {
@@ -608,6 +617,86 @@ class WebViewActivity : AppCompatActivity() {
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
         activeTabId = -1L
+        destroyPrefetchViews()
+    }
+
+    private fun takePrefetch(url: String): WebView? {
+        val key = prefetchViews.keys.firstOrNull { samePage(it, url) } ?: return null
+        return prefetchViews.remove(key)
+    }
+
+    private fun destroyPrefetchViews() {
+        prefetchLoading = false
+        mainHandler.removeCallbacks(prefetchRunnable)
+        prefetchViews.values.toList().forEach { wv -> destroyOrphanWebView(wv) }
+        prefetchViews.clear()
+    }
+
+    private fun destroyOrphanWebView(wv: WebView) {
+        authFailedViews.remove(wv)
+        authChallengeCounts.remove(wv)
+        chartPerfInjected.remove(wv)
+        (wv.parent as? ViewGroup)?.removeView(wv)
+        try {
+            wv.stopLoading()
+            wv.onPause()
+            wv.webChromeClient = null
+            wv.destroy()
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun startBookmarkPrefetch() {
+        if (!TrialSettings.isTrial()) return
+        if (!Session.isActive(this)) return
+        mainHandler.removeCallbacks(prefetchRunnable)
+        mainHandler.postDelayed(prefetchRunnable, 400)
+    }
+
+    /** Načte uložené grafy na pozadí, ať po výpadku sítě zůstanou v RAM. */
+    private fun pumpBookmarkPrefetch() {
+        if (!TrialSettings.isTrial() || prefetchLoading) return
+        if (!isConnectionOk()) return
+        if (prefetchViews.size >= MAX_PREFETCH) return
+        val next = TrialBookmarks.load(this).map { it.url }.firstOrNull { url ->
+            tabs.none { !it.isHome && samePage(it.url, url) } &&
+                prefetchViews.keys.none { samePage(it, url) }
+        } ?: return
+        val wv = createWebView()
+        prefetchViews[next] = wv
+        prefetchLoading = true
+        wv.visibility = View.INVISIBLE
+        webContainer.addView(
+            wv,
+            0,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        TrialIsolation.onNavigate(this, next)
+        wv.loadUrl(next)
+        mainHandler.postDelayed({
+            if (prefetchViews[next] === wv && prefetchLoading) {
+                prefetchLoading = false
+                try { wv.onPause() } catch (_: Exception) {}
+                pumpBookmarkPrefetch()
+            }
+        }, 20_000L)
+    }
+
+    private fun onPrefetchFinished(view: WebView) {
+        if (prefetchViews.values.none { it === view }) return
+        prefetchLoading = false
+        view.postDelayed({
+            if (prefetchViews.values.none { it === view }) return@postDelayed
+            try {
+                view.onPause()
+                view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, true)
+            } catch (_: Exception) {
+            }
+        }, 3500)
+        pumpBookmarkPrefetch()
     }
 
     private fun bumpAuthCount(webView: WebView): Int {
@@ -890,6 +979,7 @@ class WebViewActivity : AppCompatActivity() {
                     view.setBackgroundColor(Color.TRANSPARENT)
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                     injectChartFit(view)
+                    onPrefetchFinished(view)
                 }
                 updateTabMeta(view ?: return, url)
             }
@@ -954,9 +1044,17 @@ class WebViewActivity : AppCompatActivity() {
         }
         dialogShown = false
         if (tab.isHome) {
-            val webView = createWebView()
+            val webView = takePrefetch(url) ?: createWebView()
             tab.webView = webView
             tab.isHome = false
+            tab.url = url
+            tab.title = tabLabel(url)
+            selectTab(tab.id)
+            if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
+                TrialIsolation.onNavigate(this, url)
+                webView.loadUrl(url)
+            }
+            return
         }
         tab.url = url
         tab.title = tabLabel(url)
@@ -1461,6 +1559,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun bindHomeUi() {
         homeOverlay = findViewById(R.id.homeOverlay)
         homeAppList = findViewById(R.id.homeAppList)
+        homeBookmarkHeader = findViewById(R.id.homeBookmarkHeader)
         homeBookmarkList = findViewById(R.id.homeBookmarkList)
         homeVersion = findViewById(R.id.homeVersion)
         val version = try {
@@ -1497,8 +1596,10 @@ class WebViewActivity : AppCompatActivity() {
         val items = if (TrialSettings.isTrial()) TrialBookmarks.load(this) else emptyList()
         if (items.isEmpty()) {
             homeBookmarkList.visibility = View.GONE
+            if (::homeBookmarkHeader.isInitialized) homeBookmarkHeader.visibility = View.GONE
             return
         }
+        if (::homeBookmarkHeader.isInitialized) homeBookmarkHeader.visibility = View.VISIBLE
         homeBookmarkList.visibility = View.VISIBLE
         val inflater = LayoutInflater.from(this)
         val gap = (10 * resources.displayMetrics.density).toInt()
@@ -1631,6 +1732,7 @@ class WebViewActivity : AppCompatActivity() {
         pendingResumeUrl = null
         if (url.isNullOrBlank() || url == Destinations.HOME_URL) {
             presentHome()
+            startBookmarkPrefetch()
             return
         }
         enterBrowser()
@@ -1639,6 +1741,7 @@ class WebViewActivity : AppCompatActivity() {
         } else {
             openInNewTab(url)
         }
+        startBookmarkPrefetch()
     }
 
     private fun failLogin(message: String?, stayOnForm: Boolean = true) {
