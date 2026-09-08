@@ -2,7 +2,7 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Pořadí vpravo: + , přenačíst , složka (zkušební) , domeček , ⋮ -->
+    <!-- Pořadí vpravo: + , přenačíst , složka , domeček , ⋮ -->
     <item
         android:id="@+id/action_new_tab"
         android:title="Nová karta"
@@ -19,7 +19,6 @@
         android:id="@+id/action_folders"
         android:title="Složka"
         android:icon="@drawable/ic_folder"
-        android:visible="false"
         app:showAsAction="always" />
 
     <item

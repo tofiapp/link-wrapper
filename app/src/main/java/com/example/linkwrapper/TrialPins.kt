@@ -12,9 +12,8 @@ data class TrialPin(
 )
 
 /**
- * Zkušební APK: otevřené karty (připnuté i ostatní). Zůstanou v liště
- * po okamžitém odhlášení na pozadí i po restartu procesu — smaže se
- * jen relace. Přihlášení až u další stránky PSST, ne u už načtených karet.
+ * Otevřené karty (připnuté i ostatní). Zůstanou v liště po restartu
+ * procesu. Ve zkušební APK přežijí i okamžité odhlášení na pozadí.
  */
 internal object TrialPins {
 

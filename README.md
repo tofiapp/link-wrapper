@@ -21,8 +21,11 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   Křížek je jen když je karet víc. Dlaždice na Domů má jen název
   (PSST Data), bez adresy.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
-  na pozadí nesežerou tablet. Dlouhé podržení karty nebo odkazu otevře
-  dialog **Otevřít na druhé kartě**. Přiblížení webu: výchozí na výšku
+  na pozadí nesežerou tablet. Dlouhé podržení karty: **připnout**, otevřít
+  na druhé kartě, kopírovat adresu. Ikona složky v liště ukládá grafy
+  na Domů. PSST Data na šířku: dvě karty vedle sebe, třetí pod nimi,
+  vyplní zbytek displeje (i v běžné APK).
+  Přiblížení webu: výchozí na výšku
   88 %, na šířku 80 %; v ⋮ → **Velikost stránek** pro PSST Data
   (drží se do Vymazat údaje). Grafy (`dmId`) mají vždy 84 %
   a karta ze sdílení se jmenuje **Graf …** podle `dmId`.

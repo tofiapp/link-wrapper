@@ -742,7 +742,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun startBookmarkPrefetch() {
-        if (!TrialSettings.isTrial()) return
         if (!Session.isActive(this)) return
         mainHandler.removeCallbacks(prefetchRunnable)
         mainHandler.postDelayed(prefetchRunnable, 400)
@@ -750,7 +749,7 @@ class WebViewActivity : AppCompatActivity() {
 
     /** Načte uložené grafy na pozadí, ať po výpadku sítě zůstanou v RAM. */
     private fun pumpBookmarkPrefetch() {
-        if (!TrialSettings.isTrial() || prefetchLoading) return
+        if (prefetchLoading) return
         if (!isConnectionOk()) return
         if (prefetchViews.size >= MAX_PREFETCH) return
         val next = TrialBookmarks.load(this).map { it.url }.firstOrNull { url ->
@@ -868,7 +867,7 @@ class WebViewActivity : AppCompatActivity() {
                 tab.title = label
                 stripChanged = true
             }
-            if (tab.pinned || TrialSettings.isTrial()) persistOpenTabsFromTabs()
+            persistOpenTabsFromTabs()
         }
         if (stripChanged) refreshTabStrip()
     }
@@ -1297,12 +1296,10 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         val rows = mutableListOf<ActionRow>()
-        if (TrialSettings.isTrial()) {
-            rows.add(
-                if (tab.pinned) ActionRow("Odepnout", R.drawable.ic_pin) { setTabPinned(tab, false) }
-                else ActionRow("Připnout nahoru", R.drawable.ic_pin) { setTabPinned(tab, true) }
-            )
-        }
+        rows.add(
+            if (tab.pinned) ActionRow("Odepnout", R.drawable.ic_pin) { setTabPinned(tab, false) }
+            else ActionRow("Připnout nahoru", R.drawable.ic_pin) { setTabPinned(tab, true) }
+        )
         rows.add(ActionRow("Otevřít na druhé kartě", R.drawable.ic_add) { openOnOtherTab(tab.url) })
         rows.add(ActionRow("Kopírovat adresu", R.drawable.ic_copy) { copyUrlToClipboard(tab.url) })
         showActionSheet(tab.title, tab.url, rows)
@@ -1360,7 +1357,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun setTabPinned(tab: BrowserTab, pinned: Boolean) {
-        if (!TrialSettings.isTrial() || tab.isHome) return
+        if (tab.isHome) return
         if (pinned == tab.pinned) return
         if (pinned) {
             if (tabs.count { it.pinned } >= TrialPins.MAX_ITEMS) {
@@ -1384,7 +1381,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun persistOpenTabsFromTabs() {
-        if (!TrialSettings.isTrial()) return
         TrialPins.save(
             this,
             tabs.filter { !it.isHome }.map { TrialPin(it.title, it.url, it.pinned) }
@@ -1393,7 +1389,6 @@ class WebViewActivity : AppCompatActivity() {
 
     /** Obnoví otevřené karty po startu procesu. Bez relace se URL nenačítá. */
     private fun restorePinnedTabs() {
-        if (!TrialSettings.isTrial()) return
         val saved = TrialPins.load(this)
         if (saved.isEmpty()) return
         val load = Session.isActive(this)
@@ -1796,7 +1791,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun injectPsstDataLayout(webView: WebView, url: String? = webView.url) {
-        if (!TrialSettings.isTrial()) return
         val resolved = url ?: tabs.find { it.webView === webView }?.url
         if (!Destinations.isPsstDataHome(resolved)) return
         try {
@@ -1928,7 +1922,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun populateHomeBookmarks() {
         if (!::homeBookmarkList.isInitialized) return
         homeBookmarkList.removeAllViews()
-        val items = if (TrialSettings.isTrial()) TrialBookmarks.load(this) else emptyList()
+        val items = TrialBookmarks.load(this)
         if (items.isEmpty()) {
             homeBookmarkList.visibility = View.GONE
             if (::homeBookmarkHeader.isInitialized) homeBookmarkHeader.visibility = View.GONE
@@ -2528,7 +2522,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun showTrialBookmarkMenu() {
-        if (!TrialSettings.isTrial()) return
         dismissBookmarkPopup()
         val content = layoutInflater.inflate(R.layout.popup_trial_bookmarks, null)
         val width = (300 * resources.displayMetrics.density).toInt()
@@ -2660,7 +2653,7 @@ class WebViewActivity : AppCompatActivity() {
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
         }
 
-        menu?.findItem(R.id.action_folders)?.isVisible = TrialSettings.isTrial()
+        menu?.findItem(R.id.action_folders)?.isVisible = true
         menu?.setGroupVisible(R.id.group_logout, !TrialSettings.isTrial())
         if (!TrialSettings.isTrial()) {
             menu?.findItem(R.id.action_logout)?.let { item ->
@@ -2681,7 +2674,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
-        menu?.findItem(R.id.action_folders)?.isVisible = TrialSettings.isTrial()
+        menu?.findItem(R.id.action_folders)?.isVisible = true
         menu?.setGroupVisible(R.id.group_logout, !TrialSettings.isTrial())
         return super.onPrepareOptionsMenu(menu)
     }
