@@ -39,7 +39,7 @@ jobs:
         run: |
           PINNED=$(ls app/build/outputs/apk/pinned/release/LinkWrapper-*.apk)
           SYSTEM=$(ls app/build/outputs/apk/systemtrust/release/LinkWrapper-*.apk)
-          NAME=$(basename "$PINNED" .apk | sed 's/^LinkWrapper-pinned-//')
+          NAME=$(basename "$PINNED" .apk | sed 's/^LinkWrapper-//')
           echo "pinned=$PINNED" >> "$GITHUB_OUTPUT"
           echo "system=$SYSTEM" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"

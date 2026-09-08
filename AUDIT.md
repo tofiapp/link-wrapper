@@ -42,7 +42,8 @@ pro `tudc.cz`. Na zařízení se obě jmenují **Obálka**.
 | `AuthHosts.allows` jen PSST | heslo nesmí jít na cizí 401 |
 
 **Ponecháno schválně:** názvy flavorů `pinned` / `systemtrust` (CI a
-názvy APK). `Session` pořád maže stará `session_gate` prefs. Keystore,
+vnitřní Gradle). Soubory APK jsou `LinkWrapper-1.0.N.apk` a
+`LinkWrapper-1.0.N-test.apk`. `Session` pořád maže stará `session_gate` prefs. Keystore,
 VPN brána, dva APK vedle sebe.
 
 ---

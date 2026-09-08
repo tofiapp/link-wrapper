@@ -57,7 +57,7 @@ android {
         systemtrust {
             dimension "trust"
             applicationIdSuffix ".systemtrust"
-            versionNameSuffix "-system"
+            versionNameSuffix "-test"
         }
     }
 
@@ -94,7 +94,7 @@ android {
 
     applicationVariants.all { variant ->
         variant.outputs.all { output ->
-            output.outputFileName = "LinkWrapper-${variant.flavorName}-${variant.versionName}.apk"
+            output.outputFileName = "LinkWrapper-${variant.versionName}.apk"
         }
     }
 }

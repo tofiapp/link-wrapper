@@ -38,18 +38,18 @@ jobs:
           -PversionName=1.0.0-pr${{ github.event.number }}
           -PversionCode=1
 
-      - name: Upload pinned APK
+      - name: Upload main APK
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: LinkWrapper-pr${{ github.event.number }}-pinned
+          name: LinkWrapper-pr${{ github.event.number }}
           path: app/build/outputs/apk/pinned/release/LinkWrapper-*.apk
           if-no-files-found: error
 
-      - name: Upload systemtrust APK
+      - name: Upload test APK
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
-          name: LinkWrapper-pr${{ github.event.number }}-system
+          name: LinkWrapper-pr${{ github.event.number }}-test
           path: app/build/outputs/apk/systemtrust/release/LinkWrapper-*.apk
           if-no-files-found: error
