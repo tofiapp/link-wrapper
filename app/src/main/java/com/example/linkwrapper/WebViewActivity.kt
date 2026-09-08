@@ -829,11 +829,16 @@ class WebViewActivity : AppCompatActivity() {
                     return
                 }
 
+                // Bez proceed/cancel WebView visí na 401 (bílá / zamrzlý graf).
+                // I když Session.isActive — např. relace je, ale údaje na
+                // tohoto hostitele nesedí — musí přijít dialog, ne ticho.
                 pendingAuthHandler = handler
-                if (!verifyingLogin && !Session.isActive(this@WebViewActivity)) {
-                    pendingStartUrl = webView.url ?: Destinations.PSST_URL
-                    presentLogin()
+                if (verifyingLogin) {
+                    failLogin("Neplatné jméno nebo heslo")
+                    return
                 }
+                pendingStartUrl = webView.url ?: Destinations.PSST_URL
+                presentLogin()
             }
 
             override fun onReceivedHttpError(
@@ -1466,7 +1471,6 @@ class WebViewActivity : AppCompatActivity() {
         loginFormColumn.visibility = View.GONE
         loginFormScroll.visibility = View.GONE
         setCertBannerVisible(false)
-        pendingAuthHandler = null
         updateLoginButton()
         hideVpnGate()
     }
@@ -1502,7 +1506,7 @@ class WebViewActivity : AppCompatActivity() {
         verifyingLogin = true
         authChallengeCounts.clear()
         authFailedViews.clear()
-        pendingAuthHandler = null
+        cancelPendingAuth()
         updateLoginButton()
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         mainHandler.postDelayed(loginTimeoutRunnable, LOGIN_TIMEOUT_MS)
@@ -1530,6 +1534,7 @@ class WebViewActivity : AppCompatActivity() {
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         Session.start(this, creds.username, creds.password)
         pendingCredentials = null
+        cancelPendingAuth()
         usernameLayout.error = null
         passwordLayout.error = null
         usernameInput.setText("")
@@ -1564,8 +1569,7 @@ class WebViewActivity : AppCompatActivity() {
         verifyingLogin = false
         pendingCredentials = null
         mainHandler.removeCallbacks(loginTimeoutRunnable)
-        awaitingHttpAuth = false
-        pendingAuthHandler = null
+        cancelPendingAuth()
         AuthProbe.kill(this)
         updateLoginButton()
         if (message != null && !missingCerts) {
@@ -1830,13 +1834,22 @@ class WebViewActivity : AppCompatActivity() {
             .show()
     }
 
+    /** 401 handler musí dostat proceed nebo cancel, jinak WebView visí. */
+    private fun cancelPendingAuth() {
+        try {
+            pendingAuthHandler?.cancel()
+        } catch (_: Exception) {
+        }
+        pendingAuthHandler = null
+        awaitingHttpAuth = false
+    }
+
     /**
      * Smaže cookies, PSST údaje i Chromium profil a restartuje proces.
      * NTLM jinak zůstane v connection poolu a stránky by zůstaly přihlášené.
      */
     private fun clearStoredData() {
-        pendingAuthHandler?.cancel()
-        pendingAuthHandler = null
+        cancelPendingAuth()
         pendingCredentials = null
         verifyingLogin = false
         pendingResumeUrl = null

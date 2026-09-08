@@ -71,22 +71,29 @@ object Session {
         return Credentials(user, pass)
     }
 
-    /** Zkušební APK: NTLM jen na hostitele, na kterého šlo přihlášení. */
+    /**
+     * Zkušební APK: NTLM na hostitele stejné appky jako přihlášení (PSST
+     * produkce i test). Po restartu procesu, kdy `boundHost` ještě není
+     * v RAM, bereme hostitele z [Destinations.LOGIN_URL].
+     */
     fun credentialsFor(context: Context, host: String?): Credentials? {
         val creds = credentials(context) ?: return null
         if (!TrialSettings.isTrial()) return creds
-        if (!TrialIsolation.allowsBoundAuth(host, boundHost)) return null
+        val bound = boundHost ?: loginHost()
+        if (!TrialIsolation.allowsBoundAuth(host, bound)) return null
         return creds
+    }
+
+    private fun loginHost(): String? = try {
+        java.net.URI(Destinations.LOGIN_URL).host?.lowercase()?.trim('.')
+    } catch (_: Exception) {
+        null
     }
 
     /** Uloží ověřené údaje. Na disk jen šifrovaně; jinak jen v RAM. */
     fun start(context: Context, username: String, password: String) {
         memoryOnly = Credentials(username, password)
-        boundHost = try {
-            java.net.URI(Destinations.LOGIN_URL).host?.lowercase()?.trim('.')
-        } catch (_: Exception) {
-            null
-        }
+        boundHost = loginHost()
         if (TrialSettings.ephemeralLogin(context)) {
             forgetDisk(context)
             return

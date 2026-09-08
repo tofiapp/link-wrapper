@@ -9,31 +9,47 @@ import java.net.URI
 /**
  * Zkušební APK: weby si mezi sebou nepředávají přihlášení.
  *
- * Každý host (psst.tudc.cz, test.psst.tudc.cz, dsd.tudc.cz, …) má vlastní
- * zásobník cookies. Při přepnutí se cookies toho hosta obnoví a cizí
- * zmizí. HTTP auth z PSST jde jen na hostitele, na kterého se uživatel
- * přihlásil. Third-party cookies jsou vypnuté.
+ * Zásobník cookies je podle **cílové appky** (PSST / DSD / cizí host),
+ * ne podle přesného hostname. `psst.tudc.cz` a `test.psst.tudc.cz` proto
+ * sdílí cookies i NTLM — graf ze sdílení je na testovacím hostu, dlaždice
+ * na produkčním. DSD má vlastní zásobník. Cizí HTTPS host je sám o sobě.
+ *
+ * Při přepnutí **mezi** zásobníky se cookies toho cíle obnoví a cizí
+ * zmizí. HTTP auth se maže jen při přepnutí na jinou appku, ne mezi
+ * hostiteli stejné appky. Third-party cookies jsou vypnuté.
  *
  * Běžná APK tohle nedělá.
  */
 internal object TrialIsolation {
 
-    private val jars = mutableMapOf<String, String>()
+    private val jars = mutableMapOf<String, MutableMap<String, String>>()
+    private val familyHosts = mutableMapOf<String, MutableSet<String>>()
     private var activeKey: String? = null
 
     fun jarKey(url: String?): String? {
         if (url.isNullOrBlank() || url == Destinations.HOME_URL) return null
         return try {
-            URI(url).host?.lowercase()?.trim('.')
+            familyKey(URI(url).host)
         } catch (_: Exception) {
             null
         }
     }
 
-    /** NTLM z appky jen na stejný host, na který šlo přihlášení. */
+    /**
+     * Skupina zásobníku: `psst`, `dsd`, nebo přesný hostname.
+     * PSST produkce i test patří k sobě; DSD ne.
+     */
+    fun familyKey(host: String?): String? {
+        val h = host?.lowercase()?.trim('.') ?: return null
+        if (h.isEmpty()) return null
+        Destinations.forHost(h)?.id?.let { return it }
+        return h
+    }
+
+    /** NTLM z appky na všechny hostitele stejné appky (PSST vs DSD vs cizí). */
     fun allowsBoundAuth(authHost: String?, boundHost: String?): Boolean {
-        val a = authHost?.lowercase()?.trim('.') ?: return false
-        val b = boundHost?.lowercase()?.trim('.') ?: return false
+        val a = familyKey(authHost) ?: return false
+        val b = familyKey(boundHost) ?: return false
         return a == b
     }
 
@@ -46,7 +62,14 @@ internal object TrialIsolation {
 
     fun onNavigate(context: Context, url: String?) {
         if (!TrialSettings.isTrial()) return
-        val key = jarKey(url) ?: return
+        if (url.isNullOrBlank() || url == Destinations.HOME_URL) return
+        val host = try {
+            URI(url).host?.lowercase()?.trim('.')
+        } catch (_: Exception) {
+            null
+        } ?: return
+        val key = familyKey(host) ?: return
+        familyHosts.getOrPut(key) { mutableSetOf() }.add(host)
         val cm = CookieManager.getInstance()
         snapshot(cm, activeKey)
         if (key == activeKey) return
@@ -56,34 +79,41 @@ internal object TrialIsolation {
         } catch (_: Exception) {
         }
         restore(cm, key)
+        val previous = activeKey
         activeKey = key
-        clearHttpAuth(context)
+        if (previous != null) clearHttpAuth(context)
     }
 
     fun reset() {
         jars.clear()
+        familyHosts.clear()
         activeKey = null
     }
 
     private fun snapshot(cm: CookieManager, key: String?) {
         if (key.isNullOrBlank()) return
-        val raw = try {
-            cm.getCookie("https://$key/") ?: cm.getCookie("https://$key")
-        } catch (_: Exception) {
-            null
+        val bag = jars.getOrPut(key) { mutableMapOf() }
+        hostsForFamily(key).forEach { host ->
+            val raw = try {
+                cm.getCookie("https://$host/") ?: cm.getCookie("https://$host")
+            } catch (_: Exception) {
+                null
+            }
+            if (!raw.isNullOrBlank()) bag[host] = raw
         }
-        if (!raw.isNullOrBlank()) jars[key] = raw
     }
 
     private fun restore(cm: CookieManager, key: String) {
-        val raw = jars[key] ?: return
-        val url = "https://$key/"
-        raw.split(';').forEach { part ->
-            val cookie = part.trim()
-            if (cookie.isNotEmpty()) {
-                try {
-                    cm.setCookie(url, cookie)
-                } catch (_: Exception) {
+        val bag = jars[key] ?: return
+        bag.forEach { (host, raw) ->
+            val cookieUrl = "https://$host/"
+            raw.split(';').forEach { part ->
+                val cookie = part.trim()
+                if (cookie.isNotEmpty()) {
+                    try {
+                        cm.setCookie(cookieUrl, cookie)
+                    } catch (_: Exception) {
+                    }
                 }
             }
         }
@@ -91,6 +121,15 @@ internal object TrialIsolation {
             cm.flush()
         } catch (_: Exception) {
         }
+    }
+
+    private fun hostsForFamily(family: String): Set<String> {
+        val known = when (family) {
+            "psst" -> setOf("psst.tudc.cz", "test.psst.tudc.cz")
+            "dsd" -> setOf("dsd.tudc.cz")
+            else -> setOf(family)
+        }
+        return (familyHosts[family] ?: emptySet()) + known
     }
 
     private fun clearHttpAuth(context: Context) {
