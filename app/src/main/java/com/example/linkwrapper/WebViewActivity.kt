@@ -1294,7 +1294,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                ChartFit.BOOTSTRAP_JS + ChartFit.FIT_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                ChartFit.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1327,7 +1327,7 @@ class WebViewActivity : AppCompatActivity() {
         if (webView in chartPerfInjected) return
         try {
             webView.evaluateJavascript(
-                ChartFit.BOOTSTRAP_JS + ChartFit.FIT_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                ChartFit.BOOTSTRAP_JS + pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
                 null
             )
             chartPerfInjected.add(webView)
