@@ -2,11 +2,18 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Pořadí vpravo: + , domeček , ⋮ -->
+    <!-- Pořadí vpravo: + , složka (zkušební) , domeček , ⋮ -->
     <item
         android:id="@+id/action_new_tab"
         android:title="Nová karta"
         android:icon="@drawable/ic_add"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_folders"
+        android:title="Složka"
+        android:icon="@drawable/ic_folder"
+        android:visible="false"
         app:showAsAction="always" />
 
     <item
@@ -32,20 +39,13 @@
             android:icon="@drawable/ic_page_size"
             app:showAsAction="never" />
         <item
-            android:id="@+id/action_ephemeral_login"
-            android:title="Neukládat přihlášení"
-            android:icon="@drawable/ic_ephemeral_login"
-            android:checkable="true"
-            android:visible="false"
-            app:showAsAction="never" />
-        <item
             android:id="@+id/action_link_settings"
             android:title="Nastavení odkazů"
             android:icon="@drawable/ic_settings_alert"
             app:showAsAction="never" />
     </group>
 
-    <!-- Oddělené úplně dole, zvýrazněné v kódu červeně -->
+    <!-- Oddělené úplně dole, zvýrazněné v kódu červeně. Ve zkušební skryté. -->
     <group
         android:id="@+id/group_logout"
         android:orderInCategory="200">

@@ -22,7 +22,7 @@
         <item name="subtitleTextColor">@color/ink_faint</item>
         <item name="android:clipChildren">true</item>
         <item name="android:clipToPadding">true</item>
-        <!-- Výchozí ikony (domeček, ⋮) — ink; + se obarví v kódu na accent -->
+        <!-- Výchozí ikony (domeček, složka, ⋮) — ink; + se obarví v kódu na accent -->
         <item name="colorControlNormal">@color/ink_soft</item>
         <item name="popupTheme">@style/ThemeOverlay.LinkWrapper.Popup</item>
     </style>
