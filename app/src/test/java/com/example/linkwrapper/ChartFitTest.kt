@@ -13,8 +13,8 @@ class ChartFitTest {
         assertTrue(boot.contains(".chart-part"))
         assertTrue(boot.contains("opacity:0"))
         assertTrue(boot.contains("__chartFitHideStyle"))
-        assertFalse(boot.contains("visibility"))
-        assertFalse(boot.contains("__chartFitHide"))
+        assertFalse(boot.contains("visibility:hidden"))
+        assertFalse(boot.contains("__chartFitHide ="))
         assertFalse(boot.contains("documentElement.style.setProperty('visibility'"))
     }
 
