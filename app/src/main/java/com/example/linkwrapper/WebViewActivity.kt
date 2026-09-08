@@ -114,6 +114,7 @@ class WebViewActivity : AppCompatActivity() {
     private lateinit var passwordLayout: TextInputLayout
     private lateinit var passwordInput: TextInputEditText
     private lateinit var loginButton: MaterialButton
+    private lateinit var loginEphemeralHint: TextView
 
     private lateinit var homeOverlay: View
     private lateinit var homeAppList: LinearLayout
@@ -211,6 +212,7 @@ class WebViewActivity : AppCompatActivity() {
         CookieManager.getInstance().setAcceptCookie(true)
         WebView.setWebContentsDebuggingEnabled(false)
         Session.dropSharedHttpAuthOnce(this)
+        if (TrialSettings.ephemeralLogin(this)) Session.forgetDisk(this)
 
         pendingStartUrl = explicitUrlFromIntent(intent)
         refreshGate()
@@ -354,6 +356,8 @@ class WebViewActivity : AppCompatActivity() {
         loginFormScroll.visibility = View.VISIBLE
         loginTitle.visibility = View.VISIBLE
         refreshCertBanner()
+        loginEphemeralHint.visibility =
+            if (TrialSettings.ephemeralLogin(this)) View.VISIBLE else View.GONE
         updateLoginButton()
         if (!verifyingLogin && loginButton.isEnabled) {
             if (usernameInput.text.isNullOrEmpty()) usernameInput.requestFocus()
@@ -859,8 +863,18 @@ class WebViewActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 super.onPageStarted(view, url, favicon)
                 if (view != null) {
+                    if (Destinations.isChart(url)) {
+                        view.evaluateJavascript(ChartFit.HIDE_JS, null)
+                    }
                     injectChartPerfFallback(view)
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
+                }
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                super.doUpdateVisitedHistory(view, url, isReload)
+                if (view != null && Destinations.isChart(url)) {
+                    injectChartFit(view)
                 }
             }
 
@@ -1377,6 +1391,7 @@ class WebViewActivity : AppCompatActivity() {
         passwordLayout = findViewById(R.id.passwordLayout)
         passwordInput = findViewById(R.id.passwordInput)
         loginButton = findViewById(R.id.loginButton)
+        loginEphemeralHint = findViewById(R.id.loginEphemeralHint)
 
         loginButton.setOnClickListener { submitLogin() }
         passwordInput.setOnEditorActionListener { _, actionId, _ ->
@@ -1912,9 +1927,15 @@ class WebViewActivity : AppCompatActivity() {
             R.id.action_open_url,
             R.id.action_reload,
             R.id.action_page_size,
-            R.id.action_link_settings
+            R.id.action_link_settings,
+            R.id.action_ephemeral_login
         ).forEach { id ->
             menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
+        }
+
+        menu?.findItem(R.id.action_ephemeral_login)?.let { item ->
+            item.isVisible = TrialSettings.isTrial()
+            item.isChecked = TrialSettings.ephemeralLogin(this)
         }
 
         menu?.findItem(R.id.action_logout)?.let { item ->
@@ -1933,6 +1954,14 @@ class WebViewActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
+        menu?.findItem(R.id.action_ephemeral_login)?.let { item ->
+            item.isVisible = TrialSettings.isTrial()
+            item.isChecked = TrialSettings.ephemeralLogin(this)
+        }
+        return super.onPrepareOptionsMenu(menu)
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         hideKeyboard()
         if (item.itemId == R.id.action_logout) {
@@ -1947,7 +1976,10 @@ class WebViewActivity : AppCompatActivity() {
             return true
         }
         if (gate == Gate.VPN) return true
-        if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings) {
+        if (gate == Gate.LOGIN &&
+            item.itemId != R.id.action_link_settings &&
+            item.itemId != R.id.action_ephemeral_login
+        ) {
             return true
         }
         return when (item.itemId) {
@@ -1974,6 +2006,16 @@ class WebViewActivity : AppCompatActivity() {
             }
             R.id.action_link_settings -> {
                 openLinkSettings()
+                true
+            }
+            R.id.action_ephemeral_login -> {
+                if (!TrialSettings.isTrial()) return true
+                val enabled = !item.isChecked
+                item.isChecked = enabled
+                TrialSettings.setEphemeralLogin(this, enabled)
+                if (gate == Gate.LOGIN) {
+                    loginEphemeralHint.visibility = if (enabled) View.VISIBLE else View.GONE
+                }
                 true
             }
             else -> super.onOptionsItemSelected(item)
