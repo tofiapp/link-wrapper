@@ -13,6 +13,7 @@ data class TrialPin(
 /**
  * Zkušební APK: karty připnuté nahoru. Zůstanou v liště i po minutovém
  * odhlášení a po restartu procesu — smaže se jen relace, ne tenhle seznam.
+ * Přihlášení se u nich neukáže; dialog až u další stránky PSST.
  */
 internal object TrialPins {
 
@@ -43,19 +44,6 @@ internal object TrialPins {
             if (url.isEmpty() || url == Destinations.HOME_URL) return@mapNotNull null
             TrialPin(title.ifEmpty { Destinations.tabTitle(url) }, url)
         }.toList()
-    }
-
-    /**
-     * Po výpadku relace: přihlášení až když je VPN zpět a nějaká
-     * připnutá karta má zůstat otevřená.
-     */
-    fun shouldPromptLogin(
-        sessionActive: Boolean,
-        connectionOk: Boolean,
-        hasPinnedTabs: Boolean
-    ): Boolean {
-        if (sessionActive || !hasPinnedTabs) return false
-        return connectionOk
     }
 
     fun stripGroup(isHome: Boolean, pinned: Boolean): Int = when {

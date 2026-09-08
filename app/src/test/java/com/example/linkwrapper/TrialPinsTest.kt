@@ -1,7 +1,6 @@
 package com.example.linkwrapper
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -28,14 +27,6 @@ class TrialPinsTest {
         assertTrue(TrialPins.decode("").isEmpty())
         assertTrue(TrialPins.decode("not-a-pin").isEmpty())
         assertTrue(TrialPins.decode("Domů\t${Destinations.HOME_URL}").isEmpty())
-    }
-
-    @Test
-    fun loginOnlyWhenPinnedAndConnectedWithoutSession() {
-        assertFalse(TrialPins.shouldPromptLogin(sessionActive = true, connectionOk = true, hasPinnedTabs = true))
-        assertFalse(TrialPins.shouldPromptLogin(sessionActive = false, connectionOk = false, hasPinnedTabs = true))
-        assertFalse(TrialPins.shouldPromptLogin(sessionActive = false, connectionOk = true, hasPinnedTabs = false))
-        assertTrue(TrialPins.shouldPromptLogin(sessionActive = false, connectionOk = true, hasPinnedTabs = true))
     }
 
     @Test

@@ -334,7 +334,7 @@ class WebViewActivity : AppCompatActivity() {
 
     /**
      * Domů i bez relace; přihlášení k PSST až po dlaždici.
-     * Výpadek VPN/sítě neschová obrazovku — jen pruh nahoře.
+     * Výpadek VPN/sítě neschová obrazovku — jen pruh dole.
      */
     private fun refreshGate() {
         if (isFinishing) return
@@ -360,11 +360,9 @@ class WebViewActivity : AppCompatActivity() {
         }
         if (lastContentGate == Gate.BROWSER || savedTabUrls.isNotEmpty()) {
             presentBrowser()
-            maybePresentTrialLogin()
             return
         }
         presentHome()
-        maybePresentTrialLogin()
     }
 
     private fun needsAppLogin(url: String): Boolean {
@@ -415,7 +413,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun presentBrowser() {
-        if (!shouldHoldTrialLogin()) hideLoginOverlay()
+        if (!verifyingLogin) hideLoginOverlay()
         attachImeLayoutListener(false)
         setSensitiveScreen(false)
         if (tabs.isEmpty()) {
@@ -521,6 +519,11 @@ class WebViewActivity : AppCompatActivity() {
             selectTab(existing.id)
             return
         }
+        if (needsAppLogin(url)) {
+            pendingStartUrl = url
+            presentLogin()
+            return
+        }
         if (tabs.size >= MAX_TABS) {
             Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
             return
@@ -544,8 +547,7 @@ class WebViewActivity : AppCompatActivity() {
         val target = tabs.find { it.id == tabId } ?: return
         if (tabId != activeTabId) hideKeyboard()
         activeTabId = tabId
-        val holdLogin = shouldHoldTrialLogin()
-        if (!holdLogin) hideLoginOverlay()
+        if (!verifyingLogin) hideLoginOverlay()
         if (target.isHome) {
             gate = Gate.HOME
             lastContentGate = Gate.HOME
@@ -562,9 +564,8 @@ class WebViewActivity : AppCompatActivity() {
                 parkBackgroundWebView(tab, wv)
             }
             attachImeLayoutListener(false)
-            if (!holdLogin) setSensitiveScreen(false)
+            setSensitiveScreen(false)
             refreshTabStrip()
-            if (holdLogin) presentLogin()
             return
         }
 
@@ -572,7 +573,7 @@ class WebViewActivity : AppCompatActivity() {
         lastContentGate = Gate.BROWSER
         hideHomeOverlay()
         attachImeLayoutListener(false)
-        if (!holdLogin) setSensitiveScreen(false)
+        setSensitiveScreen(false)
         TrialIsolation.onNavigate(this, target.url)
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
@@ -595,7 +596,6 @@ class WebViewActivity : AppCompatActivity() {
             }
         }
         refreshTabStrip()
-        if (holdLogin) presentLogin()
     }
 
     private fun parkBackgroundWebView(tab: BrowserTab, wv: WebView) {
@@ -953,6 +953,14 @@ class WebViewActivity : AppCompatActivity() {
                     return
                 }
 
+                // Připnutý graf už je v paměti — 401 po idle ho neschová
+                // za přihlášení. Dialog až u další (nepřipnuté) stránky PSST.
+                if (isLoadedPinnedView(webView)) {
+                    handler.cancel()
+                    awaitingHttpAuth = false
+                    return
+                }
+
                 // Bez proceed/cancel WebView visí na 401 (bílá / zamrzlý graf).
                 // I když Session.isActive — např. relace je, ale údaje na
                 // tohoto hostitele nesedí — musí přijít dialog, ne ticho.
@@ -1096,6 +1104,11 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         if (tab.isHome) {
+            if (needsAppLogin(url)) {
+                pendingStartUrl = url
+                presentLogin()
+                return
+            }
             val webView = takePrefetch(url) ?: createWebView()
             tab.webView = webView
             tab.isHome = false
@@ -1318,16 +1331,20 @@ class WebViewActivity : AppCompatActivity() {
         persistPinsFromTabs()
     }
 
-    private fun loadPinnedTabsAfterLogin() {
+    private fun loadUnloadedPinnedTabsAfterLogin() {
         tabs.filter { it.pinned && !it.isHome }.forEach { tab ->
-            val wv = tab.webView ?: run {
-                val created = takePrefetch(tab.url) ?: createWebView()
-                tab.webView = created
-                created
-            }
+            val wv = tab.webView ?: return@forEach
+            if (!wv.url.isNullOrBlank() && wv.url != "about:blank") return@forEach
             TrialIsolation.onNavigate(this, tab.url)
             wv.loadUrl(tab.url)
         }
+    }
+
+    private fun isLoadedPinnedView(webView: WebView): Boolean {
+        val tab = tabs.find { it.webView === webView } ?: return false
+        if (!tab.pinned) return false
+        val current = webView.url
+        return !current.isNullOrBlank() && current != "about:blank"
     }
 
     /**
@@ -1358,6 +1375,15 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun loadUrlIntoTab(tab: BrowserTab, url: String) {
+        if (tab.pinned && samePage(tab.url, url)) {
+            selectTab(tab.id)
+            return
+        }
+        if (needsAppLogin(url) && !tab.pinned) {
+            pendingStartUrl = url
+            presentLogin()
+            return
+        }
         if (tab.isHome) {
             val webView = createWebView()
             tab.webView = webView
@@ -1528,31 +1554,8 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun refreshConnectionBanner() {
-        if (isConnectionOk()) {
-            hideConnectionBanner()
-            maybePresentTrialLogin()
-        } else {
-            showConnectionBanner()
-        }
-    }
-
-    private fun shouldHoldTrialLogin(): Boolean {
-        if (!TrialSettings.isTrial() || !::loginOverlay.isInitialized) return false
-        return TrialPins.shouldPromptLogin(
-            sessionActive = Session.isActive(this),
-            connectionOk = isConnectionOk(),
-            hasPinnedTabs = tabs.any { it.pinned }
-        )
-    }
-
-    private fun maybePresentTrialLogin() {
-        if (!shouldHoldTrialLogin()) return
-        if (verifyingLogin) return
-        if (loginOverlay.visibility == View.VISIBLE) {
-            raiseConnectionBanner()
-            return
-        }
-        presentLogin()
+        if (isConnectionOk()) hideConnectionBanner()
+        else showConnectionBanner()
     }
 
     private fun showConnectionBanner() {
@@ -1569,7 +1572,7 @@ class WebViewActivity : AppCompatActivity() {
                 connectionBanner.translationY = 0f
                 return@post
             }
-            connectionBanner.translationY = -h
+            connectionBanner.translationY = h
             connectionBanner.animate().translationY(0f).setDuration(220).start()
         }
     }
@@ -1586,7 +1589,7 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         connectionBanner.animate()
-            .translationY(-h)
+            .translationY(h)
             .setDuration(180)
             .withEndAction {
                 if (!connectionBannerVisible) {
@@ -1825,6 +1828,12 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun openDestination(app: Destinations.AppLink) {
+        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, app.url) }
+        if (existing != null) {
+            enterBrowser()
+            selectTab(existing.id)
+            return
+        }
         if (app.requiresAppLogin && !Session.isActive(this)) {
             pendingStartUrl = app.url
             presentLogin()
@@ -1913,18 +1922,11 @@ class WebViewActivity : AppCompatActivity() {
         usernameInput.setText("")
         passwordInput.setText("")
         AuthProbe.kill(this)
-        loadPinnedTabsAfterLogin()
+        loadUnloadedPinnedTabsAfterLogin()
         val url = pendingStartUrl
         pendingStartUrl = null
         pendingResumeUrl = null
         if (url.isNullOrBlank() || url == Destinations.HOME_URL) {
-            val stay = activeTab
-            if (stay != null && stay.pinned) {
-                enterBrowser()
-                selectTab(stay.id)
-                startBookmarkPrefetch()
-                return
-            }
             presentHome()
             startBookmarkPrefetch()
             return
@@ -2304,7 +2306,7 @@ class WebViewActivity : AppCompatActivity() {
     /**
      * Zkušební: po minutě na pozadí pryč relace a cookies.
      * Připnuté karty i jejich WebView zůstanou; proces se nerestartuje.
-     * Až bude zase VPN, vyskočí přihlášení.
+     * Přihlášení až když uživatel otevře další stránku PSST.
      */
     private fun consumeTrialIdleTimeout(): Boolean {
         if (!TrialSettings.isTrial() || verifyingLogin) return false
@@ -2349,7 +2351,6 @@ class WebViewActivity : AppCompatActivity() {
         } else {
             refreshTabStrip()
         }
-        maybePresentTrialLogin()
     }
 
     private fun currentSaveableUrl(): String? {
@@ -2360,17 +2361,18 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun openSavedUrl(url: String) {
+        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
+        if (existing != null) {
+            enterBrowser()
+            selectTab(existing.id)
+            return
+        }
         if (needsAppLogin(url)) {
             pendingStartUrl = url
             presentLogin()
             return
         }
         enterBrowser()
-        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
-        if (existing != null) {
-            selectTab(existing.id)
-            return
-        }
         if (activeTab?.isHome == true) loadInActiveTab(url)
         else openInNewTab(url)
     }
