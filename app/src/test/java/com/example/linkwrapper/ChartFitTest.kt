@@ -21,24 +21,24 @@ class ChartFitTest {
     }
 
     @Test
-    fun jsHidesThenZoomsWidthThenNeverLowersHeight() {
+    fun jsZoomsWidthThenRevealsWithoutWaitingForSvg() {
         val js = ChartFit.FIT_JS
         assertTrue(js.contains("function hideChart()"))
-        assertTrue(js.contains("if (isChartUrl()) hideChart()"))
+        assertTrue(js.contains("function showChart()"))
         assertTrue(js.contains("function step1_zoom()"))
-        assertTrue(js.contains("function step2_height()"))
+        assertTrue(js.contains("function finishFit()"))
         assertTrue(js.contains("winW / contentW"))
         assertTrue(js.contains("document.body.style.setProperty('zoom'"))
-        assertTrue(js.contains("querySelectorAll('[y]')"))
-        assertTrue(js.contains("svgH + 40"))
+        assertTrue(js.contains("__chartFitSettling"))
+        assertTrue(js.contains("__chartFitFailsafe"))
+        assertTrue(js.contains("setTimeout"))
+        assertTrue(js.contains("1200"))
         assertTrue(js.contains("function raiseFloor"))
         assertTrue(js.contains("__chartFitFloorH"))
         assertTrue(js.contains("overflow:visible"))
-        assertTrue(js.contains("function showChart()"))
         assertTrue(js.contains("Element.prototype.setAttribute"))
-        assertTrue(js.contains("window.__chartFitLockObs"))
         assertTrue(js.contains("window.__chartFitDone = true"))
-        assertTrue(js.contains("readyAt"))
+        assertFalse(js.contains("readyAt"))
         assertFalse(js.contains("setInterval"))
         assertFalse(js.contains("window.__chartZoom"))
         assertFalse(js.contains("__chartTargetH"))
@@ -64,6 +64,7 @@ class ChartFitTest {
         val reset = ChartFit.RESET_JS
         assertTrue(reset.contains("window.__chartFitDone = false"))
         assertTrue(reset.contains("__chartFitLockObs.disconnect()"))
+        assertTrue(reset.contains("__chartFitSettling = false"))
         assertTrue(reset.contains("__chartFitFloorH = 0"))
         assertTrue(reset.contains("__chartFitHideStyle"))
         assertTrue(reset.contains(".chart-part"))
