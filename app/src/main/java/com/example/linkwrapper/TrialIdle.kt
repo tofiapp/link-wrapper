@@ -5,8 +5,9 @@ import android.os.SystemClock
 
 /**
  * Zkušební APK: po minutě na pozadí pryč relace, cookies i HTTP auth
- * (PSST, grafy, DSD). Čas se píše do prefs, aby to platilo i po zabití
- * procesu. Běžná APK tohle nedělá.
+ * (PSST, grafy, DSD). Připnuté karty zůstanou otevřené v procesu —
+ * nesmaže se Chromium profil ani se nerestartuje appka. Čas se píše
+ * do prefs, aby to platilo i po zabití procesu. Běžná APK tohle nedělá.
  */
 internal object TrialIdle {
 
