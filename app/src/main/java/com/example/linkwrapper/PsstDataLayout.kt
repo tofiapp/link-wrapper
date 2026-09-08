@@ -1,11 +1,10 @@
 package com.example.linkwrapper
 
 /**
- * Zkušební APK: na PSST Data jsou tři flex karty (`grid-rows-3`).
- * Na šířku se smrskne hlavně `[data-slot=card-content]` (tabulka),
- * hlavička karty drží. V landscape dvě karty vedle sebe a třetí pod nimi
- * přes celou šířku. Grid má danou výšku a content bere zbytek s interním
- * scrollem.
+ * PSST Data: `div.grid.flex-1.grid-rows-3` se třemi `[data-slot=card]`.
+ * Stránka počítá s flex výškou rodiče; po zoomu obálky (`html { zoom }`)
+ * `flex-1` nevyplní displej. Grid proto dostane výšku z visualViewport
+ * dělenou zoomem. V landscape dvě karty vedle sebe, třetí pod nimi.
  */
 internal object PsstDataLayout {
 
@@ -16,45 +15,98 @@ internal object PsstDataLayout {
     function landscape() {
         return window.innerWidth > window.innerHeight;
     }
-    function grids() {
-        return document.querySelectorAll('div.grid[class*="grid-rows-3"]');
+    function readZoom() {
+        var z = '';
+        try { z = document.documentElement.style.zoom || ''; } catch (e) {}
+        if (!z) {
+            try { z = getComputedStyle(document.documentElement).zoom || ''; } catch (e2) {}
+        }
+        if (!z || z === 'normal') return 1;
+        var s = String(z);
+        var n = s.indexOf('%') >= 0 ? parseFloat(s) / 100 : parseFloat(s);
+        return (n > 0.2 && n <= 3) ? n : 1;
     }
-    function clear() {
-        var el = document.getElementById(STYLE_ID);
-        if (el) el.remove();
-        grids().forEach(function(g) {
-            g.style.removeProperty('height');
-            g.style.removeProperty('max-height');
-            g.removeAttribute(ATTR);
+    function visHeight() {
+        if (window.visualViewport && window.visualViewport.height)
+            return window.visualViewport.height;
+        return window.innerHeight;
+    }
+    function grids() {
+        var list = [];
+        document.querySelectorAll('div.grid.flex-1[class*="grid-rows-3"]').forEach(function(g) {
+            list.push(g);
         });
-        document.querySelectorAll('[' + ATTR + ']').forEach(function(g) {
-            g.style.removeProperty('height');
-            g.style.removeProperty('max-height');
-            g.removeAttribute(ATTR);
+        if (list.length) return list;
+        document.querySelectorAll('div.grid[class*="grid-rows-3"]').forEach(function(g) {
+            list.push(g);
         });
+        if (list.length) return list;
+        document.querySelectorAll('div.grid').forEach(function(g) {
+            var cards = 0;
+            for (var i = 0; i < g.children.length; i++) {
+                if (g.children[i].getAttribute('data-slot') === 'card') cards++;
+            }
+            if (cards === 3) list.push(g);
+        });
+        return list;
+    }
+    function fillChain(grid, cssH) {
+        var n = grid.parentElement;
+        var guard = 0;
+        while (n && n !== document.documentElement && guard < 12) {
+            n.style.setProperty('min-height', '0', 'important');
+            n.style.setProperty('overflow', 'hidden', 'important');
+            n.style.setProperty('padding-bottom', '0px', 'important');
+            n.style.setProperty('margin-bottom', '0px', 'important');
+            if (n.tagName === 'BODY') break;
+            n = n.parentElement;
+            guard++;
+        }
+        var vis = visHeight();
+        var zoom = readZoom();
+        var bodyH = Math.floor(vis / zoom);
+        try {
+            document.documentElement.style.setProperty('height', bodyH + 'px', 'important');
+            document.documentElement.style.setProperty('overflow', 'hidden', 'important');
+            document.body.style.setProperty('height', bodyH + 'px', 'important');
+            document.body.style.setProperty('min-height', '0', 'important');
+            document.body.style.setProperty('overflow', 'hidden', 'important');
+            document.body.style.setProperty('margin-bottom', '0', 'important');
+        } catch (e) {}
+        grid.style.setProperty('height', cssH + 'px', 'important');
+        grid.style.setProperty('max-height', cssH + 'px', 'important');
+        grid.style.setProperty('flex', '1 1 auto', 'important');
     }
     function apply() {
-        if (!landscape()) {
-            clear();
-            return;
-        }
+        var land = landscape();
         var el = document.getElementById(STYLE_ID);
         if (!el) {
             el = document.createElement('style');
             el.id = STYLE_ID;
             (document.head || document.documentElement).appendChild(el);
         }
+        var cols = land
+            ? 'grid-template-columns:repeat(2,minmax(0,1fr))!important;' +
+              'grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;'
+            : 'grid-template-columns:minmax(0,1fr)!important;' +
+              'grid-template-rows:repeat(3,minmax(0,1fr))!important;';
+        var third = land
+            ? '[data-obalka-psst-grid]>:nth-child(3){grid-column:1/-1!important;}'
+            : '[data-obalka-psst-grid]>:nth-child(3){grid-column:auto!important;}';
         el.textContent =
-            'div.grid[class*="grid-rows-3"]{' +
-            'grid-template-columns:repeat(2,minmax(0,1fr))!important;' +
-            'grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;' +
-            'gap:8px!important;' +
+            '[data-obalka-psst-grid]{' +
+            cols +
+            'box-sizing:border-box!important;' +
+            'gap:6px!important;' +
+            'padding-top:4px!important;' +
+            'padding-right:4px!important;' +
+            'padding-bottom:4px!important;' +
+            'padding-left:4px!important;' +
             'min-height:0!important;' +
+            'margin:0!important;' +
             '}' +
-            'div.grid[class*="grid-rows-3"]>:nth-child(3){' +
-            'grid-column:1/-1!important;' +
-            '}' +
-            'div.grid[class*="grid-rows-3"]>[data-slot="card"]{' +
+            third +
+            '[data-obalka-psst-grid]>[data-slot="card"]{' +
             'min-height:0!important;' +
             'height:100%!important;' +
             'max-height:100%!important;' +
@@ -62,21 +114,22 @@ internal object PsstDataLayout {
             'flex-direction:column!important;' +
             'overflow:hidden!important;' +
             '}' +
-            'div.grid[class*="grid-rows-3"]>[data-slot="card"]>[data-slot="card-header"]{' +
+            '[data-obalka-psst-grid]>[data-slot="card"]>[data-slot="card-header"]{' +
             'flex:0 0 auto!important;' +
             '}' +
-            'div.grid[class*="grid-rows-3"]>[data-slot="card"]>[data-slot="card-content"]{' +
+            '[data-obalka-psst-grid]>[data-slot="card"]>[data-slot="card-content"]{' +
             'flex:1 1 0%!important;' +
             'min-height:0!important;' +
             'overflow:auto!important;' +
             '}';
+        var zoom = readZoom();
+        var vis = visHeight();
         grids().forEach(function(grid) {
             grid.setAttribute(ATTR, '1');
             var top = grid.getBoundingClientRect().top;
-            var h = Math.floor(window.innerHeight - top + 32);
-            if (h < 240) h = 240;
-            grid.style.setProperty('height', h + 'px', 'important');
-            grid.style.setProperty('max-height', h + 'px', 'important');
+            var h = Math.floor((vis - top) / zoom);
+            if (h < 320) h = 320;
+            fillChain(grid, h);
         });
     }
     apply();
@@ -84,6 +137,9 @@ internal object PsstDataLayout {
         window.__obalkaPsstLayoutBound = true;
         window.addEventListener('resize', apply);
         window.addEventListener('orientationchange', apply);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', apply);
+        }
     }
 })();
 """

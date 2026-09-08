@@ -13,7 +13,7 @@ data class TrialBookmark(
 )
 
 /**
- * Zkušební složka: uložené URL a popisky. Přežije wipe relace
+ * Složka: uložené URL a popisky. Přežije wipe relace ve zkušební APK
  * — smaže se jen přihlášení, ne tenhle seznam.
  */
 internal object TrialBookmarks {
