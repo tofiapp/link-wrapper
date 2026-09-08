@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Malý pruh pod lištou: VPN nebo síť vypadla. Grafy a karty zůstanou.
+  Malý pruh dole: VPN nebo síť vypadla. Grafy a karty zůstanou.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/connectionBanner"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_gravity="top"
+    android:layout_gravity="bottom"
     android:background="@color/alert"
     android:clickable="false"
     android:elevation="8dp"
