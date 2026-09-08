@@ -18,6 +18,8 @@ package com.example.linkwrapper
  * 5. Zoom na **body**; `PageZoom` z ⋮ je na **html** (ať Chromium
  *    hodnoty nenasobí).
  * 6. `overflow-x: hidden`, `overflow-y: auto`.
+ * 7. Po zamčení výšky dostanou `html`/`body` konkrétní px výšku obsahu
+ *    (ne `auto` — stránka to přepisuje a nejde doscrollovat dolů).
  */
 internal object ChartFit {
 
@@ -209,8 +211,25 @@ window.__chartFitDone = false;
         window.__chartFitLockObs.observe(el, { attributes: true, attributeFilter: ['style'] });
 
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
-        document.documentElement.style.setProperty('height', 'auto', 'important');
-        document.body.style.setProperty('height', 'auto', 'important');
+        document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
+        var needed = target + 96;
+        try {
+            var wrap = el.parentElement;
+            var extra = Math.max(
+                el.scrollHeight || 0,
+                el.offsetHeight || 0,
+                wrap ? (wrap.scrollHeight || 0) : 0,
+                wrap ? (wrap.offsetHeight || 0) : 0
+            );
+            if (extra > needed) needed = extra + 96;
+        } catch (e2) {}
+        var hEl = document.documentElement;
+        var bEl = document.body;
+        hEl.style.setProperty('height', needed + 'px', 'important');
+        hEl.style.setProperty('min-height', needed + 'px', 'important');
+        bEl.style.setProperty('height', needed + 'px', 'important');
+        bEl.style.setProperty('min-height', needed + 'px', 'important');
+        bEl.style.setProperty('overflow-y', 'visible', 'important');
 
         window.__chartFitDone = true;
     }
