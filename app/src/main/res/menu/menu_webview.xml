@@ -32,6 +32,13 @@
             android:icon="@drawable/ic_page_size"
             app:showAsAction="never" />
         <item
+            android:id="@+id/action_ephemeral_login"
+            android:title="Neukládat přihlášení"
+            android:icon="@drawable/ic_ephemeral_login"
+            android:checkable="true"
+            android:visible="false"
+            app:showAsAction="never" />
+        <item
             android:id="@+id/action_link_settings"
             android:title="Nastavení odkazů"
             android:icon="@drawable/ic_settings_alert"

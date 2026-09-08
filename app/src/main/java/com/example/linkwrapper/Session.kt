@@ -15,6 +15,7 @@ data class Credentials(val username: String, val password: String)
  *
  * Údaje se uloží až po ověření na PSST, šifrované klíčem z Android
  * Keystore. Platí, dokud uživatel v nabídce nesmaže uložené údaje.
+ * Zkušební APK umí v ⋮ „Neukládat přihlášení“ — pak zůstane jen RAM.
  */
 object Session {
 
@@ -55,6 +56,7 @@ object Session {
 
     fun credentials(context: Context): Credentials? {
         memoryOnly?.let { return it }
+        if (TrialSettings.ephemeralLogin(context)) return null
         migrateLegacy(context)
         migratePlaintext(context)
         val prefs = prefs(context)
@@ -69,8 +71,34 @@ object Session {
     /** Uloží ověřené údaje. Na disk jen šifrovaně; jinak jen v RAM. */
     fun start(context: Context, username: String, password: String) {
         memoryOnly = Credentials(username, password)
-        val encUser = SecretStore.encryptToString(username)
-        val encPass = SecretStore.encryptToString(password)
+        if (TrialSettings.ephemeralLogin(context)) {
+            forgetDisk(context)
+            return
+        }
+        persistMemoryToDisk(context)
+    }
+
+    /** Zkušební „neukládat“: pryč z disku, relace v RAM zůstane. */
+    fun forgetDisk(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_USER)
+            .remove(KEY_PASS)
+            .remove(KEY_USER_ENC)
+            .remove(KEY_PASS_ENC)
+            .commit()
+        try {
+            @Suppress("DEPRECATION")
+            WebViewDatabase.getInstance(context).clearHttpAuthUsernamePassword()
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Zkušební vypnutí „neukládat“: RAM údaje se zapíšou šifrovaně. */
+    fun persistMemoryToDisk(context: Context) {
+        val creds = memoryOnly ?: return
+        if (TrialSettings.ephemeralLogin(context)) return
+        val encUser = SecretStore.encryptToString(creds.username)
+        val encPass = SecretStore.encryptToString(creds.password)
         val editor = prefs(context).edit()
             .remove(KEY_USER)
             .remove(KEY_PASS)

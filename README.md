@@ -11,6 +11,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   `test.psst.tudc.cz`). **DSD** má vlastní formulář na webu; údaje z PSST
   se tam neposílají.
 - Údaje se uloží v aplikaci, dokud je v ⋮ nesmažete.
+  **Zkušební APK** má v ⋮ navíc **Neukládat přihlášení** — jméno a heslo
+  k PSST zůstanou jen do vypnutí aplikace, na disk se neuloží.
 - **Vymazat údaje** (⋮ dole, červeně) smaže cookies, přihlášení k PSST i
   relace na otevřených stránkách. Pak jste na obou webech odhlášení.
 - **Karty** nahoře v liště. **Domeček** změní aktuální kartu (DSD, PSST,
