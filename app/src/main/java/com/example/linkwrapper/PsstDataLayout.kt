@@ -3,8 +3,9 @@ package com.example.linkwrapper
 /**
  * Zkušební APK: na PSST Data jsou tři flex karty (`grid-rows-3`).
  * Na šířku se smrskne hlavně `[data-slot=card-content]` (tabulka),
- * hlavička karty drží. V landscape proto tři sloupce, grid má danou
- * výšku a content bere zbytek s interním scrollem.
+ * hlavička karty drží. V landscape dvě karty vedle sebe a třetí pod nimi
+ * přes celou šířku. Grid má danou výšku a content bere zbytek s interním
+ * scrollem.
  */
 internal object PsstDataLayout {
 
@@ -45,9 +46,12 @@ internal object PsstDataLayout {
         }
         el.textContent =
             'div.grid[class*="grid-rows-3"]{' +
-            'grid-template-columns:repeat(3,minmax(0,1fr))!important;' +
-            'grid-template-rows:minmax(0,1fr)!important;' +
+            'grid-template-columns:repeat(2,minmax(0,1fr))!important;' +
+            'grid-template-rows:minmax(0,1fr) minmax(0,1fr)!important;' +
             'min-height:0!important;' +
+            '}' +
+            'div.grid[class*="grid-rows-3"]>:nth-child(3){' +
+            'grid-column:1/-1!important;' +
             '}' +
             'div.grid[class*="grid-rows-3"]>[data-slot="card"]{' +
             'min-height:0!important;' +

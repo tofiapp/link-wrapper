@@ -146,6 +146,8 @@ class WebViewActivity : AppCompatActivity() {
     private var bookmarkPopup: PopupWindow? = null
     private var bookmarkLabelDialog: AlertDialog? = null
     private var actionDialog: AlertDialog? = null
+    /** Po wipe na pozadí znovu připojit viditelný pinnutý WebView — jinak zbělá. */
+    private var needsPinnedWebViewReveal = false
 
     /** Čekající HTTP auth, když uživatel právě vyplňuje formulář. */
     private var pendingAuthHandler: HttpAuthHandler? = null
@@ -245,6 +247,16 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        val tab = activeTab
+        val wv = tab?.webView
+        if (tab != null && !tab.isHome && wv != null && gate == Gate.BROWSER &&
+            (needsPinnedWebViewReveal || wv.parent == null)
+        ) {
+            needsPinnedWebViewReveal = false
+            revealActiveBrowserWebView(wv)
+            return
+        }
+        needsPinnedWebViewReveal = false
         (activeWebView ?: tabs.firstNotNullOfOrNull { it.webView })?.resumeTimers()
         activeWebView?.onResume()
     }
@@ -626,6 +638,35 @@ class WebViewActivity : AppCompatActivity() {
             wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, true)
         }
         (wv.parent as? ViewGroup)?.removeView(wv)
+    }
+
+    /**
+     * Po minimalizaci Chromium nechá odpojený (nebo i připojený) povrch bílý.
+     * Stejný tah jako přepnutí karty pryč a zpět: znovu vložit do kontejneru.
+     */
+    private fun revealActiveBrowserWebView(wv: WebView) {
+        (wv.parent as? ViewGroup)?.removeView(wv)
+        webContainer.addView(
+            wv,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        wv.visibility = View.VISIBLE
+        wv.onResume()
+        wv.resumeTimers()
+        wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        wv.invalidate()
+        scheduleChartFit()
+        injectPsstDataLayout(wv)
+        try {
+            wv.evaluateJavascript(
+                "try{window.dispatchEvent(new Event('resize'))}catch(e){}",
+                null
+            )
+        } catch (_: Exception) {
+        }
     }
 
     private fun closeTab(tabId: Long) {
@@ -2441,10 +2482,18 @@ class WebViewActivity : AppCompatActivity() {
         TrialIsolation.reset()
         Session.clearAuthCaches(this)
         destroyPrefetchViews()
+        val keepAttached = activeTab?.takeIf {
+            it.pinned && !it.isHome && it.webView != null && gate == Gate.BROWSER
+        }
         tabs.filter { !it.isHome && !it.pinned }.forEach { destroyWebView(it) }
         tabs.filter { it.pinned }.forEach { tab ->
+            if (tab.id == keepAttached?.id) {
+                tab.webView?.onPause()
+                return@forEach
+            }
             tab.webView?.let { parkBackgroundWebView(it, keepAlive = true) }
         }
+        if (keepAttached != null) needsPinnedWebViewReveal = true
         persistOpenTabsFromTabs()
         if (tabs.isEmpty()) {
             openNewHomeTab()
