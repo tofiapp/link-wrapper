@@ -145,6 +145,7 @@ class WebViewActivity : AppCompatActivity() {
     private var warningDialog: AlertDialog? = null
     private var bookmarkPopup: PopupWindow? = null
     private var bookmarkLabelDialog: AlertDialog? = null
+    private var actionDialog: AlertDialog? = null
 
     /** Čekající HTTP auth, když uživatel právě vyplňuje formulář. */
     private var pendingAuthHandler: HttpAuthHandler? = null
@@ -239,6 +240,7 @@ class WebViewActivity : AppCompatActivity() {
         if (isFinishing) return
         registerVpnMonitor()
         scheduleVpnCheck()
+        maybePromptLoginForActiveUnpinnedTab()
     }
 
     override fun onResume() {
@@ -251,12 +253,14 @@ class WebViewActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig)
         applyPageZoomToAllTabs()
         dismissBookmarkPopup()
+        dismissActionSheet()
         // Zámek zmizí s elementem; odemknout a znovu fitnout po ~300 ms.
         scheduleChartFit()
     }
 
     override fun onPause() {
         dismissBookmarkPopup()
+        dismissActionSheet()
         tabs.forEach { it.webView?.onPause() }
         tabs.firstNotNullOfOrNull { it.webView }?.pauseTimers()
         super.onPause()
@@ -324,6 +328,7 @@ class WebViewActivity : AppCompatActivity() {
         dismissBookmarkPopup()
         bookmarkLabelDialog?.dismiss()
         bookmarkLabelDialog = null
+        dismissActionSheet()
         trustProbeSeq++
         trustProbeInFlight = false
         AuthProbe.kill(this)
@@ -549,7 +554,8 @@ class WebViewActivity : AppCompatActivity() {
         val target = tabs.find { it.id == tabId } ?: return
         if (tabId != activeTabId) hideKeyboard()
         activeTabId = tabId
-        if (!verifyingLogin) hideLoginOverlay()
+        val promptLogin = shouldPromptLoginForTab(target)
+        if (!verifyingLogin && !promptLogin) hideLoginOverlay()
         if (target.isHome) {
             gate = Gate.HOME
             lastContentGate = Gate.HOME
@@ -563,12 +569,19 @@ class WebViewActivity : AppCompatActivity() {
             raiseConnectionBanner()
             tabs.forEach { tab ->
                 val wv = tab.webView ?: return@forEach
-                parkBackgroundWebView(wv)
+                parkBackgroundWebView(wv, keepAlive = tab.pinned)
             }
             attachImeLayoutListener(false)
             setSensitiveScreen(false)
             refreshTabStrip()
             return
+        }
+
+        if (target.webView == null && !promptLogin) {
+            val webView = takePrefetch(target.url) ?: createWebView()
+            target.webView = webView
+            TrialIsolation.onNavigate(this, target.url)
+            webView.loadUrl(target.url)
         }
 
         gate = Gate.BROWSER
@@ -594,16 +607,23 @@ class WebViewActivity : AppCompatActivity() {
                 wv.onResume()
                 wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             } else {
-                parkBackgroundWebView(wv)
+                parkBackgroundWebView(wv, keepAlive = tab.pinned)
             }
         }
         refreshTabStrip()
+        if (promptLogin) {
+            pendingStartUrl = target.url
+            presentLogin()
+        }
     }
 
-    private fun parkBackgroundWebView(wv: WebView) {
+    private fun parkBackgroundWebView(wv: WebView, keepAlive: Boolean = false) {
         wv.onPause()
-        // Otevřené karty musí zůstat v paměti, ať po přihlášení jdou dál.
-        wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        if (keepAlive) {
+            wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
+        } else {
+            wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_WAIVED, true)
+        }
         (wv.parent as? ViewGroup)?.removeView(wv)
     }
 
@@ -952,9 +972,9 @@ class WebViewActivity : AppCompatActivity() {
                     return
                 }
 
-                // Načtená karta už je v paměti — 401 po odhlášení ji neschová
-                // za přihlášení. Dialog až u další (nové) stránky PSST.
-                if (isLoadedOpenView(webView)) {
+                // Připnutý graf už je v paměti — 401 po odhlášení ho neschová
+                // za přihlášení. Dialog až u další (nepřipnuté) stránky PSST.
+                if (isLoadedPinnedView(webView)) {
                     handler.cancel()
                     awaitingHttpAuth = false
                     return
@@ -1218,17 +1238,14 @@ class WebViewActivity : AppCompatActivity() {
             Toast.makeText(this, "Domů nelze poslat na druhou kartu", Toast.LENGTH_SHORT).show()
             return
         }
-        val items = arrayOf("Otevřít na druhé kartě", "Kopírovat adresu")
-        MaterialAlertDialogBuilder(this)
-            .setTitle(heading)
-            .setItems(items) { _, which ->
-                when (which) {
-                    0 -> openOnOtherTab(url)
-                    1 -> copyUrlToClipboard(url)
-                }
-            }
-            .setNegativeButton("Zrušit", null)
-            .show()
+        showActionSheet(
+            heading,
+            url,
+            listOf(
+                ActionRow("Otevřít na druhé kartě", R.drawable.ic_add) { openOnOtherTab(url) },
+                ActionRow("Kopírovat adresu", R.drawable.ic_copy) { copyUrlToClipboard(url) }
+            )
+        )
     }
 
     private fun showTabActions(tab: BrowserTab) {
@@ -1236,30 +1253,67 @@ class WebViewActivity : AppCompatActivity() {
             Toast.makeText(this, "Domů nelze poslat na druhou kartu", Toast.LENGTH_SHORT).show()
             return
         }
-        val labels = mutableListOf<String>()
+        val rows = mutableListOf<ActionRow>()
         if (TrialSettings.isTrial()) {
-            labels.add(if (tab.pinned) "Odepnout" else "Připnout nahoru")
+            rows.add(
+                if (tab.pinned) ActionRow("Odepnout", R.drawable.ic_pin) { setTabPinned(tab, false) }
+                else ActionRow("Připnout nahoru", R.drawable.ic_pin) { setTabPinned(tab, true) }
+            )
         }
-        labels.add("Otevřít na druhé kartě")
-        labels.add("Kopírovat adresu")
-        MaterialAlertDialogBuilder(this)
-            .setTitle(tab.title)
-            .setItems(labels.toTypedArray()) { _, which ->
-                var i = 0
-                if (TrialSettings.isTrial()) {
-                    if (which == i) {
-                        setTabPinned(tab, !tab.pinned)
-                        return@setItems
-                    }
-                    i++
-                }
-                when (which) {
-                    i -> openOnOtherTab(tab.url)
-                    i + 1 -> copyUrlToClipboard(tab.url)
-                }
+        rows.add(ActionRow("Otevřít na druhé kartě", R.drawable.ic_add) { openOnOtherTab(tab.url) })
+        rows.add(ActionRow("Kopírovat adresu", R.drawable.ic_copy) { copyUrlToClipboard(tab.url) })
+        showActionSheet(tab.title, tab.url, rows)
+    }
+
+    private data class ActionRow(
+        val title: String,
+        val icon: Int,
+        val run: () -> Unit
+    )
+
+    private fun showActionSheet(title: String, subtitle: String?, rows: List<ActionRow>) {
+        dismissActionSheet()
+        val view = layoutInflater.inflate(R.layout.popup_action_sheet, null)
+        view.findViewById<TextView>(R.id.actionSheetTitle).text = title
+        val sub = view.findViewById<TextView>(R.id.actionSheetSubtitle)
+        if (subtitle.isNullOrBlank()) {
+            sub.visibility = View.GONE
+        } else {
+            sub.visibility = View.VISIBLE
+            sub.text = subtitle
+        }
+        val list = view.findViewById<LinearLayout>(R.id.actionSheetList)
+        val dialog = MaterialAlertDialogBuilder(this, R.style.RoundedDialog)
+            .setView(view)
+            .create()
+        val inflater = LayoutInflater.from(this)
+        rows.forEach { row ->
+            val item = inflater.inflate(R.layout.item_action_row, list, false)
+            item.findViewById<ImageView>(R.id.actionRowIcon).setImageResource(row.icon)
+            item.findViewById<TextView>(R.id.actionRowTitle).text = row.title
+            item.setOnClickListener {
+                dialog.dismiss()
+                row.run()
             }
-            .setNegativeButton("Zrušit", null)
-            .show()
+            list.addView(item)
+        }
+        actionDialog = dialog
+        dialog.setOnDismissListener {
+            if (actionDialog === dialog) actionDialog = null
+        }
+        dialog.show()
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val width = (320 * resources.displayMetrics.density).toInt()
+        dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.window?.setGravity(Gravity.BOTTOM)
+    }
+
+    private fun dismissActionSheet() {
+        try {
+            actionDialog?.dismiss()
+        } catch (_: Exception) {
+        }
+        actionDialog = null
     }
 
     private fun setTabPinned(tab: BrowserTab, pinned: Boolean) {
@@ -1307,7 +1361,10 @@ class WebViewActivity : AppCompatActivity() {
                 continue
             }
             if (tabs.size >= MAX_TABS) break
-            val webView = if (load) (takePrefetch(item.url) ?: createWebView()) else createWebView()
+            val needsView = load || item.pinned
+            val webView = if (!needsView) null
+            else if (load) takePrefetch(item.url) ?: createWebView()
+            else createWebView()
             val tab = BrowserTab(
                 id = nextTabId++,
                 webView = webView,
@@ -1321,14 +1378,20 @@ class WebViewActivity : AppCompatActivity() {
             } else {
                 tabs.add(tab)
             }
-            try {
-                webView.onPause()
-                webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
-            } catch (_: Exception) {
-            }
-            if (load && (webView.url.isNullOrBlank() || webView.url == "about:blank")) {
-                TrialIsolation.onNavigate(this, item.url)
-                webView.loadUrl(item.url)
+            if (webView != null) {
+                try {
+                    webView.onPause()
+                    webView.setRendererPriorityPolicy(
+                        if (item.pinned) WebView.RENDERER_PRIORITY_IMPORTANT
+                        else WebView.RENDERER_PRIORITY_WAIVED,
+                        !item.pinned
+                    )
+                } catch (_: Exception) {
+                }
+                if (load && (webView.url.isNullOrBlank() || webView.url == "about:blank")) {
+                    TrialIsolation.onNavigate(this, item.url)
+                    webView.loadUrl(item.url)
+                }
             }
         }
         persistOpenTabsFromTabs()
@@ -1336,18 +1399,37 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun loadUnloadedTabsAfterLogin() {
         tabs.filter { !it.isHome }.forEach { tab ->
-            val wv = tab.webView ?: return@forEach
-            if (!wv.url.isNullOrBlank() && wv.url != "about:blank") return@forEach
+            var wv = tab.webView
+            if (wv == null) {
+                wv = takePrefetch(tab.url) ?: createWebView()
+                tab.webView = wv
+            }
+            if (tab.pinned && !wv.url.isNullOrBlank() && wv.url != "about:blank") return@forEach
             TrialIsolation.onNavigate(this, tab.url)
             wv.loadUrl(tab.url)
         }
     }
 
-    private fun isLoadedOpenView(webView: WebView): Boolean {
+    private fun isLoadedPinnedView(webView: WebView): Boolean {
         val tab = tabs.find { it.webView === webView } ?: return false
-        if (tab.isHome) return false
+        if (!tab.pinned) return false
         val current = webView.url
         return !current.isNullOrBlank() && current != "about:blank"
+    }
+
+    private fun shouldPromptLoginForTab(tab: BrowserTab): Boolean {
+        if (!TrialSettings.isTrial() || Session.isActive(this)) return false
+        if (tab.isHome || tab.pinned) return false
+        if (tab.url.isBlank() || tab.url == Destinations.HOME_URL) return false
+        return Destinations.forUrl(tab.url)?.requiresAppLogin == true
+    }
+
+    private fun maybePromptLoginForActiveUnpinnedTab() {
+        if (verifyingLogin) return
+        val tab = activeTab ?: return
+        if (!shouldPromptLoginForTab(tab)) return
+        pendingStartUrl = tab.url
+        presentLogin()
     }
 
     /**
@@ -1935,7 +2017,10 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         enterBrowser()
-        if (activeTab?.isHome == true) {
+        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
+        if (existing != null) {
+            selectTab(existing.id)
+        } else if (activeTab?.isHome == true) {
             loadInActiveTab(url)
         } else {
             openInNewTab(url)
@@ -2308,8 +2393,8 @@ class WebViewActivity : AppCompatActivity() {
 
     /**
      * Zkušební: na pozadí hned pryč relace a cookies.
-     * Všechny karty i jejich WebView zůstanou; proces se nerestartuje.
-     * Přihlášení až když uživatel otevře další stránku PSST.
+     * Připnuté karty zůstanou načtené; ostatní jen jako URL v liště.
+     * U nepřipnuté otevřené karty po návratu vyskočí přihlášení.
      */
     private fun consumeTrialIdleTimeout(): Boolean {
         if (!TrialSettings.isTrial() || verifyingLogin) return false
@@ -2337,6 +2422,10 @@ class WebViewActivity : AppCompatActivity() {
         TrialIsolation.reset()
         Session.clearAuthCaches(this)
         destroyPrefetchViews()
+        tabs.filter { !it.isHome && !it.pinned }.forEach { destroyWebView(it) }
+        tabs.filter { it.pinned }.forEach { tab ->
+            tab.webView?.let { parkBackgroundWebView(it, keepAlive = true) }
+        }
         persistOpenTabsFromTabs()
         if (tabs.isEmpty()) {
             openNewHomeTab()
@@ -2490,11 +2579,11 @@ class WebViewActivity : AppCompatActivity() {
         val alert = ContextCompat.getColor(this, R.color.alert)
 
         menu?.findItem(R.id.action_new_tab)?.icon?.mutate()?.setTint(accent)
+        menu?.findItem(R.id.action_reload)?.icon?.mutate()?.setTint(inkSoft)
         menu?.findItem(R.id.action_home)?.icon?.mutate()?.setTint(inkSoft)
 
         listOf(
             R.id.action_open_url,
-            R.id.action_reload,
             R.id.action_page_size,
             R.id.action_link_settings,
             R.id.action_folders
@@ -2544,6 +2633,13 @@ class WebViewActivity : AppCompatActivity() {
             showTrialBookmarkMenu()
             return true
         }
+        if (item.itemId == R.id.action_reload) {
+            if (verifyingLogin || gate == Gate.LOGIN) return true
+            if (gate != Gate.BROWSER) return true
+            dialogShown = false
+            activeWebView?.reload()
+            return true
+        }
         if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings) {
             return true
         }
@@ -2555,12 +2651,6 @@ class WebViewActivity : AppCompatActivity() {
             R.id.action_new_tab -> {
                 if (verifyingLogin) failLogin(null, stayOnForm = false)
                 openNewHomeTab()
-                true
-            }
-            R.id.action_reload -> {
-                if (gate != Gate.BROWSER) return true
-                dialogShown = false
-                activeWebView?.reload()
                 true
             }
             R.id.action_page_size -> {
@@ -2583,6 +2673,10 @@ class WebViewActivity : AppCompatActivity() {
         }
         if (bookmarkPopup?.isShowing == true) {
             dismissBookmarkPopup()
+            return
+        }
+        if (actionDialog?.isShowing == true) {
+            dismissActionSheet()
             return
         }
         if (gate == Gate.HOME) {

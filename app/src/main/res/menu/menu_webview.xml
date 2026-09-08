@@ -2,11 +2,17 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <!-- Pořadí vpravo: + , složka (zkušební) , domeček , ⋮ -->
+    <!-- Pořadí vpravo: + , přenačíst , složka (zkušební) , domeček , ⋮ -->
     <item
         android:id="@+id/action_new_tab"
         android:title="Nová karta"
         android:icon="@drawable/ic_add"
+        app:showAsAction="always" />
+
+    <item
+        android:id="@+id/action_reload"
+        android:title="Přenačíst"
+        android:icon="@drawable/ic_refresh"
         app:showAsAction="always" />
 
     <item
@@ -27,11 +33,6 @@
             android:id="@+id/action_open_url"
             android:title="Zadat URL adresu"
             android:icon="@drawable/ic_link"
-            app:showAsAction="never" />
-        <item
-            android:id="@+id/action_reload"
-            android:title="Přenačíst"
-            android:icon="@drawable/ic_refresh"
             app:showAsAction="never" />
         <item
             android:id="@+id/action_page_size"
