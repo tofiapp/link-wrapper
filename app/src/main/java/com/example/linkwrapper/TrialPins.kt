@@ -7,13 +7,14 @@ import java.nio.charset.StandardCharsets
 
 data class TrialPin(
     val title: String,
-    val url: String
+    val url: String,
+    val pinned: Boolean = true
 )
 
 /**
- * Zkušební APK: karty připnuté nahoru. Zůstanou v liště i po minutovém
- * odhlášení a po restartu procesu — smaže se jen relace, ne tenhle seznam.
- * Přihlášení se u nich neukáže; dialog až u další stránky PSST.
+ * Zkušební APK: otevřené karty (připnuté i ostatní). Zůstanou v liště
+ * po okamžitém odhlášení na pozadí i po restartu procesu — smaže se
+ * jen relace. Přihlášení až u další stránky PSST, ne u už načtených karet.
  */
 internal object TrialPins {
 
@@ -31,7 +32,7 @@ internal object TrialPins {
 
     fun encode(items: List<TrialPin>): String =
         items.joinToString("\n") { item ->
-            listOf(enc(item.title), enc(item.url)).joinToString("\t")
+            listOf(enc(item.title), enc(item.url), if (item.pinned) "1" else "0").joinToString("\t")
         }
 
     fun decode(raw: String?): List<TrialPin> {
@@ -42,7 +43,8 @@ internal object TrialPins {
             val title = dec(parts[0])
             val url = dec(parts[1])
             if (url.isEmpty() || url == Destinations.HOME_URL) return@mapNotNull null
-            TrialPin(title.ifEmpty { Destinations.tabTitle(url) }, url)
+            val pinned = parts.size < 3 || parts[2].trim() != "0"
+            TrialPin(title.ifEmpty { Destinations.tabTitle(url) }, url, pinned)
         }.toList()
     }
 

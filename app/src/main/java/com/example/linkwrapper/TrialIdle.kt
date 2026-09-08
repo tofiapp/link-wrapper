@@ -4,14 +4,14 @@ import android.content.Context
 import android.os.SystemClock
 
 /**
- * Zkušební APK: po minutě na pozadí pryč relace, cookies i HTTP auth
- * (PSST, grafy, DSD). Připnuté karty zůstanou otevřené v procesu —
- * nesmaže se Chromium profil ani se nerestartuje appka. Čas se píše
- * do prefs, aby to platilo i po zabití procesu. Běžná APK tohle nedělá.
+ * Zkušební APK: jakmile jde appka na pozadí, pryč relace, cookies i HTTP auth.
+ * Otevřené karty zůstanou v procesu — nesmaže se Chromium profil ani se
+ * nerestartuje appka. Značka v prefs platí i po zabití procesu. Běžná APK
+ * tohle nedělá.
  */
 internal object TrialIdle {
 
-    const val TIMEOUT_MS = 60_000L
+    const val TIMEOUT_MS = 0L
 
     private const val PREFS = "trial_idle"
     private const val KEY_ELAPSED = "bg_elapsed"
