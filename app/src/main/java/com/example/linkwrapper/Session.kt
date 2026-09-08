@@ -13,9 +13,8 @@ data class Credentials(val username: String, val password: String)
 /**
  * Přihlášení k PSST (NTLM).
  *
- * Údaje se uloží až po ověření na PSST, šifrované klíčem z Android
- * Keystore. V běžné APK platí, dokud uživatel v nabídce nesmaže údaje.
- * Zkušební APK údaje na disk neukládá a na pozadí relaci smaže hned.
+ * Údaje se po ověření na PSST drží jen v RAM. Jakmile jde appka
+ * na pozadí, relace se smaže. Na disk se heslo neukládá.
  */
 object Session {
 

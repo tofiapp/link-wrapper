@@ -4,10 +4,9 @@ import android.content.Context
 import android.os.SystemClock
 
 /**
- * Zkušební APK: jakmile jde appka na pozadí, pryč relace, cookies i HTTP auth.
+ * Jakmile jde appka na pozadí, pryč relace, cookies i HTTP auth.
  * Otevřené karty zůstanou v procesu — nesmaže se Chromium profil ani se
- * nerestartuje appka. Značka v prefs platí i po zabití procesu. Běžná APK
- * tohle nedělá.
+ * nerestartuje appka. Značka v prefs platí i po zabití procesu.
  */
 internal object TrialIdle {
 

@@ -153,19 +153,12 @@ Všechno se rozhoduje v jedné funkci: `refreshGate()` v `WebViewActivity.kt`.
                      /                \
                    NE                  ANO
                    ▼                    ▼
-            obrazovka              Běžná APK → Domů
-         „VPN není připojená“      (PSST login až po dlaždici)
-
-                                   Zkušební APK
-                                   Máme uloženou relaci?
-                                     /              \
-                                   NE                ANO
-                                   ▼                  ▼
-                            přihlášení            karty + Domů
-                            (údaje = tudc.cz)
+            obrazovka              Obě APK → Domů
+         „VPN není připojená“      (PSST login až po dlaždici;
+                                    relace jen v RAM, na pozadí pryč)
 ```
 
-**Obě APK:** Domů i bez přihlášení. Údaje jen pro PSST.
+**Obě APK:** stejné chování. Domů i bez přihlášení. Údaje jen pro PSST.
 Dřív appka pinovala firemní CA v APK — to už není, viz `AUDIT.md`.
 
 ---
@@ -307,7 +300,10 @@ web zůstane) a **domeček** (aktuální karta se změní na Domů). V ⋮:
 - zadat URL
 - přenačíst
 - návod na „otevírání odkazů“ v nastavení Androidu
-- **Vymazat údaje** (červeně, dole)
+- velikost stránek
+
+Odchod na pozadí smaže relaci (heslo není na disku). Položka Vymazat údaje
+v menu proto není.
 
 Na VPN/login obrazovce menu nic kromě Odhlásit neotevře.
 
