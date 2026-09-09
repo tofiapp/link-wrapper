@@ -5,16 +5,13 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
-- Na tabletu se hlavní APK jmenuje **Obálka**. Soubor s `-test` v názvu
-  se na ploše jmenuje **Obálka test**.
-- Po spuštění (a po VPN) nativní **Domů**.
+- Na tabletu se appka jmenuje **Obálka**.
+- Po spuštění nativní **Domů**.
   PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
   `test.psst.tudc.cz`).
 - Údaje k PSST zůstanou jen v RAM. Jakmile jde appka na pozadí
   (přepnutí pryč, minimalizace), relace i cookies se smažou; otevřené
   karty v liště zůstanou. Weby si cookies a NTLM mezi sebou nepředávají.
-  Vedle sebe jdou nainstalovat dva soubory
-  (`LinkWrapper-1.0.N.apk` a `LinkWrapper-1.0.N-test.apk`) s jiným id.
 - **Karty** nahoře v liště. **Domeček** změní aktuální kartu (PSST,
   graf) na **Domů**. **+** otevře novou kartu **Domů**, aktuální web zůstane.
   Křížek je jen když je karet víc. Dlaždice na Domů má jen název
@@ -40,7 +37,6 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - **Bez prohlížeče na tabletu**: Chrome ani jiný prohlížeč appka
   nepotřebuje a neotevírá. Musí zůstat systémové **Android System WebView**
   (někde ho dodává Chrome — ten pak nesmí zmizet) a **Cisco AnyConnect**.
-  Podrobněji v [`VYSVETLENI.md`](VYSVETLENI.md).
 
 ## Jak appku dostat jako .apk (bez Android Studia)
 
@@ -50,8 +46,7 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
    (`.github/workflows/build.yml`), který appku sestaví, očísluje a podepíše.
 4. Stáhni APK jedním z těchto způsobů:
    - **Releases** (pohodlnější): v repozitáři záložka **Releases** → nejnovější
-     verze → soubory `LinkWrapper-1.0.N.apk` a
-     `LinkWrapper-1.0.N-test.apk`.
+     verze → soubor `LinkWrapper-1.0.N.apk`.
    - **Actions**: záložka **Actions** → poslední běh → dole v sekci
      **Artifacts** najdeš `LinkWrapper-1.0.N` → stáhni zip, uvnitř je APK.
 5. Ten `.apk` nahraj do tabletu (email sám sobě, Google Drive, USB…) a nainstaluj.
@@ -93,9 +88,7 @@ spojení se nenačte.
 IT musí mít na tabletech nasazenou firemní CA (Intune → trusted
 certificate profile). Bez toho weby `tudc.cz` nepůjdou.
 
-Hlavní instalace se na zařízení jmenuje **Obálka**. APK s `-test`
-v názvu souboru se na ploše jmenuje **Obálka test**. Vedle sebe jdou
-dva APK soubory s jiným id instalace.
+Na zařízení se appka jmenuje **Obálka**.
 
 ## Přihlášení a odhlášení
 
@@ -125,7 +118,7 @@ přes HTTPS). To aplikace sama nevyřeší.
 Údaje se nikam neodesílají mimo cílový server. Záloha aplikace je vypnutá
 (`allowBackup=false`), aby se heslo nezkopírovalo z tabletu. Na disku je
 heslo šifrované klíčem v Android Keystore — čitelný text v souboru
-není. Podrobný bezpečnostní audit: [`BEZPECNOST.md`](BEZPECNOST.md).
+není.
 
 ## Co ještě doladit
 
@@ -133,6 +126,3 @@ není. Podrobný bezpečnostní audit: [`BEZPECNOST.md`](BEZPECNOST.md).
   symbolem odkazu). Dá se snadno vyměnit za firemní logo.
 
 Celkový audit (přihlášení, sekání grafů): [`AUDIT.md`](AUDIT.md).
-Bezpečnost údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
-
-Vysvětlení celého projektu pro člověka bez Kotlinu (co který soubor dělá a proč): [`VYSVETLENI.md`](VYSVETLENI.md).

@@ -3,8 +3,6 @@
 Obálka nad WebView. Přihlášení, karty, síť a HTTPS řeší Android. Grafy
 kreslí stránka uvnitř WebView.
 
-Prohlídka souborů bez Kotlinu: [`VYSVETLENI.md`](VYSVETLENI.md).
-Bezpečnost hesla: [`BEZPECNOST.md`](BEZPECNOST.md).
 Instalace APK: [`README.md`](README.md).
 
 ---
@@ -30,13 +28,9 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 
 ---
 
-## B. Soubory APK
+## B. Soubor APK
 
-Hlavní instalace se na ploše jmenuje **Obálka**
-(`LinkWrapper-1.0.N.apk`). APK s `-test` v názvu souboru se na ploše
-jmenuje **Obálka test** (`LinkWrapper-1.0.N-test.apk`). Jiné
-`applicationId`, jdou nainstalovat vedle sebe. Názvy flavorů
-`pinned` / `systemtrust` jsou jen vnitřní Gradle / CI.
+Na ploše se instalace jmenuje **Obálka** (`LinkWrapper-1.0.N.apk`).
 
 `Session` maže stará `session_gate` prefs. Keystore.
 
@@ -69,8 +63,7 @@ Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`,
 ## D. Přihlášení a údaje (stále platí)
 
 Ověření mimo hlavní proces, Keystore, `allowBackup=false`, `FLAG_SECURE`
-na formuláři. Údaje jdou jen na PSST hosty. Podrobnosti
-v `BEZPECNOST.md`.
+na formuláři. Údaje jdou jen na PSST hosty.
 
 Reverse engineering APK **heslo nedá** — klíč je v čipu tabletu, ne v APK.
 
