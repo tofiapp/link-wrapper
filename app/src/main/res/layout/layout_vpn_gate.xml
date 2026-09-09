@@ -22,7 +22,7 @@
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-medium"
         android:gravity="center"
-        android:text="Připojení není dostupné"
+        android:text="Offline režim — jen připnuté karty"
         android:textColor="@color/surface"
         android:textSize="13sp" />
 </LinearLayout>
