@@ -81,8 +81,7 @@ CI buildy stejný podpis a aktualizace na tabletu fungují.
 ## Firemní certifikáty
 
 HTTPS ověřuje **Android podle CA na tabletu** (systémové i ty, které
-nainstalovalo IT / uživatel). V aplikaci už **nejsou** přibalené firemní
-CA ani obejití „pokračovat i tak“. Když tablet autoritě nedůvěřuje,
+nainstalovalo IT / uživatel). Když tablet autoritě nedůvěřuje,
 spojení se nenačte.
 
 IT musí mít na tabletech nasazenou firemní CA (Intune → trusted

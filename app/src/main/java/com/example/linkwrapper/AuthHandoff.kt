@@ -10,9 +10,7 @@ import java.io.RandomAccessFile
 
 /**
  * Předání jména a hesla do procesu :authprobe.
- *
- * Intent extras končí v logcat / dumpsys. Soubor v no_backup je jen pro
- * tuto appku (stejné UID) a po přečtení se přepíše nulami.
+ * Údaje jdou šifrovaným souborem v no_backup; po přečtení se smažou.
  */
 internal object AuthHandoff {
 

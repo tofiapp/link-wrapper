@@ -11,9 +11,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Šifrování údajů klíčem v Android Keystore.
- *
  * Klíč neopustí hardware / TEE tabletu. Na disku je jen ciphertext.
- * Bez androidx.security — ten na některých tabletech padá.
  */
 internal object SecretStore {
 
