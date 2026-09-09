@@ -1326,9 +1326,9 @@ class WebViewActivity : AppCompatActivity() {
         val openTab = tab
         rows.add(
             if (openTab != null && openTab.pinned) {
-                ActionRow("Odepnout", R.drawable.ic_pin) { setTabPinned(openTab, false) }
+                ActionRow("Odepnout", R.drawable.ic_wifi_off) { setTabPinned(openTab, false) }
             } else {
-                ActionRow("Připnout na lištu", R.drawable.ic_pin) {
+                ActionRow("Připnout na lištu", R.drawable.ic_wifi_off) {
                     if (openTab != null) setTabPinned(openTab, true)
                     else togglePinForUrl(url)
                 }
