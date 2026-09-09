@@ -6,7 +6,7 @@ dělá, a proč je tohle řešení a ne Chrome / běžné přihlášení / „pr
 ignoruj“ u certifikátů.**
 
 Technický seznam oprav a **aktuální** tok (Domů bez loginu,
-PSST až po dlaždici; karty; VPN; HTTPS podle CA na tabletu)
+PSST až po dlaždici; karty; offline pruh; HTTPS podle CA na tabletu)
 je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (pinning CA v APK)
 už neplatí — když se liší, platí AUDIT a README.
 Bezpečnost uložených údajů: [`BEZPECNOST.md`](BEZPECNOST.md).
@@ -119,21 +119,25 @@ link-wrapper/
         ├── values/                      barvy, texty, styly
         ├── drawable/                    ikony (+, domeček, …)
         └── xml/                         network security (CA na tabletu)
+
+Vedle `main` je `app/src/systemtrust/res` — jen název na ploše **Obálka test**.
 ```
 
 Balíček se jmenuje `com.example.linkwrapper` — to je historický název z šablony.
-Na tabletu se appka jmenuje **Obálka**.
+Na ploše se hlavní APK jmenuje **Obálka**. Soubor s `-test` v názvu
+se jmenuje **Obálka test**.
 
 **Hlavní Kotlin soubory:**
 
 | soubor | role jednou větou |
 | --- | --- |
-| `WebViewActivity.kt` | celá appka: brána, karty, menu, VPN, dialogy |
+| `WebViewActivity.kt` | celá appka: karty, menu, síť, dialogy |
 | `Session.kt` | uložené jméno a heslo + mazání po Odhlásit |
 | `AuthProbeActivity.kt` | „zkus heslo v jiném procesu, ať nezkazí prohlížeč“ |
 | `AuthHosts.kt` | komu smí jít HTTP auth (jen PSST) |
 | `SslPolicy.kt` | HTTPS jen podle CA na tabletu; žádný pinning v APK |
 | `ChartPerf.kt` | JavaScript, který Highcharts na tabletu zklidní |
+| `TrialPins.kt` / `TrialBookmarks.kt` | karty v RAM, uložené stránky |
 
 Žádný druhý jazyk v appce není. XML je vzhled, YAML v `.github` je sestavení.
 
@@ -149,13 +153,12 @@ Všechno se rozhoduje v jedné funkci: `refreshGate()` v `WebViewActivity.kt`.
                     │  Appka se otevře │
                     └────────┬────────┘
                              ▼
-                    Je Cisco VPN zapnutá?
+                    Je síť + VPN?
                      /                \
                    NE                  ANO
                    ▼                    ▼
-            obrazovka              Domů
-         „VPN není připojená“      (PSST login až po dlaždici;
-                                    relace jen v RAM, na pozadí pryč)
+            pruh Offline            Domů
+         (jen připnuté karty)      (PSST login až po dlaždici)
 ```
 
 **Domů i bez přihlášení.** Údaje jen pro PSST.
@@ -202,7 +205,7 @@ odmítne.
 
 ## 6. WebViewActivity.kt — hlavní (a skoro jediná) obrazovka
 
-Soubor má okolo 1500 řádků. Je to celý životní cyklus tabletu. Níže po
+Soubor je dlouhý. Je to celý životní cyklus tabletu. Níže po
 blocích, v pořadí, jak se to děje.
 
 ### 6.1 Start (`onCreate`)
@@ -216,18 +219,18 @@ Android otevře obrazovku → kód:
 5. pokud uživatel právě dal Odhlásit, připraví banner „Byl jste odhlášen“
 6. zavolá `refreshGate()`
 
-### 6.2 VPN monitor
+### 6.2 Síť a VPN
 
 `isVpnActive()` se neptá „běží AnyConnect?“. Ptá se Androidu: má *právě
 aktivní síť* příznak `TRANSPORT_VPN`? Pokud ano, bereme to jako „tunel je
-nahoře“.
+nahoře“. `isConnectionOk()` navíc chce i internet.
 
-Callback sítě (`onAvailable` / `onLost`) nespouští bránu hned — počká
-**350 ms**. VPN při přepínání chvilku „blike“. Bez prodlevy by se střídaly
-obrazovky dokola.
+Callback sítě (`onAvailable` / `onLost`) nespouští kontrolu hned — počká
+**350 ms**. VPN při přepínání chvilku „blike“.
 
-Bez VPN: karty se pozastaví, URL se schovají do `savedTabUrls`. Až VPN
-naskočí, karty se obnoví. Bez relace je zase formulář.
+Bez sítě / VPN: pruh dole „Offline režim — jen připnuté karty“.
+Nepřipnuté weby se nenačítají, ovládání lišty je vypnuté. Připnuté karty
+zůstanou. Až síť naskočí, chrome se zase zapne.
 
 ### 6.3 Přihlášení (`submitLogin` → `succeedLogin` / `failLogin`)
 
@@ -271,7 +274,7 @@ Křížek poslední karty neukončí appku — otevře znovu home.
 | `LAYER_TYPE_NONE` | hardware vrstva kolem WebView při posunu nahrává celou texturu na GPU → cukání |
 | `safeBrowsingEnabled = false` | Google Safe Browsing u interního webu jen překáží |
 | `forceDark` vypnutý | ať Android web nepřekresluje na tmu |
-| dlouhý stisk zablokovaný | žádné „kopírovat odkaz“ náhodou prstem |
+| dlouhý stisk | vlastní nabídka (připnout, nová karta, uložit) — ne Chromium „kopírovat“ |
 | cookies včetně third-party | firemní SSO/NTLM je na nich často závislé |
 
 Když server pošle **HTTP 401** (chci jméno a heslo), `onReceivedHttpAuthRequest`
@@ -294,20 +297,17 @@ pak teprve opustí appku. Na přihlášení Zpět **neobejde bránu**.
 
 ### 6.7 Menu ⋮
 
-XML: `menu_webview.xml`. Vpravo viditelně **+** (nová karta Domů, aktuální
-web zůstane) a **domeček** (aktuální karta se změní na Domů). V ⋮:
+XML: `menu_webview.xml`. Vpravo viditelně **+**, **přenačíst**, **složka**
+a **domeček**. V ⋮:
 
 - zadat URL
-- přenačíst
-- návod na „otevírání odkazů“ v nastavení Androidu
 - velikost stránek
+- návod na „otevírání odkazů“ v nastavení Androidu
+- Vymazat údaje (když je položka vidět)
 
-Odchod na pozadí smaže relaci (heslo není na disku). Položka Vymazat údaje
-v menu proto není.
+Na offline / přihlášení menu nic kromě nastavení odkazů neotevře.
 
-Na VPN/login obrazovce menu nic kromě Odhlásit neotevře.
-
-### 6.8 Odhlásit (`performLogout`)
+### 6.8 Odhlásit (`clearStoredData`)
 
 Nestačí smazat políčko v nastavení. Chromium drží NTLM relaci **v procesu**.
 Proto:
@@ -419,7 +419,9 @@ je změna `HSI.Psst.Data`, ne obálky.
 | soubor | co to je |
 | --- | --- |
 | `activity_webview.xml` | nahoře lišta karet + +, domeček, ⋮; pod tím WebView; progress je *přes* web, ne nad ním (jinak se mění výška a graf seká) |
-| `layout_login_screen.xml` | overlay: formulář, banner odhlášení, nebo jen VPN hláška |
+| `layout_login_screen.xml` | overlay: formulář a banner chybějících CA |
+| `layout_connection_banner.xml` | pruh dole bez sítě / VPN |
+| `layout_home_screen.xml` | nativní Domů, dlaždice, uložené stránky |
 | `item_browser_tab.xml` | jedna „pilulka“ karty + křížek |
 | `dialog_open_url.xml` | pole pro ruční URL |
 | `dialog_confirm_logout.xml` | „Odhlásit se?“ |
@@ -452,10 +454,6 @@ Dva workflow:
 
 - `ci.yml` — „jde to vůbec sestavit?“ na každém PR
 - `build.yml` — ostré APK + GitHub Release jen z `main`
-
-Řetězec `Verze %1$s` v `strings.xml` se v layoutu **nikde nepoužívá**
-(README říká, že verze je dole na úvodní obrazovce — v aktuálním XML
-tam není). Drobná neshoda dokumentace a kódu.
 
 ---
 
@@ -537,13 +535,13 @@ tím, než Highcharts nastartuje.
 Začněte v tomto pořadí:
 
 1. `AndroidManifest.xml` — co systém o appce ví
-2. `refreshGate()` / `presentLogin()` / `presentBrowser()` / `enterVpnGate()`
+2. `refreshGate()` / `presentLogin()` / `presentBrowser()` / `applyOfflineChrome()`
 3. `submitLogin()` → `AuthProbeActivity` → `succeedLogin()`
 4. `Session.kt` celé (je krátké)
 5. `createWebView()` — nastavení + SSL + HTTP auth
 6. `SslPolicy.handleSslError` / `AuthHosts.allows`
 7. `ChartPerf.BOOTSTRAP_JS` jen komentář nahoře; JS je „šeptání Highcharts“
-8. `performLogout()` nakonec — ukáže, co všechno relace znamená
+8. `clearStoredData()` nakonec — ukáže, co všechno relace znamená
 
 Když v kódu uvidíte `@SuppressLint("SetJavaScriptEnabled")`, není to
 schovaná chyba. Android Studio křičí „JS ve WebView je nebezpečné“ —

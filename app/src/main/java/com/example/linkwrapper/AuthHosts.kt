@@ -19,9 +19,4 @@ internal object AuthHosts {
         if (h in psstExact) return true
         return psstExact.any { h.endsWith(".$it") }
     }
-
-    fun isTudc(host: String?): Boolean {
-        val h = host?.lowercase()?.trim('.') ?: return false
-        return h == "tudc.cz" || h.endsWith(".tudc.cz")
-    }
 }

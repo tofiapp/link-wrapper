@@ -125,7 +125,7 @@
                 app:trackCornerRadius="0dp"
                 app:trackThickness="2dp" />
 
-            <include layout="@layout/layout_vpn_gate" />
+            <include layout="@layout/layout_connection_banner" />
         </FrameLayout>
     </LinearLayout>
 

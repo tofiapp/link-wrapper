@@ -5,7 +5,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
-- Na tabletu se appka jmenuje **Obálka**.
+- Na tabletu se hlavní APK jmenuje **Obálka**. Soubor s `-test` v názvu
+  se na ploše jmenuje **Obálka test**.
 - Po spuštění (a po VPN) nativní **Domů**.
   PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
   `test.psst.tudc.cz`).
@@ -19,10 +20,10 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   Křížek je jen když je karet víc. Dlaždice na Domů má jen název
   (PSST Data), bez adresy.
   Zavření karty křížkem (max. 8). Neaktivní karta se pozastaví, ať grafy
-  na pozadí nesežerou tablet. Dlouhé podržení karty: **připnout**, otevřít
-  na druhé kartě, kopírovat adresu. Ikona složky v liště ukládá grafy
-  na Domů. PSST Data na šířku: dvě karty vedle sebe, třetí pod nimi,
-  vyplní zbytek displeje.
+  na pozadí nesežerou tablet. Dlouhé podržení karty: **připnout na lištu**,
+  otevřít na nové kartě, **uložit** (pak přejmenovat), přejmenovat, odebrat.
+  Ikona složky v liště ukládá stránky; uložené jsou i na Domů. PSST Data
+  na šířku: dvě karty vedle sebe, třetí pod nimi, vyplní zbytek displeje.
   Přiblížení webu: výchozí na výšku
   88 %, na šířku 80 %; v ⋮ → **Velikost stránek** pro PSST Data
   (drží se, dokud nesmažete údaje / dokud appka nejde na pozadí). Grafy (`dmId`) mají vždy 84 %
@@ -33,8 +34,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 - Nabídka **⋮**: zadat adresu, přenačíst, velikost stránek, nastavení odkazů.
 - Objeví se jako volba v "Otevřít pomocí" (včetně `psst.tudc.cz` /
   `test.psst.tudc.cz`). Externí odkaz otevře **novou kartu**.
-- **VPN brána**: bez Cisco AnyConnect hláška přes celou obrazovku — karty
-  ani lišta nejdou použít. Po připojení se vrátí Domů nebo otevřené karty.
+- **Bez sítě / VPN**: pruh dole „Offline režim — jen připnuté karty“.
+  Ovládání lišty je vypnuté; připnuté karty zůstanou.
 - **Poloha**: dialog a systémové oprávnění pro `navigator.geolocation`.
 - **Bez prohlížeče na tabletu**: Chrome ani jiný prohlížeč appka
   nepotřebuje a neotevírá. Musí zůstat systémové **Android System WebView**
@@ -92,8 +93,9 @@ spojení se nenačte.
 IT musí mít na tabletech nasazenou firemní CA (Intune → trusted
 certificate profile). Bez toho weby `tudc.cz` nepůjdou.
 
-Na zařízení se appka jmenuje **Obálka**. Vedle sebe jdou dva APK soubory
-s jiným id instalace.
+Hlavní instalace se na zařízení jmenuje **Obálka**. APK s `-test`
+v názvu souboru se na ploše jmenuje **Obálka test**. Vedle sebe jdou
+dva APK soubory s jiným id instalace.
 
 ## Přihlášení a odhlášení
 
@@ -103,7 +105,7 @@ proto má vlastní přihlašovací obrazovku. Zkoušejte tvar `DOMÉNA\uživatel
 
 Tok:
 
-1. Bez VPN → hláška přes celou obrazovku (Cisco AnyConnect). Nic jiného nefunguje.
+1. Bez sítě / VPN → pruh dole, jen připnuté karty.
 2. VPN → nativní **Domů** i bez přihlášení.
 3. **PSST Data** bez uložených údajů → formulář, ověření, pak web.
    Údaje platí jen pro `psst.tudc.cz` / `test.psst.tudc.cz`.
