@@ -13,19 +13,10 @@
         android:layout_height="wrap_content"
         android:fontFamily="sans-serif-medium"
         android:paddingHorizontal="16dp"
+        android:paddingBottom="10dp"
         android:text="Složka"
         android:textColor="@color/ink"
         android:textSize="16sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingHorizontal="16dp"
-        android:paddingTop="2dp"
-        android:paddingBottom="10dp"
-        android:text="Uložené stránky. Klepnutím otevřete."
-        android:textColor="@color/ink_faint"
-        android:textSize="12sp" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/bookmarkSave"
