@@ -66,6 +66,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.menu.MenuBuilder
+import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.core.view.ViewCompat
@@ -2218,16 +2219,17 @@ class WebViewActivity : AppCompatActivity() {
             rowItems.forEachIndexed { index, bookmark ->
                 val card = inflater.inflate(R.layout.item_home_bookmark, row, false)
                 card.findViewById<TextView>(R.id.homeBookmarkTitle).text = bookmark.title
-                val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                val lp = LinearLayout.LayoutParams(
+                    0,
+                    (72 * resources.displayMetrics.density).toInt(),
+                    1f
+                )
                 if (index > 0) lp.marginStart = gap
                 card.layoutParams = lp
                 card.setOnClickListener { openSavedUrl(bookmark.url) }
-                bindBookmarkActions(
-                    pin = card.findViewById(R.id.homeBookmarkPin),
-                    rename = card.findViewById(R.id.homeBookmarkRename),
-                    delete = card.findViewById(R.id.homeBookmarkDelete),
-                    item = bookmark
-                )
+                card.findViewById<View>(R.id.homeBookmarkMore).setOnClickListener { more ->
+                    showHomeBookmarkMenu(more, bookmark)
+                }
                 row.addView(card)
             }
             if (rowItems.size == 1) {
@@ -2927,6 +2929,36 @@ class WebViewActivity : AppCompatActivity() {
             }
             .setNegativeButton("Zrušit", null)
             .show()
+    }
+
+    @SuppressLint("RestrictedApi")
+    private fun showHomeBookmarkMenu(anchor: View, item: TrialBookmark) {
+        val popup = PopupMenu(this, anchor, Gravity.END)
+        val pinTitle = if (isUrlPinned(item.url)) "Odepnout" else "Připnout na lištu"
+        popup.menu.add(0, 1, 0, pinTitle).setIcon(R.drawable.ic_wifi_off)
+        popup.menu.add(0, 2, 1, "Přejmenovat").setIcon(R.drawable.ic_edit)
+        popup.menu.add(0, 3, 2, "Odebrat").setIcon(R.drawable.ic_close)
+        (popup.menu as? MenuBuilder)?.setOptionalIconsVisible(true)
+        popup.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                1 -> {
+                    togglePinForUrl(item.url)
+                    populateHomeBookmarks()
+                }
+                2 -> promptBookmarkLabel("Přejmenovat", item.title, item.folderId, "Hotovo") { title, folderId ->
+                    TrialBookmarks.rename(this, item.id, title, folderId)
+                    populateHomeBookmarks()
+                    applySavedTitleToTabs(item.url, title)
+                }
+                3 -> {
+                    TrialBookmarks.remove(this, item.id)
+                    populateHomeBookmarks()
+                    forgetSavedTitleOnTabs(item.url)
+                }
+            }
+            true
+        }
+        popup.show()
     }
 
     private fun bindBookmarkActions(
