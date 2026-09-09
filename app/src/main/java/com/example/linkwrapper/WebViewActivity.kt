@@ -157,8 +157,6 @@ class WebViewActivity : AppCompatActivity() {
 
     private var pendingStartUrl: String? = null
     private var pendingResumeUrl: String? = null
-    private var savedTabUrls: List<String> = emptyList()
-    private var savedActiveTabIndex: Int = 0
 
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var trustProbeSeq = 0
@@ -372,13 +370,10 @@ class WebViewActivity : AppCompatActivity() {
         if (open != null) {
             pendingStartUrl = null
             enterBrowser()
-            if (tabs.isEmpty() && savedTabUrls.isNotEmpty()) {
-                restoreSavedTabsOrStart()
-            }
             openUrlFromExternal(open)
             return
         }
-        if (lastContentGate == Gate.BROWSER || savedTabUrls.isNotEmpty()) {
+        if (lastContentGate == Gate.BROWSER) {
             presentBrowser()
             return
         }
@@ -449,17 +444,6 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun restoreSavedTabsOrStart() {
-        val urls = savedTabUrls
-        savedTabUrls = emptyList()
-        if (urls.isNotEmpty()) {
-            urls.forEach { url ->
-                if (url == Destinations.HOME_URL) openNewHomeTab()
-                else openInNewTab(url)
-            }
-            val idx = savedActiveTabIndex.coerceIn(0, tabs.lastIndex)
-            selectTab(tabs[idx].id)
-            return
-        }
         val open = pendingResumeUrl ?: pendingStartUrl
         pendingResumeUrl = null
         pendingStartUrl = null
@@ -2578,8 +2562,6 @@ class WebViewActivity : AppCompatActivity() {
         verifyingLogin = false
         pendingResumeUrl = null
         pendingStartUrl = null
-        savedTabUrls = emptyList()
-        savedActiveTabIndex = 0
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         AuthProbe.kill(this)
         TrialIdle.clear(this)
@@ -2664,8 +2646,6 @@ class WebViewActivity : AppCompatActivity() {
         verifyingLogin = false
         pendingResumeUrl = null
         pendingStartUrl = null
-        savedTabUrls = emptyList()
-        savedActiveTabIndex = 0
         mainHandler.removeCallbacks(loginTimeoutRunnable)
         AuthProbe.kill(this)
 

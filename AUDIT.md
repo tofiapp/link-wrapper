@@ -1,6 +1,6 @@
 # Audit aplikace Obálka (Link Wrapper)
 
-Obálka nad WebView. Přihlášení, karty, VPN a HTTPS řeší Android. Grafy
+Obálka nad WebView. Přihlášení, karty, síť a HTTPS řeší Android. Grafy
 kreslí stránka uvnitř WebView.
 
 Prohlídka souborů bez Kotlinu: [`VYSVETLENI.md`](VYSVETLENI.md).
@@ -16,15 +16,15 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 
 | stav | appka |
 | --- | --- |
-| není VPN | hláška **přes celou obrazovku** |
-| VPN, bez relace | nativní **Domů** |
+| není síť / VPN | pruh dole **Offline režim — jen připnuté karty** |
+| síť, bez relace | nativní **Domů** |
 | relace | Domů / otevřené karty |
 | klepnutí na PSST Data bez relace | formulář, ověření v `:authprobe`, pak web |
 | odchod na pozadí | relace a cookies pryč; karty v liště zůstanou |
 | komu jde HTTP auth | jen `psst.tudc.cz` / `test.psst.tudc.cz` |
 | **domeček** | aktuální karta se změní na **Domů** |
 | **+** | nová karta **Domů**; aktuální web zůstane |
-| dlouhé podržení karty / odkazu | dialog **Otevřít na druhé kartě** |
+| dlouhé podržení karty / odkazu | připnout, nová karta, uložit / přejmenovat / odebrat |
 
 Špatné heslo se **do hlavního WebView nedostane**.
 
@@ -32,12 +32,13 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 
 ## B. Soubory APK
 
-Na zařízení se instalace jmenuje **Obálka**. Soubory jsou
-`LinkWrapper-1.0.N.apk` a `LinkWrapper-1.0.N-test.apk` (jiné
-`applicationId`, jdou nainstalovat vedle sebe). Názvy flavorů
+Hlavní instalace se na ploše jmenuje **Obálka**
+(`LinkWrapper-1.0.N.apk`). APK s `-test` v názvu souboru se na ploše
+jmenuje **Obálka test** (`LinkWrapper-1.0.N-test.apk`). Jiné
+`applicationId`, jdou nainstalovat vedle sebe. Názvy flavorů
 `pinned` / `systemtrust` jsou jen vnitřní Gradle / CI.
 
-`Session` maže stará `session_gate` prefs. Keystore, VPN brána.
+`Session` maže stará `session_gate` prefs. Keystore.
 
 ---
 
@@ -45,7 +46,7 @@ Na zařízení se instalace jmenuje **Obálka**. Soubory jsou
 
 | soubor | role |
 | --- | --- |
-| `WebViewActivity.kt` | jediná obrazovka: VPN, Domů / login, karty, web |
+| `WebViewActivity.kt` | jediná obrazovka: Domů / login, karty, web, offline pruh |
 | `Destinations.kt` | PSST / Domů, popisek karty |
 | `PageZoom.kt` | PSST Data; grafy vždy 84 % |
 | `Session.kt` + `SecretStore.kt` | šifrované údaje, Keystore AES-256-GCM |
@@ -53,11 +54,15 @@ Na zařízení se instalace jmenuje **Obálka**. Soubory jsou
 | `AuthHosts.kt` | komu smí jít HTTP auth (jen PSST) |
 | `DeviceTrust.kt` | banner „tablet nemá CA“ u přihlášení |
 | `SslPolicy.kt` + `network_security_config.xml` | HTTPS jen podle CA na tabletu |
-| `ChartPerf.kt` | strop `devicePixelRatio` kvůli grafům |
-| `layout_vpn_gate.xml` | celoobrazovková hláška bez VPN |
+| `ChartPerf.kt` / `ChartFit.kt` / `PsstDataLayout.kt` | grafy a karty PSST Data |
+| `TrialPins.kt` / `TrialBookmarks.kt` | karty v RAM, uložené stránky |
+| `layout_connection_banner.xml` | pruh dole bez sítě / VPN |
 | `layout_home_screen.xml` | dlaždice jen s názvem |
 
-Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`, `PageZoomTest`.
+Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`,
+`PageZoomTest`, `ChartFitTest`, `PsstDataLayoutTest`, `TrialPinsTest`,
+`TrialBookmarksTest`, `TrialIdleTest`, `TrialIsolationTest`,
+`TrialSettingsTest`.
 
 ---
 
@@ -96,6 +101,5 @@ vrstva kolem WebView je vypnutá.
 ## G. Co by stálo za další kolo
 
 1. `mailto:` / `tel:` poslat do systému.
-2. Ukládat seznam karet (URL) a po zabití procesu je obnovit.
-3. Volitelně zúžit catch-all `https` filtr.
-4. Pokud grafy cukají dál: měřit ve stránce `HSI.Psst.Data`, ne v obálce.
+2. Volitelně zúžit catch-all `https` filtr.
+3. Pokud grafy cukají dál: měřit ve stránce `HSI.Psst.Data`, ne v obálce.

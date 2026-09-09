@@ -115,7 +115,7 @@ object Session {
     }
 
     /** RAM údaje se zapíšou šifrovaně na disk, pokud relace na disku je. */
-    fun persistMemoryToDisk(context: Context) {
+    private fun persistMemoryToDisk(context: Context) {
         val creds = memoryOnly ?: return
         if (TrialSettings.ephemeralLogin()) return
         val encUser = SecretStore.encryptToString(creds.username)

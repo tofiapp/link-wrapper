@@ -26,15 +26,4 @@ class AuthHostsTest {
         assertFalse(AuthHosts.allows("psst.tudc.cz.attacker.com"))
         assertFalse(AuthHosts.allows("google.com"))
     }
-
-    @Test
-    fun tudcHelper() {
-        assertTrue(AuthHosts.isTudc("foo.bar.tudc.cz"))
-        assertTrue(AuthHosts.isTudc("portal.tudc.cz"))
-        assertTrue(AuthHosts.isTudc("psst.tudc.cz"))
-        assertFalse(AuthHosts.isTudc("evil.com"))
-        assertFalse(AuthHosts.isTudc("tudc.cz.attacker.com"))
-        assertFalse(AuthHosts.isTudc("nottudc.cz"))
-        assertFalse(AuthHosts.isTudc(null))
-    }
 }

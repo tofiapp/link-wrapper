@@ -18,9 +18,9 @@
         android:usesCleartextTraffic="false">
 
         <!--
-          Jediná activity: VPN, nativní Domů, web. Přihlášení k PSST
-          až po klepnutí na dlaždici. Relace PSST v Session do smazání údajů.
-          Na zařízení se appka jmenuje Obálka.
+          Jediná activity: nativní Domů, web, pruh bez sítě. Přihlášení
+          k PSST až po klepnutí na dlaždici. Relace PSST v Session.
+          Na ploše: Obálka, u APK s -test v názvu Obálka test.
         -->
         <activity
             android:name=".WebViewActivity"

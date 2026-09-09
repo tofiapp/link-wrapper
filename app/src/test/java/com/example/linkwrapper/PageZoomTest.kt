@@ -49,15 +49,12 @@ class PageZoomTest {
     fun jsUsesClampedPercent() {
         val js = PageZoom.setJs(1000)
         assertTrue(js.contains("${PageZoom.MAX_PERCENT}%"))
-        val apply = PageZoom.applyJs(1)
-        assertTrue(apply.contains("${PageZoom.MIN_PERCENT}%"))
         val picker = PageZoom.pickerJs(88)
         assertTrue(picker.contains("84%"))
         assertTrue(picker.contains("dmId"))
         assertTrue(js.contains("document.documentElement.style.zoom"))
         assertTrue(js.contains("document.body.style.zoom=''"))
         assertFalse(js.contains("document.body.style.zoom='${PageZoom.MAX_PERCENT}%'"))
-        assertTrue(apply.contains("document.body.style.zoom = ''"))
         assertTrue(picker.contains("document.body.style.zoom = ''"))
         assertFalse(picker.contains("document.body.style.zoom = z"))
     }

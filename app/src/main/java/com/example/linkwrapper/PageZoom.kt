@@ -26,8 +26,6 @@ internal object PageZoom {
     private const val PREFS = "page_prefs"
     private const val KEY_SIZE_LEGACY = "page_size_percent"
     private const val KEY_PSST = "page_size_psst"
-    /** Starý klíč z dřívější druhé dlaždice; při startu se jen smaže. */
-    private const val KEY_RETIRED_PAGE_SIZE = "page_size_dsd"
 
     fun percent(landscape: Boolean): Int =
         if (landscape) LANDSCAPE_PERCENT else PORTRAIT_PERCENT
@@ -77,21 +75,6 @@ internal object PageZoom {
         return clamp(stepped)
     }
 
-    fun applyJs(percent: Int): String {
-        val z = "${clamp(percent)}%"
-        return """
-(function(){
-  var z = '$z';
-  function apply(){
-    try { document.documentElement.style.zoom = z; } catch (e) {}
-    try { if (document.body) document.body.style.zoom = ''; } catch (e) {}
-  }
-  apply();
-  document.addEventListener('DOMContentLoaded', apply);
-})();
-"""
-    }
-
     /** Vybere zoom podle dmId — běží na začátku dokumentu. */
     fun pickerJs(psstPercent: Int): String {
         val psst = "${clamp(psstPercent)}%"
@@ -131,19 +114,12 @@ internal object PageZoom {
     /** Starší společná velikost se jednorázově zkopíruje na PSST. */
     private fun migrateLegacy(context: Context) {
         val prefs = prefs(context)
+        if (!prefs.contains(KEY_SIZE_LEGACY)) return
         val editor = prefs.edit()
-        var changed = false
-        if (prefs.contains(KEY_RETIRED_PAGE_SIZE)) {
-            editor.remove(KEY_RETIRED_PAGE_SIZE)
-            changed = true
-        }
-        if (prefs.contains(KEY_SIZE_LEGACY)) {
-            val shared = snap(prefs.getInt(KEY_SIZE_LEGACY, PORTRAIT_PERCENT))
-            editor.remove(KEY_SIZE_LEGACY)
-            if (!prefs.contains(KEY_PSST)) editor.putInt(KEY_PSST, shared)
-            changed = true
-        }
-        if (changed) editor.commit()
+        val shared = snap(prefs.getInt(KEY_SIZE_LEGACY, PORTRAIT_PERCENT))
+        editor.remove(KEY_SIZE_LEGACY)
+        if (!prefs.contains(KEY_PSST)) editor.putInt(KEY_PSST, shared)
+        editor.commit()
     }
 
     private fun prefs(context: Context) =
