@@ -820,14 +820,21 @@ class WebViewActivity : AppCompatActivity() {
             compareBy<BrowserTab> { TrialPins.stripGroup(it.isHome, it.pinned) }
                 .thenBy { tabs.indexOf(it) }
         )
+        var titlesSynced = false
         for (tab in shown) {
             val item = inflater.inflate(R.layout.item_browser_tab, tabStrip, false)
             val root = item.findViewById<View>(R.id.tabRoot)
+            val content = item.findViewById<View>(R.id.tabContent)
             val title = item.findViewById<TextView>(R.id.tabTitle)
             val pin = item.findViewById<ImageView>(R.id.tabPin)
             val close = item.findViewById<ImageButton>(R.id.tabClose)
             val savedMark = item.findViewById<View>(R.id.tabSavedMark)
             val selected = tab.id == activeTabId
+            val savedTitle = TrialBookmarks.findByUrl(this, tab.url)?.title?.trim().orEmpty()
+            if (!tab.isHome && savedTitle.isNotEmpty() && tab.title != savedTitle) {
+                tab.title = savedTitle
+                titlesSynced = true
+            }
 
             title.text = tab.title
             title.setTextColor(
@@ -842,6 +849,8 @@ class WebViewActivity : AppCompatActivity() {
             root.setBackgroundResource(
                 if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
             )
+            root.clipToOutline = true
+            root.invalidateOutline()
             root.setOnClickListener { selectTab(tab.id) }
             root.setOnLongClickListener {
                 if (chromeOffline) return@setOnLongClickListener true
@@ -851,7 +860,12 @@ class WebViewActivity : AppCompatActivity() {
             val showClose = tabs.size > 1 && !tab.pinned
             close.visibility = if (showClose) View.VISIBLE else View.GONE
             val padEnd = ((if (showClose) 4 else 14) * resources.displayMetrics.density).toInt()
-            root.setPaddingRelative(root.paddingStart, root.paddingTop, padEnd, root.paddingBottom)
+            content.setPaddingRelative(
+                content.paddingStart,
+                content.paddingTop,
+                padEnd,
+                content.paddingBottom
+            )
             if (showClose) {
                 close.setOnClickListener { closeTab(tab.id) }
             } else {
@@ -859,6 +873,7 @@ class WebViewActivity : AppCompatActivity() {
             }
             tabStrip.addView(item)
         }
+        if (titlesSynced) persistOpenTabsFromTabs()
         tabScroll.post {
             val idx = shown.indexOfFirst { it.id == activeTabId }
             if (idx >= 0 && idx < tabStrip.childCount) {
@@ -868,7 +883,22 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
-    private fun tabLabel(url: String): String = Destinations.tabTitle(url)
+    private fun tabLabel(url: String): String {
+        val saved = TrialBookmarks.findByUrl(this, url)?.title?.trim().orEmpty()
+        if (saved.isNotEmpty()) return saved
+        return Destinations.tabTitle(url)
+    }
+
+    /** Uložený popisek přenese i na otevřené karty se stejnou adresou. */
+    private fun applySavedTitleToTabs(url: String, title: String) {
+        val clean = title.trim()
+        if (clean.isEmpty()) return
+        tabs.filter { !it.isHome && samePage(it.url, url) }.forEach { tab ->
+            tab.title = clean
+        }
+        persistOpenTabsFromTabs()
+        refreshTabStrip()
+    }
 
     private fun updateTabMeta(webView: WebView, url: String?) {
         val tab = tabs.find { it.webView === webView } ?: return
@@ -1365,10 +1395,24 @@ class WebViewActivity : AppCompatActivity() {
             if (actionDialog === dialog) actionDialog = null
         }
         dialog.show()
-        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
-        val width = (320 * resources.displayMetrics.density).toInt()
-        dialog.window?.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.window?.setGravity(Gravity.BOTTOM)
+        dialog.window?.let { win ->
+            win.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            val width = (320 * resources.displayMetrics.density).toInt()
+            win.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+            win.setGravity(Gravity.TOP or Gravity.CENTER_HORIZONTAL)
+            val loc = IntArray(2)
+            val chromeBottom = if (::tabScroll.isInitialized) {
+                tabScroll.getLocationOnScreen(loc)
+                loc[1] + tabScroll.height
+            } else {
+                (72 * resources.displayMetrics.density).toInt()
+            }
+            win.decorView.getLocationOnScreen(loc)
+            val gap = (8 * resources.displayMetrics.density).toInt()
+            win.attributes = win.attributes.apply {
+                y = (chromeBottom - loc[1] + gap).coerceAtLeast(gap)
+            }
+        }
     }
 
     private fun dismissActionSheet() {
@@ -2719,7 +2763,7 @@ class WebViewActivity : AppCompatActivity() {
                 promptBookmarkLabel("Přejmenovat", item.title, "Hotovo") { title ->
                     TrialBookmarks.rename(this, item.id, title)
                     populateHomeBookmarks()
-                    refreshTabStrip()
+                    applySavedTitleToTabs(item.url, title)
                     if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                 }
             }
@@ -2755,11 +2799,11 @@ class WebViewActivity : AppCompatActivity() {
             return
         }
         populateHomeBookmarks()
-        refreshTabStrip()
+        applySavedTitleToTabs(trimmed, added.title)
         promptBookmarkLabel("Přejmenovat", added.title, "Hotovo") { title ->
             TrialBookmarks.rename(this, added.id, title)
             populateHomeBookmarks()
-            refreshTabStrip()
+            applySavedTitleToTabs(trimmed, title)
         }
     }
 
@@ -2773,7 +2817,7 @@ class WebViewActivity : AppCompatActivity() {
         promptBookmarkLabel("Přejmenovat", item.title, "Hotovo") { title ->
             TrialBookmarks.rename(this, item.id, title)
             populateHomeBookmarks()
-            refreshTabStrip()
+            applySavedTitleToTabs(url, title)
         }
     }
 
