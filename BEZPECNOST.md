@@ -5,8 +5,7 @@ disku, z jiné appky, ze zálohy, z logu, nebo je odeslat na cizí server.
 
 Verdikt nahoře, detaily pod ním. **Absolutní** nečitelnost hesla nejde
 slíbit na žádném odemčeném tabletu (root, debug, fyzický přístup k RAM).
-Jde slíbit, že *jiná appka, záloha, log a cizí web* se k heslu nedostanou
-způsobem, který tenhle kód dřív dovoloval.
+Jde slíbit, že *jiná appka, záloha, log a cizí web* se k heslu nedostanou.
 
 ---
 
@@ -16,7 +15,7 @@ způsobem, který tenhle kód dřív dovoloval.
 | --- | --- |
 | Přečte heslo jiná aplikace na tabletu? | **Ne.** Úložiště je jen pro tuto appku. |
 | Přečte ho záloha Google / USB? | **Ne.** Záloha je vypnutá, citlivé soubory jsou vyloučené. |
-| Je na disku čitelným textem? | **Ne** (po této úpravě). Je zašifrované klíčem v Android Keystore. |
+| Je na disku čitelným textem? | **Ne.** Je zašifrované klíčem v Android Keystore. |
 | Objeví se v logu při přihlášení? | **Ne.** Do Intentu se už nedává. |
 | Odešle ho appka na cizí web (odkaz, phishing)? | **Ne** — jen `psst.tudc.cz` / `test.psst.tudc.cz`. |
 | Půjde screenshot přihlášení z recents? | **Ne.** Obrazovka s heslem má `FLAG_SECURE`. |
@@ -63,11 +62,8 @@ Cesta útoku: e-mail / „Otevřít pomocí“ / `⋮ → zadat URL` na
 `https://attacker.example`. Server odpoví 401. Appka by odeslala
 `SZDC\jnovak` a heslo.
 
-V **běžné APK** se údaje posílají jen na `psst.tudc.cz` a
+V appce se údaje posílají jen na `psst.tudc.cz` a
 `test.psst.tudc.cz` (a jejich subdomény). Cizí 401 heslo nedostane.
-
-Obě APK posílají údaje jen na `psst.tudc.cz` a `test.psst.tudc.cz`
-(a jejich subdomény). Cizí 401 heslo nedostane.
 
 ### 4. SSL „pokračuj“ / pinning v APK (vysoké, odstraněno)
 

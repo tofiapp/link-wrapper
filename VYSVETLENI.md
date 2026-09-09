@@ -5,7 +5,7 @@ Po dočtení by mělo být jasné: **co appka je, kudy teče uživatel, co kter�
 dělá, a proč je tohle řešení a ne Chrome / běžné přihlášení / „prostě to
 ignoruj“ u certifikátů.**
 
-Technický seznam oprav a **aktuální** tok (obě APK: Domů bez loginu,
+Technický seznam oprav a **aktuální** tok (Domů bez loginu,
 PSST až po dlaždici; karty; VPN; HTTPS podle CA na tabletu)
 je v [`AUDIT.md`](AUDIT.md). Některé starší odstavce níž (pinning CA v APK)
 už neplatí — když se liší, platí AUDIT a README.
@@ -122,7 +122,7 @@ link-wrapper/
 ```
 
 Balíček se jmenuje `com.example.linkwrapper` — to je historický název z šablony.
-Na tabletu se obě APK jmenují **Obálka**.
+Na tabletu se appka jmenuje **Obálka**.
 
 **Hlavní Kotlin soubory:**
 
@@ -131,7 +131,7 @@ Na tabletu se obě APK jmenují **Obálka**.
 | `WebViewActivity.kt` | celá appka: brána, karty, menu, VPN, dialogy |
 | `Session.kt` | uložené jméno a heslo + mazání po Odhlásit |
 | `AuthProbeActivity.kt` | „zkus heslo v jiném procesu, ať nezkazí prohlížeč“ |
-| `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
+| `AuthHosts.kt` | komu smí jít HTTP auth (jen PSST) |
 | `SslPolicy.kt` | HTTPS jen podle CA na tabletu; žádný pinning v APK |
 | `ChartPerf.kt` | JavaScript, který Highcharts na tabletu zklidní |
 
@@ -153,13 +153,13 @@ Všechno se rozhoduje v jedné funkci: `refreshGate()` v `WebViewActivity.kt`.
                      /                \
                    NE                  ANO
                    ▼                    ▼
-            obrazovka              Obě APK → Domů
+            obrazovka              Domů
          „VPN není připojená“      (PSST login až po dlaždici;
                                     relace jen v RAM, na pozadí pryč)
 ```
 
-**Obě APK:** stejné chování. Domů i bez přihlášení. Údaje jen pro PSST.
-Dřív appka pinovala firemní CA v APK — to už není, viz `AUDIT.md`.
+**Domů i bez přihlášení.** Údaje jen pro PSST.
+HTTPS podle CA na tabletu, viz `AUDIT.md`.
 
 ---
 
@@ -227,7 +227,7 @@ Callback sítě (`onAvailable` / `onLost`) nespouští bránu hned — počká
 obrazovky dokola.
 
 Bez VPN: karty se pozastaví, URL se schovají do `savedTabUrls`. Až VPN
-naskočí, karty se obnoví. Ve zkušební APK bez relace je zase formulář.
+naskočí, karty se obnoví. Bez relace je zase formulář.
 
 ### 6.3 Přihlášení (`submitLogin` → `succeedLogin` / `failLogin`)
 
@@ -373,7 +373,7 @@ logika jako v hlavním WebView.
 
 ## 9. SslPolicy.kt — HTTPS podle tabletu
 
-Firemní CA už **nejsou v APK**. Obě verze (běžná i zkušební) věří jen
+Firemní CA už **nejsou v APK**. Appka věří jen
 tomu, čemu věří tablet: systémové CA a certifikáty, které nainstalovalo
 IT / uživatel (Intune → trusted certificate profile).
 
@@ -555,7 +555,7 @@ k souborům.
 ## 17. Shrnutí jednou větou
 
 **Kotlin tady není „program PSST“.** Je to vrátný: pustí vás jen s VPN
-(u zkušební i s přihlášením), otevře web ve WebView, které věří CA na
+(u PSST i s přihlášením), otevře web ve WebView, které věří CA na
 tabletu, drží až osm karet aniž by pozadí sežralo tablet, a při Vymazat
 údaje smaže relaci tak důkladně, že umře i proces — protože jinak NTLM
 v Chromiu přežije.

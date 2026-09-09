@@ -2643,7 +2643,7 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Zkušební: na pozadí hned pryč relace a cookies.
+     * Na pozadí hned pryč relace a cookies.
      * Připnuté karty zůstanou načtené; ostatní jen jako URL v liště.
      * U nepřipnuté otevřené karty po návratu vyskočí přihlášení.
      */

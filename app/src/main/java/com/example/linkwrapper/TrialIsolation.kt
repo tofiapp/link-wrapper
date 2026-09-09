@@ -7,7 +7,7 @@ import android.webkit.WebViewDatabase
 import java.net.URI
 
 /**
- * Obě APK: weby si mezi sebou nepředávají přihlášení.
+ * Weby si mezi sebou nepředávají přihlášení.
  *
  * Zásobník cookies je podle **cílové appky** (PSST / cizí host),
  * ne podle přesného hostname. `psst.tudc.cz` a `test.psst.tudc.cz` proto

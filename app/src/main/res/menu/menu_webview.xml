@@ -45,7 +45,7 @@
             app:showAsAction="never" />
     </group>
 
-    <!-- Oddělené úplně dole, zvýrazněné v kódu červeně. Ve zkušební skryté. -->
+    <!-- Oddělené úplně dole, zvýrazněné v kódu červeně. -->
     <group
         android:id="@+id/group_logout"
         android:orderInCategory="200">
