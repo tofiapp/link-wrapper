@@ -2,7 +2,7 @@ package com.example.linkwrapper
 
 import android.net.http.SslError
 
-/** Texty k SSL, sdílené oběma variantami appky. */
+/** Texty k SSL. */
 internal object SslMessages {
 
     const val MISSING_DEVICE_CERTS =

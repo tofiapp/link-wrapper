@@ -20,7 +20,7 @@
         <!--
           Jediná activity: nativní Domů, web, pruh bez sítě. Přihlášení
           k PSST až po klepnutí na dlaždici. Relace PSST v Session.
-          Na ploše: Obálka, u APK s -test v názvu Obálka test.
+          Na ploše se appka jmenuje Obálka.
         -->
         <activity
             android:name=".WebViewActivity"
