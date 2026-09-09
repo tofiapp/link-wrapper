@@ -1,15 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="0dp"
-    android:layout_height="72dp"
+    android:layout_height="wrap_content"
     android:layout_weight="1"
     android:background="@drawable/bg_home_tile"
     android:clickable="true"
     android:focusable="true"
-    android:gravity="center_vertical"
+    android:gravity="center_horizontal"
+    android:minHeight="96dp"
     android:orientation="vertical"
-    android:paddingHorizontal="14dp"
-    android:paddingVertical="10dp">
+    android:paddingHorizontal="8dp"
+    android:paddingTop="10dp"
+    android:paddingBottom="4dp">
 
     <TextView
         android:id="@+id/homeBookmarkTitle"
@@ -18,8 +21,46 @@
         android:ellipsize="end"
         android:fontFamily="sans-serif-medium"
         android:gravity="center"
+        android:minHeight="40dp"
         android:maxLines="2"
         android:textColor="@color/ink"
         android:textIsSelectable="false"
         android:textSize="15sp" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <ImageButton
+            android:id="@+id/homeBookmarkPin"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Připnout na lištu"
+            android:padding="8dp"
+            android:src="@drawable/ic_wifi_off"
+            app:tint="@color/ink_soft" />
+
+        <ImageButton
+            android:id="@+id/homeBookmarkRename"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Přejmenovat"
+            android:padding="8dp"
+            android:src="@drawable/ic_edit"
+            app:tint="@color/ink_soft" />
+
+        <ImageButton
+            android:id="@+id/homeBookmarkDelete"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Odebrat"
+            android:padding="8dp"
+            android:src="@drawable/ic_close"
+            app:tint="@color/ink_faint" />
+    </LinearLayout>
 </LinearLayout>

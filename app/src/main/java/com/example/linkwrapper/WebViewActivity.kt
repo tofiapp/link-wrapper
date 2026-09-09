@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -50,6 +51,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.ArrayAdapter
+import android.widget.AutoCompleteTextView
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
@@ -63,6 +66,7 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.view.menu.MenuBuilder
 import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -101,6 +105,8 @@ class WebViewActivity : AppCompatActivity() {
         private const val LOGIN_TIMEOUT_MS = 15_000L
         private const val CHART_FIT_DELAY_MS = 300L
         private const val MAX_PREFETCH = 8
+        private const val FOLDER_NONE = "Bez skupiny"
+        private const val FOLDER_NEW = "Nová podsložka…"
     }
 
     private enum class Gate { BROWSER, HOME, LOGIN }
@@ -126,7 +132,6 @@ class WebViewActivity : AppCompatActivity() {
 
     private lateinit var homeOverlay: View
     private lateinit var homeAppList: LinearLayout
-    private lateinit var homeBookmarkHeader: View
     private lateinit var homeBookmarkList: LinearLayout
     private lateinit var homeVersion: TextView
 
@@ -2129,7 +2134,6 @@ class WebViewActivity : AppCompatActivity() {
     private fun bindHomeUi() {
         homeOverlay = findViewById(R.id.homeOverlay)
         homeAppList = findViewById(R.id.homeAppList)
-        homeBookmarkHeader = findViewById(R.id.homeBookmarkHeader)
         homeBookmarkList = findViewById(R.id.homeBookmarkList)
         homeVersion = findViewById(R.id.homeVersion)
         val version = try {
@@ -2175,17 +2179,36 @@ class WebViewActivity : AppCompatActivity() {
         val items = TrialBookmarks.load(this)
         if (items.isEmpty()) {
             homeBookmarkList.visibility = View.GONE
-            if (::homeBookmarkHeader.isInitialized) homeBookmarkHeader.visibility = View.GONE
             return
         }
-        if (::homeBookmarkHeader.isInitialized) homeBookmarkHeader.visibility = View.VISIBLE
         homeBookmarkList.visibility = View.VISIBLE
         val inflater = LayoutInflater.from(this)
         val gap = (10 * resources.displayMetrics.density).toInt()
+        val groups = TrialBookmarks.grouped(items, TrialBookmarks.loadFolders(this))
+        groups.forEach { group ->
+            val folder = group.folder
+            if (folder != null) {
+                val header = inflater.inflate(R.layout.item_bookmark_group_header, homeBookmarkList, false)
+                header.findViewById<TextView>(R.id.groupHeaderTitle).text = folder.title
+                header.findViewById<View>(R.id.groupHeaderChevron).visibility = View.GONE
+                header.isClickable = false
+                header.background = null
+                homeBookmarkList.addView(header)
+            }
+            addHomeBookmarkRows(homeBookmarkList, group.items, gap, inflater)
+        }
+    }
+
+    private fun addHomeBookmarkRows(
+        parent: LinearLayout,
+        items: List<TrialBookmark>,
+        gap: Int,
+        inflater: LayoutInflater
+    ) {
         items.chunked(2).forEach { rowItems ->
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -2194,11 +2217,16 @@ class WebViewActivity : AppCompatActivity() {
             rowItems.forEachIndexed { index, bookmark ->
                 val card = inflater.inflate(R.layout.item_home_bookmark, row, false)
                 card.findViewById<TextView>(R.id.homeBookmarkTitle).text = bookmark.title
-                val cardH = (72 * resources.displayMetrics.density).toInt()
-                val lp = LinearLayout.LayoutParams(0, cardH, 1f)
+                val lp = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 if (index > 0) lp.marginStart = gap
                 card.layoutParams = lp
                 card.setOnClickListener { openSavedUrl(bookmark.url) }
+                bindBookmarkActions(
+                    pin = card.findViewById(R.id.homeBookmarkPin),
+                    rename = card.findViewById(R.id.homeBookmarkRename),
+                    delete = card.findViewById(R.id.homeBookmarkDelete),
+                    item = bookmark
+                )
                 row.addView(card)
             }
             if (rowItems.size == 1) {
@@ -2208,7 +2236,7 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 row.addView(spacer)
             }
-            homeBookmarkList.addView(row)
+            parent.addView(row)
         }
     }
 
@@ -2770,11 +2798,15 @@ class WebViewActivity : AppCompatActivity() {
     private fun showTrialBookmarkMenu() {
         dismissBookmarkPopup()
         val content = layoutInflater.inflate(R.layout.popup_trial_bookmarks, null)
-        val width = (300 * resources.displayMetrics.density).toInt()
+        val density = resources.displayMetrics.density
+        val width = minOf(
+            (resources.displayMetrics.widthPixels - (24 * density).toInt()),
+            (400 * density).toInt()
+        )
         val popup = PopupWindow(content, width, ViewGroup.LayoutParams.WRAP_CONTENT, true)
         popup.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         popup.isOutsideTouchable = true
-        popup.elevation = 12f * resources.displayMetrics.density
+        popup.elevation = 12f * density
         popup.setOnDismissListener { bookmarkPopup = null }
         bookmarkPopup = popup
         bindTrialBookmarkMenu(content, popup)
@@ -2788,6 +2820,17 @@ class WebViewActivity : AppCompatActivity() {
         val empty = content.findViewById<TextView>(R.id.bookmarkEmpty)
         val list = content.findViewById<LinearLayout>(R.id.bookmarkList)
         val scroll = content.findViewById<View>(R.id.bookmarkScroll)
+        content.findViewById<View>(R.id.bookmarkAddFolder).setOnClickListener {
+            promptFolderName("Nová podsložka", "", "Přidat") { name ->
+                val folder = TrialBookmarks.addFolder(this, name)
+                if (folder == null) {
+                    Toast.makeText(this, "Maximum je ${TrialBookmarks.MAX_FOLDERS} podsložek", Toast.LENGTH_SHORT).show()
+                    return@promptFolderName
+                }
+                populateHomeBookmarks()
+                if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+            }
+        }
         val saveUrl = currentSaveableUrl()?.takeIf { !TrialBookmarks.isSaved(this, it) }
         save.visibility = if (saveUrl != null) View.VISIBLE else View.GONE
         save.setOnClickListener {
@@ -2796,38 +2839,136 @@ class WebViewActivity : AppCompatActivity() {
             savePageThenRename(url)
         }
         val items = TrialBookmarks.load(this)
+        val folders = TrialBookmarks.loadFolders(this)
+        val groups = TrialBookmarks.grouped(items, folders, includeEmptyFolders = true)
         list.removeAllViews()
-        empty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
-        divider.visibility = if (saveUrl != null && items.isNotEmpty()) View.VISIBLE else View.GONE
-        val maxH = (320 * resources.displayMetrics.density).toInt()
-        scroll.layoutParams = scroll.layoutParams.apply { height = if (items.size > 6) maxH else ViewGroup.LayoutParams.WRAP_CONTENT }
+        empty.visibility = if (items.isEmpty() && folders.isEmpty()) View.VISIBLE else View.GONE
+        divider.visibility = if (saveUrl != null && (items.isNotEmpty() || folders.isNotEmpty())) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        val density = resources.displayMetrics.density
+        val maxH = minOf(
+            (resources.displayMetrics.heightPixels * 0.55f).toInt(),
+            (480 * density).toInt()
+        )
+        val longList = items.size + folders.size > 5
+        scroll.layoutParams = scroll.layoutParams.apply {
+            height = if (longList) maxH else ViewGroup.LayoutParams.WRAP_CONTENT
+        }
         val inflater = LayoutInflater.from(this)
-        items.forEach { item ->
-            val row = inflater.inflate(R.layout.item_trial_bookmark, list, false)
-            row.findViewById<TextView>(R.id.bookmarkTitle).text = item.title
-            row.findViewById<TextView>(R.id.bookmarkUrl).text =
-                item.url.removePrefix("https://").removePrefix("http://")
-            row.setOnClickListener {
-                dismissBookmarkPopup()
-                openSavedUrl(item.url)
-            }
-            row.findViewById<View>(R.id.bookmarkRename).setOnClickListener {
-                promptBookmarkLabel("Přejmenovat", item.title, "Hotovo") { title ->
-                    TrialBookmarks.rename(this, item.id, title)
-                    populateHomeBookmarks()
-                    applySavedTitleToTabs(item.url, title)
+        groups.forEach { group ->
+            val folder = group.folder
+            if (folder != null) {
+                val header = inflater.inflate(R.layout.item_bookmark_group_header, list, false)
+                header.findViewById<TextView>(R.id.groupHeaderTitle).text = folder.title
+                val chevron = header.findViewById<ImageView>(R.id.groupHeaderChevron)
+                chevron.rotation = if (folder.collapsed) 0f else 180f
+                header.setOnClickListener {
+                    TrialBookmarks.setFolderCollapsed(this, folder.id, !folder.collapsed)
                     if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                 }
+                header.setOnLongClickListener {
+                    showFolderActions(folder, content, popup)
+                    true
+                }
+                list.addView(header)
+                if (folder.collapsed) return@forEach
             }
-            row.findViewById<View>(R.id.bookmarkDelete).setOnClickListener {
-                TrialBookmarks.remove(this, item.id)
-                populateHomeBookmarks()
-                forgetSavedTitleOnTabs(item.url)
-                if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+            group.items.forEach { item ->
+                val row = inflater.inflate(R.layout.item_trial_bookmark, list, false)
+                row.findViewById<TextView>(R.id.bookmarkTitle).text = item.title
+                row.findViewById<TextView>(R.id.bookmarkUrl).text =
+                    item.url.removePrefix("https://").removePrefix("http://")
+                row.setOnClickListener {
+                    dismissBookmarkPopup()
+                    openSavedUrl(item.url)
+                }
+                bindBookmarkActions(
+                    pin = row.findViewById(R.id.bookmarkPin),
+                    rename = row.findViewById(R.id.bookmarkRename),
+                    delete = row.findViewById(R.id.bookmarkDelete),
+                    item = item,
+                    afterChange = {
+                        if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                    }
+                )
+                list.addView(row)
             }
-            list.addView(row)
         }
     }
+
+    private fun showFolderActions(folder: TrialBookmarkFolder, content: View, popup: PopupWindow) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(folder.title)
+            .setItems(arrayOf("Přejmenovat", "Odebrat skupinu")) { _, which ->
+                when (which) {
+                    0 -> promptFolderName("Přejmenovat podsložku", folder.title, "Hotovo") { name ->
+                        if (!TrialBookmarks.renameFolder(this, folder.id, name)) {
+                            Toast.makeText(this, "Podsložku nelze přejmenovat", Toast.LENGTH_SHORT).show()
+                            return@promptFolderName
+                        }
+                        populateHomeBookmarks()
+                        if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                    }
+                    1 -> {
+                        TrialBookmarks.removeFolder(this, folder.id)
+                        populateHomeBookmarks()
+                        if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                    }
+                }
+            }
+            .setNegativeButton("Zrušit", null)
+            .show()
+    }
+
+    private fun bindBookmarkActions(
+        pin: ImageButton,
+        rename: View,
+        delete: View,
+        item: TrialBookmark,
+        afterChange: () -> Unit = {}
+    ) {
+        bindBookmarkPin(pin, item.url, afterChange)
+        rename.setOnClickListener {
+            promptBookmarkLabel("Přejmenovat", item.title, item.folderId, "Hotovo") { title, folderId ->
+                TrialBookmarks.rename(this, item.id, title, folderId)
+                populateHomeBookmarks()
+                applySavedTitleToTabs(item.url, title)
+                afterChange()
+            }
+        }
+        delete.setOnClickListener {
+            TrialBookmarks.remove(this, item.id)
+            populateHomeBookmarks()
+            forgetSavedTitleOnTabs(item.url)
+            afterChange()
+        }
+    }
+
+    private fun bindBookmarkPin(pin: ImageButton, url: String, afterChange: () -> Unit = {}) {
+        updatePinGlyph(pin, url)
+        pin.setOnClickListener {
+            togglePinForUrl(url)
+            populateHomeBookmarks()
+            afterChange()
+        }
+    }
+
+    private fun updatePinGlyph(pin: ImageButton, url: String) {
+        val pinned = isUrlPinned(url)
+        pin.contentDescription = if (pinned) "Odepnout" else "Připnout na lištu"
+        ImageViewCompat.setImageTintList(
+            pin,
+            ColorStateList.valueOf(
+                ContextCompat.getColor(this, if (pinned) R.color.saved else R.color.ink_soft)
+            )
+        )
+    }
+
+    private fun isUrlPinned(url: String): Boolean =
+        tabs.any { !it.isHome && it.pinned && samePage(it.url, url) }
 
     /** Uloží stránku hned a nabídne přejmenování. */
     private fun savePageThenRename(url: String) {
@@ -2852,8 +2993,8 @@ class WebViewActivity : AppCompatActivity() {
         }
         populateHomeBookmarks()
         applySavedTitleToTabs(trimmed, added.title)
-        promptBookmarkLabel("Přejmenovat", added.title, "Hotovo") { title ->
-            TrialBookmarks.rename(this, added.id, title)
+        promptBookmarkLabel("Přejmenovat", added.title, added.folderId, "Hotovo") { title, folderId ->
+            TrialBookmarks.rename(this, added.id, title, folderId)
             populateHomeBookmarks()
             applySavedTitleToTabs(trimmed, title)
         }
@@ -2866,8 +3007,8 @@ class WebViewActivity : AppCompatActivity() {
             Toast.makeText(this, "Stránka není uložená", Toast.LENGTH_SHORT).show()
             return
         }
-        promptBookmarkLabel("Přejmenovat", item.title, "Hotovo") { title ->
-            TrialBookmarks.rename(this, item.id, title)
+        promptBookmarkLabel("Přejmenovat", item.title, item.folderId, "Hotovo") { title, folderId ->
+            TrialBookmarks.rename(this, item.id, title, folderId)
             populateHomeBookmarks()
             applySavedTitleToTabs(url, title)
         }
@@ -2892,14 +3033,37 @@ class WebViewActivity : AppCompatActivity() {
     private fun promptBookmarkLabel(
         title: String,
         initial: String,
+        currentFolderId: String?,
         confirmLabel: String = "Uložit",
-        onSave: (String) -> Unit
+        onSave: (String, String?) -> Unit
     ) {
         val view = layoutInflater.inflate(R.layout.dialog_bookmark_label, null)
         val layout = view.findViewById<TextInputLayout>(R.id.bookmarkLabelLayout)
         val input = view.findViewById<TextInputEditText>(R.id.bookmarkLabelInput)
+        val folderLayout = view.findViewById<TextInputLayout>(R.id.bookmarkFolderLayout)
+        val folderInput = view.findViewById<AutoCompleteTextView>(R.id.bookmarkFolderInput)
+        val newLayout = view.findViewById<TextInputLayout>(R.id.bookmarkFolderNewLayout)
+        val newInput = view.findViewById<TextInputEditText>(R.id.bookmarkFolderNewInput)
         input.setText(initial)
         input.setSelection(input.text?.length ?: 0)
+        val folders = TrialBookmarks.loadFolders(this)
+        val labels = mutableListOf(FOLDER_NONE)
+        labels.addAll(folders.map { it.title })
+        labels.add(FOLDER_NEW)
+        folderInput.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, labels))
+        folderInput.threshold = 0
+        folderInput.keyListener = null
+        val currentTitle = folders.find { it.id == currentFolderId }?.title ?: FOLDER_NONE
+        folderInput.setText(currentTitle, false)
+        fun syncNewFolderField() {
+            val selected = folderInput.text?.toString().orEmpty()
+            newLayout.visibility = if (selected == FOLDER_NEW) View.VISIBLE else View.GONE
+            if (selected != FOLDER_NEW) newLayout.error = null
+        }
+        syncNewFolderField()
+        folderInput.setOnClickListener { folderInput.showDropDown() }
+        folderInput.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) folderInput.showDropDown() }
+        folderInput.setOnItemClickListener { _, _, _, _ -> syncNewFolderField() }
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(title)
             .setView(view)
@@ -2916,8 +3080,71 @@ class WebViewActivity : AppCompatActivity() {
                     return@setOnClickListener
                 }
                 layout.error = null
+                val selected = folderInput.text?.toString().orEmpty()
+                val folderId = when (selected) {
+                    FOLDER_NONE, "" -> null
+                    FOLDER_NEW -> {
+                        val name = newInput.text?.toString().orEmpty().trim()
+                        if (name.isEmpty()) {
+                            newLayout.error = "Zadejte název podsložky"
+                            return@setOnClickListener
+                        }
+                        val folder = TrialBookmarks.addFolder(this, name)
+                        if (folder == null) {
+                            newLayout.error = "Maximum je ${TrialBookmarks.MAX_FOLDERS} podsložek"
+                            return@setOnClickListener
+                        }
+                        folder.id
+                    }
+                    else -> folders.find { it.title == selected }?.id
+                        ?: TrialBookmarks.addFolder(this, selected)?.id
+                }
+                folderLayout.error = null
+                newLayout.error = null
                 dialog.dismiss()
-                onSave(label)
+                onSave(label, folderId)
+            }
+        }
+        dialog.setOnDismissListener {
+            if (bookmarkLabelDialog === dialog) bookmarkLabelDialog = null
+        }
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        dialog.show()
+        input.requestFocus()
+    }
+
+    private fun promptFolderName(
+        title: String,
+        initial: String,
+        confirmLabel: String,
+        onSave: (String) -> Unit
+    ) {
+        val view = layoutInflater.inflate(R.layout.dialog_bookmark_label, null)
+        val layout = view.findViewById<TextInputLayout>(R.id.bookmarkLabelLayout)
+        val input = view.findViewById<TextInputEditText>(R.id.bookmarkLabelInput)
+        view.findViewById<View>(R.id.bookmarkFolderLayout).visibility = View.GONE
+        view.findViewById<View>(R.id.bookmarkFolderNewLayout).visibility = View.GONE
+        layout.hint = "Název podsložky"
+        input.setText(initial)
+        input.setSelection(input.text?.length ?: 0)
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setView(view)
+            .setPositiveButton(confirmLabel, null)
+            .setNegativeButton("Zrušit", null)
+            .create()
+        bookmarkLabelDialog?.dismiss()
+        bookmarkLabelDialog = dialog
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+                val name = input.text?.toString().orEmpty().trim()
+                if (name.isEmpty()) {
+                    layout.error = "Zadejte název"
+                    return@setOnClickListener
+                }
+                layout.error = null
+                dialog.dismiss()
+                onSave(name)
             }
         }
         dialog.setOnDismissListener {
