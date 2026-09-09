@@ -5,8 +5,9 @@ package com.example.linkwrapper
  *
  * Přihlášení k PSST zůstane jen v RAM — žádný přepínač v menu.
  * Jakmile jde appka na pozadí, relace i cookies se smažou ([TrialIdle]);
- * otevřené karty zůstanou. Flavor (`pinned` / `systemtrust`) jen odděluje
- * soubor APK a `applicationId`, ať jdou nainstalovat vedle sebe.
+ * otevřené karty zůstanou, dokud proces žije. Po úplném vypnutí appky
+ * (proces končí) se karty i piny nenačtou. Flavor (`pinned` / `systemtrust`)
+ * jen odděluje soubor APK a `applicationId`, ať jdou nainstalovat vedle sebe.
  */
 internal object TrialSettings {
 

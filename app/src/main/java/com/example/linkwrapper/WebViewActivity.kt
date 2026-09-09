@@ -232,6 +232,7 @@ class WebViewActivity : AppCompatActivity() {
         if (TrialSettings.ephemeralLogin()) Session.forgetDisk(this)
 
         pendingStartUrl = explicitUrlFromIntent(intent)
+        TrialPins.dropDisk(this)
         refreshGate()
         refreshConnectionBanner()
     }
@@ -842,7 +843,7 @@ class WebViewActivity : AppCompatActivity() {
             )
             pin.visibility = if (tab.pinned) View.VISIBLE else View.GONE
             pin.imageTintList = android.content.res.ColorStateList.valueOf(
-                ContextCompat.getColor(this, if (selected) R.color.accent else R.color.ink_faint)
+                ContextCompat.getColor(this, R.color.saved)
             )
             savedMark.visibility =
                 if (!tab.isHome && TrialBookmarks.isSaved(this, tab.url)) View.VISIBLE else View.GONE
@@ -1352,6 +1353,7 @@ class WebViewActivity : AppCompatActivity() {
         rows.add(ActionRow("Otevřít na nové kartě", R.drawable.ic_add) { openOnNewTab(url) })
         if (TrialBookmarks.isSaved(this, url)) {
             rows.add(ActionRow("Přejmenovat", R.drawable.ic_edit) { renameSavedPage(url) })
+            rows.add(ActionRow("Odebrat", R.drawable.ic_close) { removeSavedPage(url) })
         } else {
             rows.add(ActionRow("Uložit", R.drawable.ic_bookmark) { savePageThenRename(url) })
         }
@@ -1454,7 +1456,7 @@ class WebViewActivity : AppCompatActivity() {
         )
     }
 
-    /** Obnoví otevřené karty po startu procesu. Bez relace se URL nenačítá. */
+    /** Obnoví karty z RAM tohoto procesu. Po úplném vypnutí appky je seznam prázdný. */
     private fun restorePinnedTabs() {
         val saved = TrialPins.load(this)
         if (saved.isEmpty()) return
@@ -2770,7 +2772,7 @@ class WebViewActivity : AppCompatActivity() {
             row.findViewById<View>(R.id.bookmarkDelete).setOnClickListener {
                 TrialBookmarks.remove(this, item.id)
                 populateHomeBookmarks()
-                refreshTabStrip()
+                forgetSavedTitleOnTabs(item.url)
                 if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
             }
             list.addView(row)
@@ -2819,6 +2821,22 @@ class WebViewActivity : AppCompatActivity() {
             populateHomeBookmarks()
             applySavedTitleToTabs(url, title)
         }
+    }
+
+    /** Odebere stránku ze složky. Karta zůstane otevřená, jen bez uloženého jména. */
+    private fun removeSavedPage(url: String) {
+        val item = TrialBookmarks.findByUrl(this, url) ?: return
+        TrialBookmarks.remove(this, item.id)
+        populateHomeBookmarks()
+        forgetSavedTitleOnTabs(url)
+    }
+
+    private fun forgetSavedTitleOnTabs(url: String) {
+        tabs.filter { !it.isHome && samePage(it.url, url) }.forEach { tab ->
+            tab.title = Destinations.tabTitle(tab.url)
+        }
+        persistOpenTabsFromTabs()
+        refreshTabStrip()
     }
 
     private fun promptBookmarkLabel(

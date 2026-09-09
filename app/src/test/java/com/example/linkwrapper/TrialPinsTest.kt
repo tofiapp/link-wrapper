@@ -44,4 +44,19 @@ class TrialPinsTest {
         assertEquals(1, TrialPins.stripGroup(isHome = false, pinned = true))
         assertEquals(2, TrialPins.stripGroup(isHome = false, pinned = false))
     }
+
+    @Test
+    fun sessionItemsStayInMemoryUntilCleared() {
+        try {
+            TrialPins.replaceSession(
+                listOf(TrialPin("Graf", "https://psst.tudc.cz/x", pinned = true))
+            )
+            assertEquals(1, TrialPins.peekSession().size)
+            assertEquals("Graf", TrialPins.peekSession()[0].title)
+            TrialPins.clearSession()
+            assertTrue(TrialPins.peekSession().isEmpty())
+        } finally {
+            TrialPins.clearSession()
+        }
+    }
 }

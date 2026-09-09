@@ -29,7 +29,7 @@
             android:contentDescription="Připnutá karta"
             android:src="@drawable/ic_pin"
             android:visibility="gone"
-            app:tint="@color/accent" />
+            app:tint="@color/saved" />
 
         <TextView
             android:id="@+id/tabTitle"
@@ -57,9 +57,9 @@
     <View
         android:id="@+id/tabSavedMark"
         android:layout_width="match_parent"
-        android:layout_height="3dp"
+        android:layout_height="2dp"
         android:layout_gravity="top"
-            android:background="@drawable/bg_tab_saved_mark"
+        android:background="@drawable/bg_tab_saved_mark"
         android:clickable="false"
         android:focusable="false"
         android:visibility="gone" />
