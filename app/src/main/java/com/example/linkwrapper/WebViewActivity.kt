@@ -3178,7 +3178,7 @@ class WebViewActivity : AppCompatActivity() {
             WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
                 WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
         )
-        val capScroll = {
+        fun capScroll() {
             val ime = ViewCompat.getRootWindowInsets(window.decorView)
                 ?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
             val density = resources.displayMetrics.density
@@ -3187,7 +3187,7 @@ class WebViewActivity : AppCompatActivity() {
                 .coerceAtLeast((120 * density).toInt())
             val childH = (scroll as? ViewGroup)?.getChildAt(0)?.measuredHeight
                 ?: scroll.measuredHeight
-            val lp = scroll.layoutParams ?: return@capScroll
+            val lp = scroll.layoutParams ?: return
             val next = if (ime > 0 && childH > cap) cap else ViewGroup.LayoutParams.WRAP_CONTENT
             if (lp.height != next) {
                 lp.height = next
@@ -3195,10 +3195,10 @@ class WebViewActivity : AppCompatActivity() {
             }
         }
         ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
-            scroll.post(capScroll)
+            scroll.post { capScroll() }
             insets
         }
-        scroll.post(capScroll)
+        scroll.post { capScroll() }
     }
 
     private fun dismissBookmarkPopup() {
