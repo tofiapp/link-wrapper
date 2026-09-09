@@ -12,4 +12,5 @@
     <color name="accent_wash">#FFE8F1F8</color>
     <color name="alert">#FFB3261E</color>
     <color name="alert_wash">#FFFCEEEC</color>
+    <color name="saved">#FF2F9E5C</color>
 </resources>

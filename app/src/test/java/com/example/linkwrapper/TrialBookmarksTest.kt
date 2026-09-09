@@ -39,4 +39,25 @@ class TrialBookmarksTest {
             )
         )
     }
+
+    @Test
+    fun findByUrlIgnoresCaseAndTrim() {
+        val items = listOf(
+            TrialBookmark("a", "Graf", "https://psst.tudc.cz/x")
+        )
+        assertEquals(
+            items[0],
+            TrialBookmarks.findByUrl(items, " HTTPS://PSST.TUDC.CZ/X ")
+        )
+    }
+
+    @Test
+    fun findByUrlMissesUnknownAndBlank() {
+        val items = listOf(
+            TrialBookmark("a", "Graf", "https://psst.tudc.cz/x")
+        )
+        assertEquals(null, TrialBookmarks.findByUrl(items, "https://other.example"))
+        assertEquals(null, TrialBookmarks.findByUrl(items, "  "))
+        assertEquals(null, TrialBookmarks.findByUrl(emptyList(), "https://psst.tudc.cz/x"))
+    }
 }

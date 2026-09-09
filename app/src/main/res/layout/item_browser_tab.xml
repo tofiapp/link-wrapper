@@ -1,49 +1,63 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/tabRoot"
     android:layout_width="wrap_content"
     android:layout_height="36dp"
     android:layout_marginStart="2dp"
-    android:layout_marginEnd="6dp"
-    android:background="@drawable/bg_tab"
-    android:clickable="true"
-    android:focusable="true"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:paddingStart="14dp"
-    android:paddingEnd="14dp">
+    android:layout_marginEnd="6dp">
 
-    <ImageView
-        android:id="@+id/tabPin"
-        android:layout_width="14dp"
-        android:layout_height="14dp"
-        android:layout_marginEnd="6dp"
-        android:contentDescription="Připnutá karta"
-        android:src="@drawable/ic_pin"
-        android:visibility="gone"
-        app:tint="@color/accent" />
-
-    <TextView
-        android:id="@+id/tabTitle"
+    <LinearLayout
+        android:id="@+id/tabRoot"
         android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:fontFamily="sans-serif-medium"
-        android:maxWidth="180dp"
-        android:maxLines="1"
-        android:textColor="@color/ink_soft"
-        android:textSize="13sp" />
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_tab"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp">
 
-    <ImageButton
-        android:id="@+id/tabClose"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:layout_marginStart="2dp"
-        android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Zavřít kartu"
-        android:padding="6dp"
-        android:src="@drawable/ic_close"
-        app:tint="@color/ink_faint" />
+        <ImageView
+            android:id="@+id/tabPin"
+            android:layout_width="14dp"
+            android:layout_height="14dp"
+            android:layout_marginEnd="6dp"
+            android:contentDescription="Připnutá karta"
+            android:src="@drawable/ic_pin"
+            android:visibility="gone"
+            app:tint="@color/accent" />
 
-</LinearLayout>
+        <TextView
+            android:id="@+id/tabTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif-medium"
+            android:maxWidth="180dp"
+            android:maxLines="1"
+            android:textColor="@color/ink_soft"
+            android:textSize="13sp" />
+
+        <ImageButton
+            android:id="@+id/tabClose"
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="2dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Zavřít kartu"
+            android:padding="6dp"
+            android:src="@drawable/ic_close"
+            app:tint="@color/ink_faint" />
+    </LinearLayout>
+
+    <View
+        android:id="@+id/tabSavedMark"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="top"
+        android:background="@drawable/bg_tab_saved_mark"
+        android:clickable="false"
+        android:focusable="false"
+        android:visibility="gone" />
+</FrameLayout>

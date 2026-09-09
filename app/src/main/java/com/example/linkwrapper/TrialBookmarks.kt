@@ -77,6 +77,16 @@ internal object TrialBookmarks {
         }.toList()
     }
 
+    fun findByUrl(items: List<TrialBookmark>, url: String): TrialBookmark? {
+        val clean = url.trim()
+        if (clean.isEmpty()) return null
+        return items.firstOrNull { sameUrl(it.url, clean) }
+    }
+
+    fun findByUrl(context: Context, url: String): TrialBookmark? = findByUrl(load(context), url)
+
+    fun isSaved(context: Context, url: String): Boolean = findByUrl(context, url) != null
+
     fun sameUrl(a: String, b: String): Boolean =
         a.trim().equals(b.trim(), ignoreCase = true)
 

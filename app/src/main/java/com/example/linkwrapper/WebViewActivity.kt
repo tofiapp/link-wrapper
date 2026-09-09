@@ -2,8 +2,6 @@ package com.example.linkwrapper
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
@@ -168,6 +166,8 @@ class WebViewActivity : AppCompatActivity() {
     private var lastTrustProbeAt = 0L
     private var lastTrustResult: DeviceTrust.Result? = null
     private var connectionBannerVisible = false
+    /** Bez VPN/internetu: jen připnuté karty, ovládání lišty vypnuté. */
+    private var chromeOffline = false
     private val mainHandler = Handler(Looper.getMainLooper())
     private val vpnCheckRunnable = Runnable { refreshConnectionBanner() }
     private val loginTimeoutRunnable = Runnable {
@@ -565,6 +565,14 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun selectTab(tabId: Long) {
         val target = tabs.find { it.id == tabId } ?: return
+        if (chromeOffline && !target.pinned) {
+            val pin = tabs.firstOrNull { it.pinned }
+            if (pin != null) {
+                if (pin.id != tabId) selectTab(pin.id)
+                return
+            }
+            if (activeTabId != -1L && tabId != activeTabId) return
+        }
         if (tabId != activeTabId) hideKeyboard()
         activeTabId = tabId
         val promptLogin = shouldPromptLoginForTab(target)
@@ -807,7 +815,8 @@ class WebViewActivity : AppCompatActivity() {
     private fun refreshTabStrip() {
         tabStrip.removeAllViews()
         val inflater = LayoutInflater.from(this)
-        val shown = tabs.sortedWith(
+        val source = if (chromeOffline) tabs.filter { it.pinned } else tabs
+        val shown = source.sortedWith(
             compareBy<BrowserTab> { TrialPins.stripGroup(it.isHome, it.pinned) }
                 .thenBy { tabs.indexOf(it) }
         )
@@ -817,6 +826,7 @@ class WebViewActivity : AppCompatActivity() {
             val title = item.findViewById<TextView>(R.id.tabTitle)
             val pin = item.findViewById<ImageView>(R.id.tabPin)
             val close = item.findViewById<ImageButton>(R.id.tabClose)
+            val savedMark = item.findViewById<View>(R.id.tabSavedMark)
             val selected = tab.id == activeTabId
 
             title.text = tab.title
@@ -827,11 +837,14 @@ class WebViewActivity : AppCompatActivity() {
             pin.imageTintList = android.content.res.ColorStateList.valueOf(
                 ContextCompat.getColor(this, if (selected) R.color.accent else R.color.ink_faint)
             )
+            savedMark.visibility =
+                if (!tab.isHome && TrialBookmarks.isSaved(this, tab.url)) View.VISIBLE else View.GONE
             root.setBackgroundResource(
                 if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
             )
             root.setOnClickListener { selectTab(tab.id) }
             root.setOnLongClickListener {
+                if (chromeOffline) return@setOnLongClickListener true
                 showTabActions(tab)
                 true
             }
@@ -1249,9 +1262,10 @@ class WebViewActivity : AppCompatActivity() {
 
     /**
      * Dlouhé podržení odkazu ve stránce. Systémovou Chromium nabídku
-     * nenecháme — místo ní náš dialog (otevřít na druhé kartě / kopírovat).
+     * nenecháme — místo ní náš dialog (otevřít na nové kartě / uložit).
      */
     private fun handleWebViewLongClick(webView: WebView): Boolean {
+        if (chromeOffline) return true
         val result = webView.hitTestResult
         when (result.type) {
             WebView.HitTestResult.SRC_ANCHOR_TYPE,
@@ -1277,32 +1291,41 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun showLinkOrTabActions(url: String, heading: String) {
         if (url.isBlank() || url == Destinations.HOME_URL) {
-            Toast.makeText(this, "Domů nelze poslat na druhou kartu", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Domů nelze otevřít na nové kartě", Toast.LENGTH_SHORT).show()
             return
         }
-        showActionSheet(
-            heading,
-            url,
-            listOf(
-                ActionRow("Otevřít na druhé kartě", R.drawable.ic_add) { openOnOtherTab(url) },
-                ActionRow("Kopírovat adresu", R.drawable.ic_copy) { copyUrlToClipboard(url) }
-            )
-        )
+        val already = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
+        showActionSheet(heading, url, pageActionRows(url, already))
     }
 
     private fun showTabActions(tab: BrowserTab) {
         if (tab.isHome) {
-            Toast.makeText(this, "Domů nelze poslat na druhou kartu", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Domů nelze otevřít na nové kartě", Toast.LENGTH_SHORT).show()
             return
         }
+        showActionSheet(tab.title, tab.url, pageActionRows(tab.url, tab))
+    }
+
+    private fun pageActionRows(url: String, tab: BrowserTab?): List<ActionRow> {
         val rows = mutableListOf<ActionRow>()
+        val openTab = tab
         rows.add(
-            if (tab.pinned) ActionRow("Odepnout", R.drawable.ic_pin) { setTabPinned(tab, false) }
-            else ActionRow("Připnout nahoru", R.drawable.ic_pin) { setTabPinned(tab, true) }
+            if (openTab != null && openTab.pinned) {
+                ActionRow("Odepnout", R.drawable.ic_pin) { setTabPinned(openTab, false) }
+            } else {
+                ActionRow("Připnout na lištu", R.drawable.ic_pin) {
+                    if (openTab != null) setTabPinned(openTab, true)
+                    else togglePinForUrl(url)
+                }
+            }
         )
-        rows.add(ActionRow("Otevřít na druhé kartě", R.drawable.ic_add) { openOnOtherTab(tab.url) })
-        rows.add(ActionRow("Kopírovat adresu", R.drawable.ic_copy) { copyUrlToClipboard(tab.url) })
-        showActionSheet(tab.title, tab.url, rows)
+        rows.add(ActionRow("Otevřít na nové kartě", R.drawable.ic_add) { openOnNewTab(url) })
+        if (TrialBookmarks.isSaved(this, url)) {
+            rows.add(ActionRow("Přejmenovat", R.drawable.ic_edit) { renameSavedPage(url) })
+        } else {
+            rows.add(ActionRow("Uložit", R.drawable.ic_bookmark) { savePageThenRename(url) })
+        }
+        return rows
     }
 
     private data class ActionRow(
@@ -1471,30 +1494,91 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     /**
-     * Stejnou adresu otevře na jiné kartě a nechá aktuální na místě.
-     * Prázdná karta Domů má přednost; jinak nová karta, případně přepis
-     * té druhé, když je karet maximum.
+     * Otevře adresu na nové kartě a přepne na ni.
+     * Při maximu karet použije volnou kartu Domů, jinak oznámí limit.
      */
-    private fun openOnOtherTab(url: String) {
+    private fun openOnNewTab(url: String) {
         if (url.isBlank() || url == Destinations.HOME_URL) return
-        val currentId = activeTabId
-        val otherHome = tabs.firstOrNull { it.id != currentId && it.isHome }
+        if (needsAppLogin(url)) {
+            pendingStartUrl = url
+            presentLogin()
+            return
+        }
+        val spareHome = tabs.firstOrNull { it.isHome && it.id != activeTabId }
         when {
-            otherHome != null -> loadUrlIntoTab(otherHome, url)
             tabs.size < MAX_TABS -> {
-                openInNewTab(url)
-                if (currentId != -1L) selectTab(currentId)
+                val webView = takePrefetch(url) ?: createWebView()
+                val tab = BrowserTab(
+                    id = nextTabId++,
+                    webView = webView,
+                    title = tabLabel(url),
+                    url = url
+                )
+                tabs.add(tab)
+                persistOpenTabsFromTabs()
+                selectTab(tab.id)
+                if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
+                    TrialIsolation.onNavigate(this, url)
+                    webView.loadUrl(url)
+                }
+            }
+            spareHome != null -> {
+                loadUrlIntoTab(spareHome, url)
+                selectTab(spareHome.id)
             }
             else -> {
-                val other = tabs.firstOrNull { it.id != currentId && !it.pinned }
-                if (other == null) {
-                    Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
-                    return
-                }
-                loadUrlIntoTab(other, url)
+                Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
+                return
             }
         }
-        Toast.makeText(this, "Otevřeno na druhé kartě", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Otevřeno na nové kartě", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun togglePinForUrl(url: String) {
+        if (url.isBlank() || url == Destinations.HOME_URL) return
+        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
+        if (existing != null) {
+            setTabPinned(existing, !existing.pinned)
+            return
+        }
+        if (tabs.count { it.pinned } >= TrialPins.MAX_ITEMS) {
+            Toast.makeText(
+                this,
+                "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        if (needsAppLogin(url)) {
+            pendingStartUrl = url
+            presentLogin()
+            return
+        }
+        if (tabs.size >= MAX_TABS) {
+            val home = tabs.firstOrNull { it.isHome }
+            if (home == null) {
+                Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
+                return
+            }
+            loadUrlIntoTab(home, url)
+            setTabPinned(home, true)
+            selectTab(home.id)
+            return
+        }
+        val webView = takePrefetch(url) ?: createWebView()
+        val tab = BrowserTab(
+            id = nextTabId++,
+            webView = webView,
+            title = tabLabel(url),
+            url = url
+        )
+        tabs.add(tab)
+        if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
+            TrialIsolation.onNavigate(this, url)
+            webView.loadUrl(url)
+        }
+        setTabPinned(tab, true)
+        selectTab(tab.id)
     }
 
     private fun loadUrlIntoTab(tab: BrowserTab, url: String) {
@@ -1516,12 +1600,6 @@ class WebViewActivity : AppCompatActivity() {
         tab.title = tabLabel(url)
         tab.webView?.loadUrl(url)
         refreshTabStrip()
-    }
-
-    private fun copyUrlToClipboard(url: String) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Odkaz", url))
-        Toast.makeText(this, "Adresa zkopírována", Toast.LENGTH_SHORT).show()
     }
 
     private fun showPageSizeDialog() {
@@ -1672,6 +1750,78 @@ class WebViewActivity : AppCompatActivity() {
     private fun refreshConnectionBanner() {
         if (isConnectionOk()) hideConnectionBanner()
         else showConnectionBanner()
+        applyOfflineChrome()
+    }
+
+    /**
+     * Offline: jen připnuté karty na liště, zbytek ovládání zašedne.
+     * Přepíná se jen při změně stavu, nebo když je potřeba skočit na pin.
+     */
+    private fun applyOfflineChrome() {
+        val offline = !isConnectionOk()
+        val changed = chromeOffline != offline
+        chromeOffline = offline
+        if (offline) {
+            val current = activeTab
+            if (current != null && !current.pinned) {
+                val firstPin = tabs.firstOrNull { it.pinned }
+                if (firstPin != null) {
+                    if (changed) {
+                        invalidateOptionsMenu()
+                        if (::toolbar.isInitialized) applyChromeMenu(toolbar.menu)
+                    }
+                    selectTab(firstPin.id)
+                    return
+                }
+            }
+        }
+        if (changed) {
+            refreshTabStrip()
+            invalidateOptionsMenu()
+            if (::toolbar.isInitialized) applyChromeMenu(toolbar.menu)
+        }
+    }
+
+    private fun applyChromeMenu(menu: Menu?) {
+        val usable = !chromeOffline
+        val accent = ContextCompat.getColor(this, if (usable) R.color.accent else R.color.ink_faint)
+        val inkSoft = ContextCompat.getColor(this, if (usable) R.color.ink_soft else R.color.ink_faint)
+        val alert = ContextCompat.getColor(this, R.color.alert)
+        val alpha = if (usable) 255 else 90
+
+        fun tint(id: Int, color: Int) {
+            menu?.findItem(id)?.let { item ->
+                item.isEnabled = usable
+                item.icon?.mutate()?.let { icon ->
+                    icon.setTint(color)
+                    icon.alpha = alpha
+                    item.icon = icon
+                }
+            }
+        }
+        tint(R.id.action_new_tab, accent)
+        tint(R.id.action_reload, inkSoft)
+        tint(R.id.action_folders, inkSoft)
+        tint(R.id.action_home, inkSoft)
+        tint(R.id.action_open_url, inkSoft)
+        tint(R.id.action_page_size, inkSoft)
+        tint(R.id.action_link_settings, inkSoft)
+        menu?.findItem(R.id.action_logout)?.let { item ->
+            item.isEnabled = usable
+            item.icon?.mutate()?.let { icon ->
+                icon.setTint(alert)
+                icon.alpha = alpha
+                item.icon = icon
+            }
+        }
+        if (::toolbar.isInitialized) {
+            toolbar.isEnabled = usable
+            toolbar.overflowIcon?.mutate()?.let { icon ->
+                icon.setTint(inkSoft)
+                icon.alpha = alpha
+                toolbar.overflowIcon = icon
+            }
+        }
     }
 
     private fun showConnectionBanner() {
@@ -2542,20 +2692,12 @@ class WebViewActivity : AppCompatActivity() {
         val empty = content.findViewById<TextView>(R.id.bookmarkEmpty)
         val list = content.findViewById<LinearLayout>(R.id.bookmarkList)
         val scroll = content.findViewById<View>(R.id.bookmarkScroll)
-        val saveUrl = currentSaveableUrl()
+        val saveUrl = currentSaveableUrl()?.takeIf { !TrialBookmarks.isSaved(this, it) }
         save.visibility = if (saveUrl != null) View.VISIBLE else View.GONE
         save.setOnClickListener {
             val url = currentSaveableUrl() ?: return@setOnClickListener
-            promptBookmarkLabel("Uložit stránku", tabLabel(url)) { title ->
-                val added = TrialBookmarks.add(this, title, url)
-                if (added == null) {
-                    Toast.makeText(this, "Složka je plná", Toast.LENGTH_SHORT).show()
-                    return@promptBookmarkLabel
-                }
-                populateHomeBookmarks()
-                if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
-                else Toast.makeText(this, "Uloženo", Toast.LENGTH_SHORT).show()
-            }
+            popup.dismiss()
+            savePageThenRename(url)
         }
         val items = TrialBookmarks.load(this)
         list.removeAllViews()
@@ -2567,27 +2709,80 @@ class WebViewActivity : AppCompatActivity() {
         items.forEach { item ->
             val row = inflater.inflate(R.layout.item_trial_bookmark, list, false)
             row.findViewById<TextView>(R.id.bookmarkTitle).text = item.title
+            row.findViewById<TextView>(R.id.bookmarkUrl).text =
+                item.url.removePrefix("https://").removePrefix("http://")
             row.setOnClickListener {
                 dismissBookmarkPopup()
                 openSavedUrl(item.url)
             }
             row.findViewById<View>(R.id.bookmarkRename).setOnClickListener {
-                promptBookmarkLabel("Popisek", item.title) { title ->
+                promptBookmarkLabel("Přejmenovat", item.title, "Hotovo") { title ->
                     TrialBookmarks.rename(this, item.id, title)
                     populateHomeBookmarks()
+                    refreshTabStrip()
                     if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                 }
             }
             row.findViewById<View>(R.id.bookmarkDelete).setOnClickListener {
                 TrialBookmarks.remove(this, item.id)
                 populateHomeBookmarks()
+                refreshTabStrip()
                 if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
             }
             list.addView(row)
         }
     }
 
-    private fun promptBookmarkLabel(title: String, initial: String, onSave: (String) -> Unit) {
+    /** Uloží stránku hned a nabídne přejmenování. */
+    private fun savePageThenRename(url: String) {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty() || trimmed == Destinations.HOME_URL) {
+            Toast.makeText(this, "Tuhle stránku nelze uložit", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val existing = TrialBookmarks.findByUrl(this, trimmed)
+        if (existing != null) {
+            renameSavedPage(trimmed)
+            return
+        }
+        val suggested = tabs.filter { !it.isHome }.find { samePage(it.url, trimmed) }
+            ?.title
+            ?.takeIf { it.isNotBlank() }
+            ?: tabLabel(trimmed)
+        val added = TrialBookmarks.add(this, suggested, trimmed)
+        if (added == null) {
+            Toast.makeText(this, "Složka je plná", Toast.LENGTH_SHORT).show()
+            return
+        }
+        populateHomeBookmarks()
+        refreshTabStrip()
+        promptBookmarkLabel("Přejmenovat", added.title, "Hotovo") { title ->
+            TrialBookmarks.rename(this, added.id, title)
+            populateHomeBookmarks()
+            refreshTabStrip()
+        }
+    }
+
+    /** Jen změní popisek uložené stránky, nic nového nepřidá. */
+    private fun renameSavedPage(url: String) {
+        val item = TrialBookmarks.findByUrl(this, url)
+        if (item == null) {
+            Toast.makeText(this, "Stránka není uložená", Toast.LENGTH_SHORT).show()
+            return
+        }
+        promptBookmarkLabel("Přejmenovat", item.title, "Hotovo") { title ->
+            TrialBookmarks.rename(this, item.id, title)
+            populateHomeBookmarks()
+            refreshTabStrip()
+        }
+    }
+
+    private fun promptBookmarkLabel(
+        title: String,
+        initial: String,
+        confirmLabel: String = "Uložit",
+        onSave: (String) -> Unit
+    ) {
         val view = layoutInflater.inflate(R.layout.dialog_bookmark_label, null)
         val layout = view.findViewById<TextInputLayout>(R.id.bookmarkLabelLayout)
         val input = view.findViewById<TextInputEditText>(R.id.bookmarkLabelInput)
@@ -2596,7 +2791,7 @@ class WebViewActivity : AppCompatActivity() {
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(title)
             .setView(view)
-            .setPositiveButton("Uložit", null)
+            .setPositiveButton(confirmLabel, null)
             .setNegativeButton("Zrušit", null)
             .create()
         bookmarkLabelDialog?.dismiss()
@@ -2636,39 +2831,28 @@ class WebViewActivity : AppCompatActivity() {
             menu.setOptionalIconsVisible(true)
             menu.setGroupDividerEnabled(true)
         }
-        val accent = ContextCompat.getColor(this, R.color.accent)
-        val inkSoft = ContextCompat.getColor(this, R.color.ink_soft)
-        val alert = ContextCompat.getColor(this, R.color.alert)
-
-        menu?.findItem(R.id.action_new_tab)?.icon?.mutate()?.setTint(accent)
-        menu?.findItem(R.id.action_reload)?.icon?.mutate()?.setTint(inkSoft)
-        menu?.findItem(R.id.action_home)?.icon?.mutate()?.setTint(inkSoft)
-
-        listOf(
-            R.id.action_open_url,
-            R.id.action_page_size,
-            R.id.action_link_settings,
-            R.id.action_folders
-        ).forEach { id ->
-            menu?.findItem(id)?.icon?.mutate()?.setTint(inkSoft)
-        }
-
         menu?.findItem(R.id.action_folders)?.isVisible = true
         menu?.setGroupVisible(R.id.group_logout, !TrialSettings.isTrial())
         if (!TrialSettings.isTrial()) {
             menu?.findItem(R.id.action_logout)?.let { item ->
                 val title = SpannableString("Vymazat údaje")
-                title.setSpan(ForegroundColorSpan(alert), 0, title.length, 0)
+                title.setSpan(
+                    ForegroundColorSpan(ContextCompat.getColor(this, R.color.alert)),
+                    0,
+                    title.length,
+                    0
+                )
                 item.title = title
-                item.icon?.mutate()?.setTint(alert)
             }
         }
+        applyChromeMenu(menu)
         toolbar.post {
             val lp = toolbar.layoutParams
             if (lp.width != LinearLayout.LayoutParams.WRAP_CONTENT) {
                 lp.width = LinearLayout.LayoutParams.WRAP_CONTENT
                 toolbar.layoutParams = lp
             }
+            applyChromeMenu(menu)
         }
         return true
     }
@@ -2676,11 +2860,13 @@ class WebViewActivity : AppCompatActivity() {
     override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
         menu?.findItem(R.id.action_folders)?.isVisible = true
         menu?.setGroupVisible(R.id.group_logout, !TrialSettings.isTrial())
+        applyChromeMenu(menu)
         return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         hideKeyboard()
+        if (chromeOffline) return true
         if (item.itemId == R.id.action_logout) {
             confirmLogout()
             return true

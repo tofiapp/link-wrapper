@@ -5,27 +5,50 @@
     android:layout_height="wrap_content"
     android:background="@drawable/bg_popup_menu"
     android:orientation="vertical"
-    android:paddingTop="10dp"
-    android:paddingBottom="8dp">
+    android:paddingTop="12dp"
+    android:paddingBottom="10dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="sans-serif-medium"
+        android:paddingHorizontal="16dp"
+        android:text="Složka"
+        android:textColor="@color/ink"
+        android:textSize="16sp" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="10dp"
+        android:text="Uložené stránky. Klepnutím otevřete."
+        android:textColor="@color/ink_faint"
+        android:textSize="12sp" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/bookmarkSave"
         android:layout_width="match_parent"
         android:layout_height="48dp"
         android:layout_marginHorizontal="12dp"
-        android:layout_marginBottom="4dp"
+        android:layout_marginBottom="8dp"
         android:text="Uložit tuto stránku"
         android:textAllCaps="false"
         android:textColor="@color/surface_raised"
         android:textSize="15sp"
         app:backgroundTint="@color/accent"
-        app:cornerRadius="12dp" />
+        app:cornerRadius="12dp"
+        app:icon="@drawable/ic_bookmark"
+        app:iconGravity="textStart"
+        app:iconPadding="8dp"
+        app:iconTint="@color/surface_raised" />
 
     <View
         android:id="@+id/bookmarkDivider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
-        android:layout_marginVertical="4dp"
+        android:layout_marginBottom="4dp"
         android:background="@color/line" />
 
     <TextView
@@ -33,7 +56,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingHorizontal="16dp"
-        android:paddingVertical="12dp"
+        android:paddingVertical="16dp"
         android:text="Zatím nic uloženého"
         android:textColor="@color/ink_faint"
         android:textSize="14sp"
@@ -49,6 +72,7 @@
             android:id="@+id/bookmarkList"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical" />
+            android:orientation="vertical"
+            android:showDividers="middle" />
     </ScrollView>
 </LinearLayout>
