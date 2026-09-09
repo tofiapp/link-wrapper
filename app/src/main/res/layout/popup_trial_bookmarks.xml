@@ -31,7 +31,7 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:background="?attr/selectableItemBackgroundBorderless"
-            android:contentDescription="Přidat podsložku"
+            android:contentDescription="Přidat skupinu"
             android:padding="8dp"
             android:src="@drawable/ic_add"
             app:tint="@color/accent" />

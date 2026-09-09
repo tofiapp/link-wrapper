@@ -10,8 +10,9 @@
 
     <View
         android:layout_width="match_parent"
-        android:layout_height="4dp"
-        android:background="@drawable/bg_hatch_line" />
+        android:layout_height="2dp"
+        android:background="@drawable/bg_hatch_line"
+        android:layerType="software" />
 
     <LinearLayout
         android:layout_width="match_parent"

@@ -126,9 +126,33 @@ class TrialBookmarksTest {
         val home = TrialBookmarks.grouped(items, folders, includeEmptyFolders = false)
         assertEquals(1, home.size)
         assertNull(home[0].folder)
-        val popup = TrialBookmarks.grouped(items, folders, includeEmptyFolders = true)
+        val popup = TrialBookmarks.grouped(
+            items,
+            folders,
+            includeEmptyFolders = true,
+            foldersFirst = true
+        )
         assertEquals(2, popup.size)
-        assertEquals("empty", popup[1].folder?.id)
-        assertTrue(popup[1].items.isEmpty())
+        assertEquals("empty", popup[0].folder?.id)
+        assertTrue(popup[0].items.isEmpty())
+        assertNull(popup[1].folder)
+    }
+
+    @Test
+    fun groupedFoldersFirstPutsNamedGroupsAboveUnfiled() {
+        val folders = listOf(TrialBookmarkFolder("f1", "Ranní"))
+        val items = listOf(
+            TrialBookmark("a", "A", "https://a.example", "f1"),
+            TrialBookmark("b", "B", "https://b.example")
+        )
+        val groups = TrialBookmarks.grouped(
+            items,
+            folders,
+            includeEmptyFolders = true,
+            foldersFirst = true
+        )
+        assertEquals("f1", groups[0].folder?.id)
+        assertNull(groups[1].folder)
+        assertEquals(listOf("b"), groups[1].items.map { it.id })
     }
 }
