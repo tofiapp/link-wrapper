@@ -10,6 +10,9 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.drawable.ColorDrawable
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.os.Message
 import android.net.ConnectivityManager
 import android.net.Network
@@ -38,6 +41,7 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
 import android.webkit.GeolocationPermissions
 import android.webkit.HttpAuthHandler
+import android.webkit.JavascriptInterface
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -182,6 +186,14 @@ class WebViewActivity : AppCompatActivity() {
 
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
+    private var geoWatchCount = 0
+    private var geoManager: LocationManager? = null
+    private val geoBridge = GeoBridge()
+    private val geoListener = object : LocationListener {
+        override fun onLocationChanged(location: Location) {
+            pushGeoToTabs(location)
+        }
+    }
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -253,11 +265,13 @@ class WebViewActivity : AppCompatActivity() {
         ) {
             needsPinnedWebViewReveal = false
             revealActiveBrowserWebView(wv)
+            syncGeoUpdates()
             return
         }
         needsPinnedWebViewReveal = false
         (activeWebView ?: tabs.firstNotNullOfOrNull { it.webView })?.resumeTimers()
         activeWebView?.onResume()
+        syncGeoUpdates()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -275,6 +289,7 @@ class WebViewActivity : AppCompatActivity() {
         dismissActionSheet()
         tabs.forEach { it.webView?.onPause() }
         tabs.firstNotNullOfOrNull { it.webView }?.pauseTimers()
+        stopGeoUpdates()
         super.onPause()
     }
 
@@ -347,6 +362,7 @@ class WebViewActivity : AppCompatActivity() {
         destroyPrefetchViews()
         tabs.toList().forEach { destroyTab(it) }
         tabs.clear()
+        stopGeoUpdates()
         super.onDestroy()
     }
 
@@ -967,6 +983,7 @@ class WebViewActivity : AppCompatActivity() {
             }
             false
         }
+        webView.addJavascriptInterface(geoBridge, "ObalkaGeo")
         installChartPerfBootstrap(webView)
 
         webView.webViewClient = object : WebViewClient() {
@@ -1733,6 +1750,59 @@ class WebViewActivity : AppCompatActivity() {
         callback?.invoke(origin, allowed, false)
         if (!allowed) {
             Toast.makeText(this, "Poloha nebyla povolena", Toast.LENGTH_SHORT).show()
+        } else {
+            syncGeoUpdates()
+        }
+    }
+
+    private inner class GeoBridge {
+        @JavascriptInterface
+        fun watchStart() {
+            mainHandler.post { onGeoWatchDelta(1) }
+        }
+
+        @JavascriptInterface
+        fun watchStop() {
+            mainHandler.post { onGeoWatchDelta(-1) }
+        }
+    }
+
+    private fun onGeoWatchDelta(delta: Int) {
+        geoWatchCount = (geoWatchCount + delta).coerceAtLeast(0)
+        syncGeoUpdates()
+    }
+
+    private fun syncGeoUpdates() {
+        if (geoWatchCount > 0 && !isFinishing && hasLocationPermission()) {
+            startGeoUpdates()
+        } else {
+            stopGeoUpdates()
+        }
+    }
+
+    private fun startGeoUpdates() {
+        if (geoManager != null) return
+        geoManager = GeoTrack.startUpdates(this, geoListener)
+    }
+
+    private fun stopGeoUpdates() {
+        GeoTrack.stopUpdates(geoManager, geoListener)
+        geoManager = null
+    }
+
+    private fun pushGeoToTabs(location: Location) {
+        val alt = if (location.hasAltitude()) location.altitude.toString() else "null"
+        val spd = if (location.hasSpeed()) location.speed.toString() else "null"
+        val hdg = if (location.hasBearing()) location.bearing.toString() else "null"
+        val js =
+            "try{window.__obalkaGeoPush(${location.latitude},${location.longitude}," +
+                "${location.accuracy},$alt,$spd,$hdg,${location.time})}catch(e){}"
+        tabs.forEach { tab ->
+            val wv = tab.webView ?: return@forEach
+            try {
+                wv.evaluateJavascript(js, null)
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -1947,7 +2017,7 @@ class WebViewActivity : AppCompatActivity() {
         try {
             WebViewCompat.addDocumentStartJavaScript(
                 webView,
-                pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                pageZoomJs() + ChartPerf.BOOTSTRAP_JS + GeoTrack.BOOTSTRAP_JS,
                 setOf("*")
             )
             chartPerfInjected.add(webView)
@@ -1996,7 +2066,7 @@ class WebViewActivity : AppCompatActivity() {
         if (webView in chartPerfInjected) return
         try {
             webView.evaluateJavascript(
-                pageZoomJs() + ChartPerf.BOOTSTRAP_JS,
+                pageZoomJs() + ChartPerf.BOOTSTRAP_JS + GeoTrack.BOOTSTRAP_JS,
                 null
             )
             chartPerfInjected.add(webView)
