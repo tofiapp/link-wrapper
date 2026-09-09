@@ -7,8 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 /**
- * HTTPS jen podle CA na tabletu (systém + uživatel / MDM).
- * Appka spojení sama nepřekročí.
+ * HTTPS podle CA na tabletu (systém + uživatel / MDM).
  */
 internal object SslPolicy {
 

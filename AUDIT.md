@@ -7,10 +7,10 @@ Instalace APK: [`README.md`](README.md).
 
 ---
 
-## A. Co platí teď (tok)
+## A. Tok
 
-HTTPS ověřuje jen Android podle CA na tabletu (systém +
-uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
+HTTPS ověřuje Android podle CA na tabletu (systém +
+uživatel / MDM).
 
 | stav | appka |
 | --- | --- |
@@ -32,7 +32,7 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 
 Na ploše se instalace jmenuje **Obálka** (`LinkWrapper-1.0.N.apk`).
 
-`Session` maže stará `session_gate` prefs. Keystore.
+Údaje v `Session` jsou šifrované klíčem v Android Keystore.
 
 ---
 
@@ -60,16 +60,14 @@ Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`,
 
 ---
 
-## D. Přihlášení a údaje (stále platí)
+## D. Přihlášení a údaje
 
 Ověření mimo hlavní proces, Keystore, `allowBackup=false`, `FLAG_SECURE`
 na formuláři. Údaje jdou jen na PSST hosty.
 
-Reverse engineering APK **heslo nedá** — klíč je v čipu tabletu, ne v APK.
-
 ---
 
-## E. Sekání grafů (stále platí)
+## E. Sekání grafů
 
 Progress je overlay (nemění výšku WebView). Layout listener klávesnice
 neběží na webu. Skryté karty se pozastaví. DPR strop 1.25. Hardware
@@ -77,22 +75,7 @@ vrstva kolem WebView je vypnutá.
 
 ---
 
-## F. Rizika, která appka nezastaví
-
-| téma | stav |
-| --- | --- |
-| Root / MDM / dump RAM u přihlášené appky | heslo jde získat; Keystore to na rootnutém tabletu neochrání |
-| Max. 8 karet | žerou RAM; stav karet se po zabití procesu neukládá |
-| `mailto:` / `tel:` | nenačtou se (jen `https` / `about`) |
-| Catch-all `https` filtr | appka se nabídne i u cizího webu; heslo tam **nepošle** (jen PSST) |
-| VPN detekce | `TRANSPORT_VPN`; split-tunnel umí lhát |
-| Tablety bez firemní CA | weby `tudc.cz` se nenačtou (pinning v APK už není) |
-| `values-night` | appka je světlá; systémový tmavý režim může rozházet systémové dialogy |
-
----
-
-## G. Co by stálo za další kolo
+## F. Co by stálo za další kolo
 
 1. `mailto:` / `tel:` poslat do systému.
-2. Volitelně zúžit catch-all `https` filtr.
-3. Pokud grafy cukají dál: měřit ve stránce `HSI.Psst.Data`, ne v obálce.
+2. Pokud grafy cukají dál: měřit ve stránce `HSI.Psst.Data`, ne v obálce.
