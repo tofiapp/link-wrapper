@@ -6,7 +6,7 @@ import android.os.SystemClock
 /**
  * Jakmile jde appka na pozadí, pryč relace, cookies i HTTP auth.
  * Otevřené karty zůstanou v procesu — nesmaže se Chromium profil ani se
- * nerestartuje appka. Značka v prefs platí i po zabití procesu.
+ * nerestartuje appka. Po úplném vypnutí procesu karty v liště nejsou.
  */
 internal object TrialIdle {
 

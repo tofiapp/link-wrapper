@@ -12,8 +12,9 @@ data class TrialPin(
 )
 
 /**
- * Otevřené karty (připnuté i ostatní). Zůstanou v liště po restartu
- * procesu. Ve zkušební APK přežijí i okamžité odhlášení na pozadí.
+ * Otevřené karty (připnuté i ostatní) jen v RAM tohoto procesu.
+ * Po úplném vypnutí appky (proces končí) se nenačtou znovu.
+ * Na pozadí, dokud proces žije, zůstanou.
  */
 internal object TrialPins {
 
@@ -22,11 +23,35 @@ internal object TrialPins {
     private const val PREFS = "trial_pins"
     private const val KEY_ITEMS = "items"
 
-    fun load(context: Context): List<TrialPin> =
-        decode(prefs(context).getString(KEY_ITEMS, null))
+    private var sessionItems: List<TrialPin> = emptyList()
+    @Volatile private var diskDropped = false
+
+    fun load(context: Context): List<TrialPin> {
+        dropDisk(context)
+        return sessionItems
+    }
 
     fun save(context: Context, items: List<TrialPin>) {
-        persist(context, items.take(MAX_ITEMS).filter { it.url.isNotBlank() && it.url != Destinations.HOME_URL })
+        dropDisk(context)
+        replaceSession(
+            items.take(MAX_ITEMS).filter { it.url.isNotBlank() && it.url != Destinations.HOME_URL }
+        )
+    }
+
+    fun dropDisk(context: Context) {
+        if (diskDropped) return
+        diskDropped = true
+        prefs(context).edit().remove(KEY_ITEMS).commit()
+    }
+
+    fun replaceSession(items: List<TrialPin>) {
+        sessionItems = items
+    }
+
+    fun peekSession(): List<TrialPin> = sessionItems
+
+    fun clearSession() {
+        sessionItems = emptyList()
     }
 
     fun encode(items: List<TrialPin>): String =
@@ -51,10 +76,6 @@ internal object TrialPins {
         isHome -> 0
         pinned -> 1
         else -> 2
-    }
-
-    private fun persist(context: Context, items: List<TrialPin>) {
-        prefs(context).edit().putString(KEY_ITEMS, encode(items)).commit()
     }
 
     private fun enc(value: String): String =
