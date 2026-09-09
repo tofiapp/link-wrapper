@@ -59,6 +59,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -106,7 +107,7 @@ class WebViewActivity : AppCompatActivity() {
         private const val CHART_FIT_DELAY_MS = 300L
         private const val MAX_PREFETCH = 8
         private const val FOLDER_NONE = "Bez skupiny"
-        private const val FOLDER_NEW = "Nová podsložka…"
+        private const val FOLDER_NEW = "Nová skupina…"
     }
 
     private enum class Gate { BROWSER, HOME, LOGIN }
@@ -2821,10 +2822,10 @@ class WebViewActivity : AppCompatActivity() {
         val list = content.findViewById<LinearLayout>(R.id.bookmarkList)
         val scroll = content.findViewById<View>(R.id.bookmarkScroll)
         content.findViewById<View>(R.id.bookmarkAddFolder).setOnClickListener {
-            promptFolderName("Nová podsložka", "", "Přidat") { name ->
+            promptFolderName("Nová skupina", "", "Přidat") { name ->
                 val folder = TrialBookmarks.addFolder(this, name)
                 if (folder == null) {
-                    Toast.makeText(this, "Maximum je ${TrialBookmarks.MAX_FOLDERS} podsložek", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Maximum je ${TrialBookmarks.MAX_FOLDERS} skupin", Toast.LENGTH_SHORT).show()
                     return@promptFolderName
                 }
                 populateHomeBookmarks()
@@ -2840,7 +2841,12 @@ class WebViewActivity : AppCompatActivity() {
         }
         val items = TrialBookmarks.load(this)
         val folders = TrialBookmarks.loadFolders(this)
-        val groups = TrialBookmarks.grouped(items, folders, includeEmptyFolders = true)
+        val groups = TrialBookmarks.grouped(
+            items,
+            folders,
+            includeEmptyFolders = true,
+            foldersFirst = true
+        )
         list.removeAllViews()
         empty.visibility = if (items.isEmpty() && folders.isEmpty()) View.VISIBLE else View.GONE
         divider.visibility = if (saveUrl != null && (items.isNotEmpty() || folders.isNotEmpty())) {
@@ -2904,9 +2910,9 @@ class WebViewActivity : AppCompatActivity() {
             .setTitle(folder.title)
             .setItems(arrayOf("Přejmenovat", "Odebrat skupinu")) { _, which ->
                 when (which) {
-                    0 -> promptFolderName("Přejmenovat podsložku", folder.title, "Hotovo") { name ->
+                    0 -> promptFolderName("Přejmenovat skupinu", folder.title, "Hotovo") { name ->
                         if (!TrialBookmarks.renameFolder(this, folder.id, name)) {
-                            Toast.makeText(this, "Podsložku nelze přejmenovat", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Skupinu nelze přejmenovat", Toast.LENGTH_SHORT).show()
                             return@promptFolderName
                         }
                         populateHomeBookmarks()
@@ -3063,7 +3069,14 @@ class WebViewActivity : AppCompatActivity() {
         syncNewFolderField()
         folderInput.setOnClickListener { folderInput.showDropDown() }
         folderInput.setOnFocusChangeListener { _, hasFocus -> if (hasFocus) folderInput.showDropDown() }
-        folderInput.setOnItemClickListener { _, _, _, _ -> syncNewFolderField() }
+        folderInput.setOnItemClickListener { _, _, _, _ ->
+            syncNewFolderField()
+            if (newLayout.visibility == View.VISIBLE) {
+                view.post {
+                    (view as? ScrollView)?.smoothScrollTo(0, newLayout.bottom)
+                }
+            }
+        }
         val dialog = MaterialAlertDialogBuilder(this)
             .setTitle(title)
             .setView(view)
@@ -3073,6 +3086,7 @@ class WebViewActivity : AppCompatActivity() {
         bookmarkLabelDialog?.dismiss()
         bookmarkLabelDialog = dialog
         dialog.setOnShowListener {
+            bindDialogIme(dialog, view)
             dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
                 val label = input.text?.toString().orEmpty().trim()
                 if (label.isEmpty()) {
@@ -3086,12 +3100,12 @@ class WebViewActivity : AppCompatActivity() {
                     FOLDER_NEW -> {
                         val name = newInput.text?.toString().orEmpty().trim()
                         if (name.isEmpty()) {
-                            newLayout.error = "Zadejte název podsložky"
+                            newLayout.error = "Zadejte název skupiny"
                             return@setOnClickListener
                         }
                         val folder = TrialBookmarks.addFolder(this, name)
                         if (folder == null) {
-                            newLayout.error = "Maximum je ${TrialBookmarks.MAX_FOLDERS} podsložek"
+                            newLayout.error = "Maximum je ${TrialBookmarks.MAX_FOLDERS} skupin"
                             return@setOnClickListener
                         }
                         folder.id
@@ -3108,7 +3122,7 @@ class WebViewActivity : AppCompatActivity() {
         dialog.setOnDismissListener {
             if (bookmarkLabelDialog === dialog) bookmarkLabelDialog = null
         }
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        bindDialogIme(dialog, view)
         dialog.show()
         input.requestFocus()
     }
@@ -3124,7 +3138,7 @@ class WebViewActivity : AppCompatActivity() {
         val input = view.findViewById<TextInputEditText>(R.id.bookmarkLabelInput)
         view.findViewById<View>(R.id.bookmarkFolderLayout).visibility = View.GONE
         view.findViewById<View>(R.id.bookmarkFolderNewLayout).visibility = View.GONE
-        layout.hint = "Název podsložky"
+        layout.hint = "Název skupiny"
         input.setText(initial)
         input.setSelection(input.text?.length ?: 0)
         val dialog = MaterialAlertDialogBuilder(this)
@@ -3136,10 +3150,11 @@ class WebViewActivity : AppCompatActivity() {
         bookmarkLabelDialog?.dismiss()
         bookmarkLabelDialog = dialog
         dialog.setOnShowListener {
+            bindDialogIme(dialog, view)
             dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
                 val name = input.text?.toString().orEmpty().trim()
                 if (name.isEmpty()) {
-                    layout.error = "Zadejte název"
+                    layout.error = "Zadejte název skupiny"
                     return@setOnClickListener
                 }
                 layout.error = null
@@ -3150,9 +3165,40 @@ class WebViewActivity : AppCompatActivity() {
         dialog.setOnDismissListener {
             if (bookmarkLabelDialog === dialog) bookmarkLabelDialog = null
         }
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
+        bindDialogIme(dialog, view)
         dialog.show()
         input.requestFocus()
+    }
+
+    /** Klávesnice dialog nezakryje: zmenší okno a obsah jde scrollovat. */
+    private fun bindDialogIme(dialog: AlertDialog, scroll: View) {
+        val window = dialog.window ?: return
+        WindowCompat.setDecorFitsSystemWindows(window, true)
+        window.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE
+        )
+        val capScroll = {
+            val ime = ViewCompat.getRootWindowInsets(window.decorView)
+                ?.getInsets(WindowInsetsCompat.Type.ime())?.bottom ?: 0
+            val density = resources.displayMetrics.density
+            val chrome = (200 * density).toInt()
+            val cap = (resources.displayMetrics.heightPixels - ime - chrome)
+                .coerceAtLeast((120 * density).toInt())
+            val childH = (scroll as? ViewGroup)?.getChildAt(0)?.measuredHeight
+                ?: scroll.measuredHeight
+            val lp = scroll.layoutParams ?: return@capScroll
+            val next = if (ime > 0 && childH > cap) cap else ViewGroup.LayoutParams.WRAP_CONTENT
+            if (lp.height != next) {
+                lp.height = next
+                scroll.layoutParams = lp
+            }
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
+            scroll.post(capScroll)
+            insets
+        }
+        scroll.post(capScroll)
     }
 
     private fun dismissBookmarkPopup() {

@@ -25,7 +25,7 @@ data class BookmarkGroup(
 )
 
 /**
- * Složka: uložené URL, popisky a volitelné podsložky. Smazání relace tenhle seznam neshodí.
+ * Složka: uložené URL, popisky a volitelné skupiny. Smazání relace tenhle seznam neshodí.
  */
 internal object TrialBookmarks {
 
@@ -129,22 +129,23 @@ internal object TrialBookmarks {
     fun grouped(
         items: List<TrialBookmark>,
         folders: List<TrialBookmarkFolder>,
-        includeEmptyFolders: Boolean = false
+        includeEmptyFolders: Boolean = false,
+        foldersFirst: Boolean = false
     ): List<BookmarkGroup> {
         val known = folders.map { it.id }.toSet()
         val unfiled = items.filter { item ->
             val folderId = normalizeFolderId(item.folderId)
             folderId == null || folderId !in known
         }
-        val result = mutableListOf<BookmarkGroup>()
-        if (unfiled.isNotEmpty()) result.add(BookmarkGroup(null, unfiled))
+        val named = mutableListOf<BookmarkGroup>()
         folders.forEach { folder ->
             val inFolder = items.filter { it.folderId == folder.id }
             if (inFolder.isNotEmpty() || includeEmptyFolders) {
-                result.add(BookmarkGroup(folder, inFolder))
+                named.add(BookmarkGroup(folder, inFolder))
             }
         }
-        return result
+        val unfiledGroup = if (unfiled.isNotEmpty()) listOf(BookmarkGroup(null, unfiled)) else emptyList()
+        return if (foldersFirst) named + unfiledGroup else unfiledGroup + named
     }
 
     fun encode(items: List<TrialBookmark>): String =
