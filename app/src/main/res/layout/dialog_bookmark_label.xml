@@ -24,4 +24,41 @@
             android:inputType="textCapSentences"
             android:maxLines="2" />
     </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/bookmarkFolderLayout"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="Podsložka"
+        app:boxBackgroundColor="@color/surface_raised">
+
+        <com.google.android.material.textfield.MaterialAutoCompleteTextView
+            android:id="@+id/bookmarkFolderInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:importantForAutofill="no"
+            android:inputType="none"
+            android:paddingVertical="16dp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/bookmarkFolderNewLayout"
+        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="Název podsložky"
+        android:visibility="gone"
+        app:boxBackgroundColor="@color/surface_raised">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/bookmarkFolderNewInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:imeOptions="actionDone"
+            android:inputType="textCapSentences"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
 </LinearLayout>

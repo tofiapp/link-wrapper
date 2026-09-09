@@ -40,6 +40,16 @@
     </LinearLayout>
 
     <ImageButton
+        android:id="@+id/bookmarkPin"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:contentDescription="Připnout na lištu"
+        android:padding="8dp"
+        android:src="@drawable/ic_wifi_off"
+        app:tint="@color/ink_soft" />
+
+    <ImageButton
         android:id="@+id/bookmarkRename"
         android:layout_width="40dp"
         android:layout_height="40dp"

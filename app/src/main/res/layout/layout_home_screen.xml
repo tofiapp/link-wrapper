@@ -46,38 +46,12 @@
                     android:paddingHorizontal="40dp" />
 
                 <LinearLayout
-                    android:id="@+id/homeBookmarkHeader"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:paddingHorizontal="40dp"
-                    android:paddingTop="22dp"
-                    android:visibility="gone">
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif-medium"
-                        android:letterSpacing="0.08"
-                        android:text="Grafy"
-                        android:textAllCaps="true"
-                        android:textColor="@color/ink_soft"
-                        android:textSize="13sp" />
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="4dp"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/bg_hatch_line" />
-                </LinearLayout>
-
-                <LinearLayout
                     android:id="@+id/homeBookmarkList"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
                     android:paddingHorizontal="40dp"
-                    android:paddingTop="14dp"
+                    android:paddingTop="22dp"
                     android:visibility="gone" />
 
                 <Space
