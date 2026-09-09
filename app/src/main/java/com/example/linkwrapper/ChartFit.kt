@@ -18,8 +18,10 @@ package com.example.linkwrapper
  * 5. Zoom na **body**; `PageZoom` z ⋮ je na **html** (ať Chromium
  *    hodnoty nenasobí).
  * 6. `overflow-x: hidden`, `overflow-y: auto`.
- * 7. Po zamčení výšky dostanou `html`/`body` konkrétní px výšku obsahu
- *    (ne `auto` — stránka to přepisuje a nejde doscrollovat dolů).
+ * 7. Po zamčení výšky dostanou `html`/`body` výšku od začátku stránky
+ *    po konec `.chart-part` (offset + zamčená výška) plus malou rezervu.
+ *    Nebere se `scrollHeight` obalu — ten na stránce nese velký prázdný
+ *    spodní okraj a přidal by se k dokumentu.
  */
 internal object ChartFit {
 
@@ -212,16 +214,15 @@ window.__chartFitDone = false;
 
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
-        var needed = target + 96;
+        var needed = target + 16;
         try {
-            var wrap = el.parentElement;
-            var extra = Math.max(
-                el.scrollHeight || 0,
-                el.offsetHeight || 0,
-                wrap ? (wrap.scrollHeight || 0) : 0,
-                wrap ? (wrap.offsetHeight || 0) : 0
-            );
-            if (extra > needed) needed = extra + 96;
+            var y = 0;
+            var n = el;
+            while (n) {
+                y += n.offsetTop || 0;
+                n = n.offsetParent;
+            }
+            needed = y + target + 16;
         } catch (e2) {}
         var hEl = document.documentElement;
         var bEl = document.body;
