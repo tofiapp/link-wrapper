@@ -1,6 +1,5 @@
 # Audit aplikace Obálka (Link Wrapper)
 
-Stav kódu po zrušení zkušebního celoplošného přihlášení (září 2026).
 Obálka nad WebView. Přihlášení, karty, VPN a HTTPS řeší Android. Grafy
 kreslí stránka uvnitř WebView.
 
@@ -12,10 +11,10 @@ Instalace APK: [`README.md`](README.md).
 
 ## A. Co platí teď (tok)
 
-HTTPS v **obou** APK ověřuje jen Android podle CA na tabletu (systém +
+HTTPS ověřuje jen Android podle CA na tabletu (systém +
 uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 
-| stav | běžná i zkušební APK |
+| stav | appka |
 | --- | --- |
 | není VPN | hláška **přes celou obrazovku** |
 | VPN, bez relace | nativní **Domů** |
@@ -31,20 +30,14 @@ uživatel / MDM). Přibalené firemní CA a `CertPinning` jsou pryč.
 
 ---
 
-## B. Úklid v tomto kole
+## B. Soubory APK
 
-Cíl: stejné přihlášení v obou APK (jen PSST). Žádné celoplošné údaje
-pro `tudc.cz`. Na zařízení se obě jmenují **Obálka**.
+Na zařízení se instalace jmenuje **Obálka**. Soubory jsou
+`LinkWrapper-1.0.N.apk` a `LinkWrapper-1.0.N-test.apk` (jiné
+`applicationId`, jdou nainstalovat vedle sebe). Názvy flavorů
+`pinned` / `systemtrust` jsou jen vnitřní Gradle / CI.
 
-| co | proč |
-| --- | --- |
-| `TRIAL_HOME_LOGIN` | celkové přihlášení ve zkušební nefungovalo |
-| `AuthHosts.allows` jen PSST | heslo nesmí jít na cizí 401 |
-
-**Ponecháno schválně:** názvy flavorů `pinned` / `systemtrust` (CI a
-vnitřní Gradle). Soubory APK jsou `LinkWrapper-1.0.N.apk` a
-`LinkWrapper-1.0.N-test.apk`. `Session` pořád maže stará `session_gate` prefs. Keystore,
-VPN brána, dva APK vedle sebe.
+`Session` maže stará `session_gate` prefs. Keystore, VPN brána.
 
 ---
 
@@ -57,7 +50,7 @@ VPN brána, dva APK vedle sebe.
 | `PageZoom.kt` | PSST Data; grafy vždy 84 % |
 | `Session.kt` + `SecretStore.kt` | šifrované údaje, Keystore AES-256-GCM |
 | `AuthProbeActivity.kt` + `AuthHandoff.kt` | ověření hesla v jiném procesu |
-| `AuthHosts.kt` | komu smí jít HTTP auth (PSST vs celé tudc.cz) |
+| `AuthHosts.kt` | komu smí jít HTTP auth (jen PSST) |
 | `DeviceTrust.kt` | banner „tablet nemá CA“ u přihlášení |
 | `SslPolicy.kt` + `network_security_config.xml` | HTTPS jen podle CA na tabletu |
 | `ChartPerf.kt` | strop `devicePixelRatio` kvůli grafům |
@@ -71,7 +64,7 @@ Testy: `DestinationsTest`, `AuthHostsTest`, `DeviceTrustTest`, `PageZoomTest`.
 ## D. Přihlášení a údaje (stále platí)
 
 Ověření mimo hlavní proces, Keystore, `allowBackup=false`, `FLAG_SECURE`
-na formuláři. Obě APK posílají heslo jen na PSST hosty. Podrobnosti
+na formuláři. Údaje jdou jen na PSST hosty. Podrobnosti
 v `BEZPECNOST.md`.
 
 Reverse engineering APK **heslo nedá** — klíč je v čipu tabletu, ne v APK.

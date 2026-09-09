@@ -5,15 +5,15 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
 
 ## Co appka umí
 
-- Na tabletu se appka jmenuje **Obálka** (běžná i zkušební APK).
+- Na tabletu se appka jmenuje **Obálka**.
 - Po spuštění (a po VPN) nativní **Domů**.
   PSST má aplikační přihlášení (NTLM, jen `psst.tudc.cz` /
   `test.psst.tudc.cz`).
 - Údaje k PSST zůstanou jen v RAM. Jakmile jde appka na pozadí
   (přepnutí pryč, minimalizace), relace i cookies se smažou; otevřené
   karty v liště zůstanou. Weby si cookies a NTLM mezi sebou nepředávají.
-  **Běžná i zkušební APK se chovají stejně** — liší se jen soubor
-  (`LinkWrapper-1.0.N.apk` vs `LinkWrapper-1.0.N-test.apk`) a id instalace.
+  Vedle sebe jdou nainstalovat dva soubory
+  (`LinkWrapper-1.0.N.apk` a `LinkWrapper-1.0.N-test.apk`) s jiným id.
 - **Karty** nahoře v liště. **Domeček** změní aktuální kartu (PSST,
   graf) na **Domů**. **+** otevře novou kartu **Domů**, aktuální web zůstane.
   Křížek je jen když je karet víc. Dlaždice na Domů má jen název
@@ -22,7 +22,7 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
   na pozadí nesežerou tablet. Dlouhé podržení karty: **připnout**, otevřít
   na druhé kartě, kopírovat adresu. Ikona složky v liště ukládá grafy
   na Domů. PSST Data na šířku: dvě karty vedle sebe, třetí pod nimi,
-  vyplní zbytek displeje (i v běžné APK).
+  vyplní zbytek displeje.
   Přiblížení webu: výchozí na výšku
   88 %, na šířku 80 %; v ⋮ → **Velikost stránek** pro PSST Data
   (drží se, dokud nesmažete údaje / dokud appka nejde na pozadí). Grafy (`dmId`) mají vždy 84 %
@@ -49,8 +49,8 @@ firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
    (`.github/workflows/build.yml`), který appku sestaví, očísluje a podepíše.
 4. Stáhni APK jedním z těchto způsobů:
    - **Releases** (pohodlnější): v repozitáři záložka **Releases** → nejnovější
-     verze → soubory `LinkWrapper-1.0.N.apk` (běžná) a
-     `LinkWrapper-1.0.N-test.apk` (zkušební, stejné přihlášení).
+     verze → soubory `LinkWrapper-1.0.N.apk` a
+     `LinkWrapper-1.0.N-test.apk`.
    - **Actions**: záložka **Actions** → poslední běh → dole v sekci
      **Artifacts** najdeš `LinkWrapper-1.0.N` → stáhni zip, uvnitř je APK.
 5. Ten `.apk` nahraj do tabletu (email sám sobě, Google Drive, USB…) a nainstaluj.
@@ -92,8 +92,8 @@ spojení se nenačte.
 IT musí mít na tabletech nasazenou firemní CA (Intune → trusted
 certificate profile). Bez toho weby `tudc.cz` nepůjdou.
 
-Obě APK (běžná i zkušební) používají stejné ověření HTTPS i stejné
-přihlášení. Na zařízení se obě jmenují **Obálka**.
+Na zařízení se appka jmenuje **Obálka**. Vedle sebe jdou dva APK soubory
+s jiným id instalace.
 
 ## Přihlášení a odhlášení
 

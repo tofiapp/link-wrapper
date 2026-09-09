@@ -13,8 +13,8 @@ data class Credentials(val username: String, val password: String)
 /**
  * Přihlášení k PSST (NTLM).
  *
- * Údaje se po ověření na PSST drží jen v RAM. Jakmile jde appka
- * na pozadí, relace se smaže. Na disk se heslo neukládá.
+ * Údaje po ověření drží v RAM. Na disk jdou jen šifrovaně, klíčem v
+ * Android Keystore. Na pozadí se relace smaže.
  */
 object Session {
 
@@ -35,8 +35,7 @@ object Session {
 
     /**
      * Jednorázově smaže HTTP auth / uložená hesla ve WebView.
-     * Zkušební build dřív posílal údaje na celé tudc.cz
-     * a Chromium si je držel i po sjednocení přihlášení.
+     * Chromium si je jinak umí držet i po smazání relace.
      */
     fun dropSharedHttpAuthOnce(context: Context) {
         val current = prefs(context)
@@ -71,9 +70,9 @@ object Session {
     }
 
     /**
-     * Zkušební APK: NTLM na hostitele stejné appky jako přihlášení (PSST
-     * produkce i test). Po restartu procesu, kdy `boundHost` ještě není
-     * v RAM, bereme hostitele z [Destinations.LOGIN_URL].
+     * NTLM na hostitele stejné appky jako přihlášení (PSST produkce i test).
+     * Po restartu procesu, kdy `boundHost` ještě není v RAM, bereme
+     * hostitele z [Destinations.LOGIN_URL].
      */
     fun credentialsFor(context: Context, host: String?): Credentials? {
         val creds = credentials(context) ?: return null
@@ -100,7 +99,7 @@ object Session {
         persistMemoryToDisk(context)
     }
 
-    /** Zkušební: jméno a heslo zůstanou jen v RAM, z disku pryč. */
+    /** Jméno a heslo z RAM; z disku pryč. */
     fun forgetDisk(context: Context) {
         prefs(context).edit()
             .remove(KEY_USER)
@@ -115,7 +114,7 @@ object Session {
         }
     }
 
-    /** Běžná APK: RAM údaje se zapíšou šifrovaně. Zkušební tohle přeskočí. */
+    /** RAM údaje se zapíšou šifrovaně na disk, pokud relace na disku je. */
     fun persistMemoryToDisk(context: Context) {
         val creds = memoryOnly ?: return
         if (TrialSettings.ephemeralLogin()) return
@@ -149,7 +148,7 @@ object Session {
 
     /**
      * Smaže cookies a HTTP auth. WebView se nenačítají znovu — připnuté
-     * karty ve zkušební APK tak zůstanou vizuálně otevřené.
+     * karty tak zůstanou vizuálně otevřené.
      */
     fun clearAuthCaches(context: Context) {
         try {

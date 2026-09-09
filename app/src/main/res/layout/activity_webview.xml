@@ -13,7 +13,7 @@
 
         <!--
           Karty vlevo (vlastní sloupec, oříznuté), vpravo samostatný toolbar
-          s +, složkou (zkušební), domečkem a ⋮ — karty pod tlačítka nemůžou zajet.
+          s +, složkou, domečkem a ⋮ — karty pod tlačítka nemůžou zajet.
         -->
         <LinearLayout
             android:layout_width="match_parent"
