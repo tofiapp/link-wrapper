@@ -3090,6 +3090,10 @@ class WebViewActivity : AppCompatActivity() {
         val folderInput = view.findViewById<AutoCompleteTextView>(R.id.bookmarkFolderInput)
         val newLayout = view.findViewById<TextInputLayout>(R.id.bookmarkFolderNewLayout)
         val newInput = view.findViewById<TextInputEditText>(R.id.bookmarkFolderNewInput)
+        val confirm = view.findViewById<MaterialButton>(R.id.bookmarkDialogConfirm)
+        val cancel = view.findViewById<View>(R.id.bookmarkDialogCancel)
+        view.findViewById<TextView>(R.id.bookmarkDialogTitle).text = title
+        confirm.text = confirmLabel
         input.setText(initial)
         input.setSelection(input.text?.length ?: 0)
         val folders = TrialBookmarks.loadFolders(this)
@@ -3117,53 +3121,53 @@ class WebViewActivity : AppCompatActivity() {
                 }
             }
         }
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(title)
+        val dialog = MaterialAlertDialogBuilder(this, R.style.RoundedDialog)
             .setView(view)
-            .setPositiveButton(confirmLabel, null)
-            .setNegativeButton("Zrušit", null)
             .create()
         bookmarkLabelDialog?.dismiss()
         bookmarkLabelDialog = dialog
+        cancel.setOnClickListener { dialog.dismiss() }
+        confirm.setOnClickListener {
+            val label = input.text?.toString().orEmpty().trim()
+            if (label.isEmpty()) {
+                layout.error = "Zadejte popisek"
+                return@setOnClickListener
+            }
+            layout.error = null
+            val selected = folderInput.text?.toString().orEmpty()
+            val folderId = when (selected) {
+                FOLDER_NONE, "" -> null
+                FOLDER_NEW -> {
+                    val name = newInput.text?.toString().orEmpty().trim()
+                    if (name.isEmpty()) {
+                        newLayout.error = "Zadejte název skupiny"
+                        return@setOnClickListener
+                    }
+                    val folder = TrialBookmarks.addFolder(this, name)
+                    if (folder == null) {
+                        newLayout.error = "Maximum je ${TrialBookmarks.MAX_FOLDERS} skupin"
+                        return@setOnClickListener
+                    }
+                    folder.id
+                }
+                else -> folders.find { it.title == selected }?.id
+                    ?: TrialBookmarks.addFolder(this, selected)?.id
+            }
+            folderLayout.error = null
+            newLayout.error = null
+            dialog.dismiss()
+            onSave(label, folderId)
+        }
         dialog.setOnShowListener {
             bindDialogIme(dialog, view)
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val label = input.text?.toString().orEmpty().trim()
-                if (label.isEmpty()) {
-                    layout.error = "Zadejte popisek"
-                    return@setOnClickListener
-                }
-                layout.error = null
-                val selected = folderInput.text?.toString().orEmpty()
-                val folderId = when (selected) {
-                    FOLDER_NONE, "" -> null
-                    FOLDER_NEW -> {
-                        val name = newInput.text?.toString().orEmpty().trim()
-                        if (name.isEmpty()) {
-                            newLayout.error = "Zadejte název skupiny"
-                            return@setOnClickListener
-                        }
-                        val folder = TrialBookmarks.addFolder(this, name)
-                        if (folder == null) {
-                            newLayout.error = "Maximum je ${TrialBookmarks.MAX_FOLDERS} skupin"
-                            return@setOnClickListener
-                        }
-                        folder.id
-                    }
-                    else -> folders.find { it.title == selected }?.id
-                        ?: TrialBookmarks.addFolder(this, selected)?.id
-                }
-                folderLayout.error = null
-                newLayout.error = null
-                dialog.dismiss()
-                onSave(label, folderId)
-            }
+            polishBookmarkDialogWindow(dialog)
         }
         dialog.setOnDismissListener {
             if (bookmarkLabelDialog === dialog) bookmarkLabelDialog = null
         }
         bindDialogIme(dialog, view)
         dialog.show()
+        polishBookmarkDialogWindow(dialog)
         input.requestFocus()
     }
 
@@ -3176,38 +3180,52 @@ class WebViewActivity : AppCompatActivity() {
         val view = layoutInflater.inflate(R.layout.dialog_bookmark_label, null)
         val layout = view.findViewById<TextInputLayout>(R.id.bookmarkLabelLayout)
         val input = view.findViewById<TextInputEditText>(R.id.bookmarkLabelInput)
+        val confirm = view.findViewById<MaterialButton>(R.id.bookmarkDialogConfirm)
         view.findViewById<View>(R.id.bookmarkFolderLayout).visibility = View.GONE
         view.findViewById<View>(R.id.bookmarkFolderNewLayout).visibility = View.GONE
+        view.findViewById<TextView>(R.id.bookmarkDialogTitle).text = title
         layout.hint = "Název skupiny"
+        confirm.text = confirmLabel
         input.setText(initial)
         input.setSelection(input.text?.length ?: 0)
-        val dialog = MaterialAlertDialogBuilder(this)
-            .setTitle(title)
+        val dialog = MaterialAlertDialogBuilder(this, R.style.RoundedDialog)
             .setView(view)
-            .setPositiveButton(confirmLabel, null)
-            .setNegativeButton("Zrušit", null)
             .create()
         bookmarkLabelDialog?.dismiss()
         bookmarkLabelDialog = dialog
+        view.findViewById<View>(R.id.bookmarkDialogCancel).setOnClickListener { dialog.dismiss() }
+        confirm.setOnClickListener {
+            val name = input.text?.toString().orEmpty().trim()
+            if (name.isEmpty()) {
+                layout.error = "Zadejte název skupiny"
+                return@setOnClickListener
+            }
+            layout.error = null
+            dialog.dismiss()
+            onSave(name)
+        }
         dialog.setOnShowListener {
             bindDialogIme(dialog, view)
-            dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-                val name = input.text?.toString().orEmpty().trim()
-                if (name.isEmpty()) {
-                    layout.error = "Zadejte název skupiny"
-                    return@setOnClickListener
-                }
-                layout.error = null
-                dialog.dismiss()
-                onSave(name)
-            }
+            polishBookmarkDialogWindow(dialog)
         }
         dialog.setOnDismissListener {
             if (bookmarkLabelDialog === dialog) bookmarkLabelDialog = null
         }
         bindDialogIme(dialog, view)
         dialog.show()
+        polishBookmarkDialogWindow(dialog)
         input.requestFocus()
+    }
+
+    private fun polishBookmarkDialogWindow(dialog: AlertDialog) {
+        val window = dialog.window ?: return
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val density = resources.displayMetrics.density
+        val width = minOf(
+            (400 * density).toInt(),
+            resources.displayMetrics.widthPixels - (48 * density).toInt()
+        )
+        window.setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
     /** Klávesnice dialog nezakryje: zmenší okno a obsah jde scrollovat. */

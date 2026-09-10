@@ -4,24 +4,33 @@
     android:id="@+id/bookmarkLabelScroll"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:background="@drawable/bg_dialog_panel"
     android:fillViewport="true"
     android:overScrollMode="ifContentScrolls"
-    android:paddingHorizontal="24dp"
-    android:paddingTop="8dp"
-    android:paddingBottom="4dp">
+    android:paddingHorizontal="20dp"
+    android:paddingTop="18dp"
+    android:paddingBottom="14dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical">
 
-        <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/bookmarkLabelLayout"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+        <TextView
+            android:id="@+id/bookmarkDialogTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Popisek"
-            app:boxBackgroundColor="@color/surface_raised">
+            android:fontFamily="sans-serif-medium"
+            android:paddingBottom="14dp"
+            android:textColor="@color/ink"
+            android:textSize="18sp" />
+
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/bookmarkLabelLayout"
+            style="@style/Widget.LinkWrapper.DialogField"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Popisek">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/bookmarkLabelInput"
@@ -29,17 +38,18 @@
                 android:layout_height="wrap_content"
                 android:imeOptions="actionDone"
                 android:inputType="textCapSentences"
-                android:maxLines="2" />
+                android:maxLines="2"
+                android:textColor="@color/ink"
+                android:textSize="15sp" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/bookmarkFolderLayout"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            style="@style/Widget.LinkWrapper.DialogField.Dropdown"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:hint="Skupina"
-            app:boxBackgroundColor="@color/surface_raised">
+            android:hint="Skupina">
 
             <com.google.android.material.textfield.MaterialAutoCompleteTextView
                 android:id="@+id/bookmarkFolderInput"
@@ -47,18 +57,19 @@
                 android:layout_height="wrap_content"
                 android:importantForAutofill="no"
                 android:inputType="none"
-                android:paddingVertical="16dp" />
+                android:paddingVertical="16dp"
+                android:textColor="@color/ink"
+                android:textSize="15sp" />
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/bookmarkFolderNewLayout"
-            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+            style="@style/Widget.LinkWrapper.DialogField"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:hint="Název skupiny"
-            android:visibility="gone"
-            app:boxBackgroundColor="@color/surface_raised">
+            android:visibility="gone">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/bookmarkFolderNewInput"
@@ -66,7 +77,42 @@
                 android:layout_height="wrap_content"
                 android:imeOptions="actionDone"
                 android:inputType="textCapSentences"
-                android:maxLines="1" />
+                android:maxLines="1"
+                android:textColor="@color/ink"
+                android:textSize="15sp" />
         </com.google.android.material.textfield.TextInputLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="end"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/bookmarkDialogCancel"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="Zrušit"
+                android:textAllCaps="false"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/ink_soft"
+                android:textSize="15sp"
+                app:rippleColor="@color/accent_wash" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/bookmarkDialogConfirm"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:layout_marginStart="8dp"
+                android:text="Hotovo"
+                android:textAllCaps="false"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/surface_raised"
+                android:textSize="15sp"
+                app:backgroundTint="@color/accent"
+                app:cornerRadius="12dp" />
+        </LinearLayout>
     </LinearLayout>
 </ScrollView>
