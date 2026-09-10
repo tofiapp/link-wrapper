@@ -62,4 +62,25 @@ class ChartFitTest {
         assertFalse(reset.contains("__chartZoom"))
         assertFalse(reset.contains("setInterval"))
     }
+
+    @Test
+    fun snapshotJsExportsChartGeometryForSimulator() {
+        val snap = ChartFit.SNAPSHOT_JS
+        assertTrue(snap.contains("v: 1"))
+        assertTrue(snap.contains("chartPart"))
+        assertTrue(snap.contains("pxPerMeter"))
+        assertTrue(snap.contains("yOffset"))
+        assertTrue(snap.contains("clipPathHeight"))
+        assertTrue(snap.contains("boundaryBottomY"))
+        assertTrue(snap.contains("maxYAttr"))
+        assertTrue(snap.contains("chartFitDone"))
+    }
+
+    @Test
+    fun copySnapshotJsUsesObalkaChartFitBridge() {
+        val copy = ChartFit.COPY_SNAPSHOT_JS
+        assertTrue(copy.contains("ObalkaChartFit.onSnapshot"))
+        assertTrue(copy.contains("no-chart"))
+        assertTrue(copy.contains("pxPerMeter"))
+    }
 }

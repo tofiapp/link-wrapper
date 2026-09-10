@@ -39,6 +39,11 @@
             android:icon="@drawable/ic_page_size"
             app:showAsAction="never" />
         <item
+            android:id="@+id/action_chart_snapshot"
+            android:title="@string/action_chart_snapshot"
+            android:icon="@drawable/ic_page_size"
+            app:showAsAction="never" />
+        <item
             android:id="@+id/action_link_settings"
             android:title="Nastavení odkazů"
             android:icon="@drawable/ic_settings_alert"

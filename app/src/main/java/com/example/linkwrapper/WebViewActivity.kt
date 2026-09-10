@@ -2,6 +2,8 @@ package com.example.linkwrapper
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
@@ -196,6 +198,7 @@ class WebViewActivity : AppCompatActivity() {
     private var geoWatchCount = 0
     private var geoManager: LocationManager? = null
     private val geoBridge = GeoBridge()
+    private val chartFitBridge = ChartFitBridge()
     private val geoListener = object : LocationListener {
         override fun onLocationChanged(location: Location) {
             pushGeoToTabs(location)
@@ -999,6 +1002,7 @@ class WebViewActivity : AppCompatActivity() {
             false
         }
         webView.addJavascriptInterface(geoBridge, "ObalkaGeo")
+        webView.addJavascriptInterface(chartFitBridge, "ObalkaChartFit")
         installChartPerfBootstrap(webView)
 
         webView.webViewClient = object : WebViewClient() {
@@ -1782,6 +1786,29 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private inner class ChartFitBridge {
+        @JavascriptInterface
+        fun onSnapshot(json: String) {
+            mainHandler.post {
+                if (json.isBlank()) {
+                    Toast.makeText(
+                        this@WebViewActivity,
+                        getString(R.string.chart_snapshot_missing),
+                        Toast.LENGTH_LONG
+                    ).show()
+                    return@post
+                }
+                val cm = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cm.setPrimaryClip(ClipData.newPlainText("chart-fit-snapshot", json))
+                Toast.makeText(
+                    this@WebViewActivity,
+                    getString(R.string.chart_snapshot_copied),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
     private fun onGeoWatchDelta(delta: Int) {
         geoWatchCount = (geoWatchCount + delta).coerceAtLeast(0)
         syncGeoUpdates()
@@ -2045,6 +2072,29 @@ class WebViewActivity : AppCompatActivity() {
             val js = if (unlock) ChartFit.RESET_JS + ChartFit.FIT_JS else ChartFit.FIT_JS
             webView.evaluateJavascript(js, null)
         } catch (_: Exception) {
+        }
+    }
+
+    private fun copyChartSnapshot() {
+        val wv = activeWebView
+        if (wv == null) {
+            Toast.makeText(this, getString(R.string.chart_snapshot_missing), Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            wv.evaluateJavascript(ChartFit.COPY_SNAPSHOT_JS) { result ->
+                mainHandler.post {
+                    if (result == null || result == "null" || result.contains("no-chart")) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.chart_snapshot_missing),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            Toast.makeText(this, getString(R.string.chart_snapshot_missing), Toast.LENGTH_LONG).show()
         }
     }
 
@@ -3303,6 +3353,9 @@ class WebViewActivity : AppCompatActivity() {
     override fun onPrepareOptionsMenu(menu: Menu?): Boolean {
         menu?.findItem(R.id.action_folders)?.isVisible = true
         menu?.setGroupVisible(R.id.group_logout, !TrialSettings.isTrial())
+        val chartUrl = activeTab?.url
+        menu?.findItem(R.id.action_chart_snapshot)?.isVisible =
+            gate == Gate.BROWSER && Destinations.isChart(chartUrl)
         applyChromeMenu(menu)
         return super.onPrepareOptionsMenu(menu)
     }
@@ -3346,6 +3399,10 @@ class WebViewActivity : AppCompatActivity() {
             }
             R.id.action_page_size -> {
                 showPageSizeDialog()
+                true
+            }
+            R.id.action_chart_snapshot -> {
+                copyChartSnapshot()
                 true
             }
             R.id.action_link_settings -> {

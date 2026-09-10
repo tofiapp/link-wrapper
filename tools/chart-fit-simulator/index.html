@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chart Fit Simulator — šířka fixní, prodlužuje se jen dolů</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --ink: #e8eef7;
+      --muted: #8b9cb3;
+      --accent: #3d8bfd;
+      --warn: #ff8c42;
+      --bad: #ff5c5c;
+      --good: #3dd68c;
+      --boundary: #ff8c42;
+      --signal: #3d8bfd;
+      --gap: #ff5c5c33;
+      --width-lock: #3dd68c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #2a3548;
+      background: #121a26;
+    }
+    header h1 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      font-weight: 650;
+    }
+    header p { margin: 0; color: var(--muted); max-width: 72ch; }
+    main {
+      display: grid;
+      grid-template-columns: minmax(280px, 360px) 1fr;
+      gap: 0;
+      min-height: calc(100vh - 88px);
+    }
+    aside {
+      padding: 16px;
+      border-right: 1px solid #2a3548;
+      background: var(--panel);
+      overflow: auto;
+    }
+    section.viz {
+      padding: 16px 20px 24px;
+      overflow: auto;
+    }
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 12px 0 4px;
+    }
+    textarea, input[type="number"] {
+      width: 100%;
+      background: #0f1419;
+      border: 1px solid #334155;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    button {
+      margin-top: 10px;
+      width: 100%;
+      border: 0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+    }
+    button.secondary { background: #2a3548; color: var(--ink); }
+    .metrics {
+      margin-top: 14px;
+      padding: 10px;
+      border-radius: 8px;
+      background: #0f1419;
+      border: 1px solid #2a3548;
+      font: 12px/1.5 ui-monospace, monospace;
+      white-space: pre-wrap;
+      color: var(--muted);
+    }
+    .panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid #2a3548;
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .panel h2 {
+      margin: 0 0 8px;
+      font-size: 14px;
+      font-weight: 650;
+    }
+    .panel p.sub {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .width-ruler {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: #0f1419;
+      border: 1px dashed var(--width-lock);
+      color: var(--width-lock);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .width-ruler .arrow {
+      flex: 1;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--width-lock), transparent);
+      position: relative;
+    }
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      background: #0b1018;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin: 12px 0 16px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .legend span::before {
+      content: '';
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      margin-right: 6px;
+      vertical-align: -1px;
+    }
+    .legend .b::before { background: var(--boundary); }
+    .legend .s::before { background: var(--signal); }
+    .legend .g::before { background: var(--gap); border: 1px solid var(--bad); }
+    .legend .w::before { background: transparent; border: 1px dashed var(--width-lock); }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+    .slider-val {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .callout {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .callout.bad { background: #3a1f1f; border: 1px solid #7a3030; color: #ffb4b4; }
+    .callout.good { background: #143024; border: 1px solid #2d6b4f; color: #b8f5d4; }
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+      aside { border-right: 0; border-bottom: 1px solid #2a3548; }
+      .panels { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Chart Fit Simulator</h1>
+    <p>
+      Šířka grafu se <strong>nesmí měnit</strong> — jen se prodlužuje směrem dolů
+      (výška <code>.chart-part</code> / ohraničení). Vložte JSON ze Obálky
+      (⋮ → Stav grafu) nebo upravte čísla ručně.
+    </p>
+  </header>
+  <main>
+    <aside>
+      <label for="jsonIn">JSON ze aplikace</label>
+      <textarea id="jsonIn" placeholder='{"v":1,"chartPart":{...},"svg":{...}}'></textarea>
+      <button type="button" id="loadBtn">Načíst JSON</button>
+      <button type="button" class="secondary" id="demoBtn">Ukázková data</button>
+
+      <label>Šířka grafu (px) — <strong>fixní</strong></label>
+      <input type="number" id="chartWidth" min="200" step="1" value="750">
+
+      <div class="row">
+        <div>
+          <label>Výška teď (px)</label>
+          <input type="number" id="chartHeightNow" min="100" step="1" value="530">
+        </div>
+        <div>
+          <label>Výška cíl (px)</label>
+          <input type="number" id="chartHeightTarget" min="100" step="1" value="980">
+        </div>
+      </div>
+
+      <label>Cílová výška — posuvník</label>
+      <input type="range" id="heightSlider" min="100" max="1400" value="980">
+      <div class="slider-val"><span>100 px</span><span id="sliderLabel">980 px</span><span>1400 px</span></div>
+
+      <div class="row">
+        <div>
+          <label>--pxPerMeter (teď)</label>
+          <input type="number" id="ppmNow" min="0.1" step="0.1" value="3.2">
+        </div>
+        <div>
+          <label>--yOffset (px)</label>
+          <input type="number" id="yOffset" min="0" step="1" value="40">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Ohraničení / clip (px)</label>
+          <input type="number" id="clipHeight" min="100" step="1" value="900">
+        </div>
+        <div>
+          <label>maxY v SVG (px)</label>
+          <input type="number" id="maxY" min="0" step="1" value="860">
+        </div>
+      </div>
+
+      <label>Hloubka signálu (m) — kde křivka končí</label>
+      <input type="number" id="dataDepthM" min="1" step="1" value="120">
+
+      <div class="metrics" id="metrics"></div>
+    </aside>
+
+    <section class="viz">
+      <div class="legend">
+        <span class="w">šířka — stejná v obou sloupcích</span>
+        <span class="b">ohraničení (boundaries / clip)</span>
+        <span class="s">signál (scaleY pxPerMeter)</span>
+        <span class="g">prázdný pás dole</span>
+      </div>
+
+      <div class="panels">
+        <div class="panel">
+          <h2>Teď — malý graf v boxu</h2>
+          <p class="sub">pxPerMeter zůstává. Prodloužení boxu dolů jen přidá prázdné místo.</p>
+          <div class="width-ruler">
+            <span>◀</span>
+            <span class="arrow"></span>
+            <span id="widthLabelA">750 px</span>
+            <span class="arrow"></span>
+            <span>▶</span>
+          </div>
+          <canvas id="canvasNow" width="360" height="520"></canvas>
+          <div class="callout bad" id="calloutNow"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Cíl — stejná šířka, víc výšky dolů</h2>
+          <p class="sub">Šířka beze změny. Přepočtený pxPerMeter vyplní ohraničení.</p>
+          <div class="width-ruler">
+            <span>◀</span>
+            <span class="arrow"></span>
+            <span id="widthLabelB">750 px</span>
+            <span class="arrow"></span>
+            <span>▶</span>
+          </div>
+          <canvas id="canvasTarget" width="360" height="520"></canvas>
+          <div class="callout good" id="calloutTarget"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const fields = ['chartWidth', 'chartHeightNow', 'chartHeightTarget', 'ppmNow', 'yOffset',
+      'clipHeight', 'maxY', 'dataDepthM'];
+
+    const state = {
+      width: 750,
+      heightNow: 530,
+      heightTarget: 980,
+      ppmNow: 3.2,
+      yOffset: 40,
+      clipHeight: 900,
+      maxY: 860,
+      dataDepthM: 120
+    };
+
+    function readFields() {
+      state.width = +$('chartWidth').value || 750;
+      state.heightNow = +$('chartHeightNow').value || 530;
+      state.heightTarget = +$('chartHeightTarget').value || 980;
+      state.ppmNow = +$('ppmNow').value || 3.2;
+      state.yOffset = +$('yOffset').value || 0;
+      state.clipHeight = +$('clipHeight').value || 900;
+      state.maxY = +$('maxY').value || 0;
+      state.dataDepthM = +$('dataDepthM').value || 120;
+      $('heightSlider').value = String(state.heightTarget);
+      $('sliderLabel').textContent = state.heightTarget + ' px';
+      $('widthLabelA').textContent = state.width + ' px';
+      $('widthLabelB').textContent = state.width + ' px';
+    }
+
+    function writeFields() {
+      $('chartWidth').value = state.width;
+      $('chartHeightNow').value = state.heightNow;
+      $('chartHeightTarget').value = state.heightTarget;
+      $('ppmNow').value = state.ppmNow;
+      $('yOffset').value = state.yOffset;
+      $('clipHeight').value = state.clipHeight;
+      $('maxY').value = state.maxY;
+      $('dataDepthM').value = state.dataDepthM;
+      $('heightSlider').max = String(Math.max(1400, state.clipHeight + 200, state.heightTarget + 100));
+    }
+
+    function signalBottomPx(ppm) {
+      return state.yOffset + state.dataDepthM * ppm;
+    }
+
+    function ppmForFullFill(height) {
+      const usable = Math.max(1, height - state.yOffset - 20);
+      return usable / state.dataDepthM;
+    }
+
+    function drawPanel(canvas, opts) {
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width;
+      const H = canvas.height;
+      const pad = { t: 12, r: 12, b: 28, l: 44 };
+      const plotW = W - pad.l - pad.r;
+      const plotH = H - pad.t - pad.b;
+
+      const boxH = opts.containerHeight;
+      const clipH = state.clipHeight;
+      const ppm = opts.ppm;
+      const scale = plotH / Math.max(boxH, clipH, 1);
+
+      ctx.clearRect(0, 0, W, H);
+
+      const boxX = pad.l;
+      const boxY = pad.t;
+      const boxW = plotW;
+      const boxHp = boxH * scale;
+      const clipHp = clipH * scale;
+
+      // chart-part container
+      ctx.strokeStyle = '#4b5c74';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(boxX, boxY, boxW, boxHp);
+
+      // width lock markers (top)
+      ctx.strokeStyle = '#3dd68c';
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(boxX, boxY - 4);
+      ctx.lineTo(boxX + boxW, boxY - 4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#3dd68c';
+      ctx.font = '10px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText('šířka ' + state.width + ' px', boxX + boxW / 2, boxY - 6);
+
+      // boundaries / clip (dashed orange)
+      ctx.strokeStyle = '#ff8c42';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(boxX + 6, boxY + 6, boxW - 12, Math.min(clipHp, boxHp) - 12);
+      ctx.setLineDash([]);
+
+      // signal polyline in meter space
+      const pts = [];
+      const steps = 40;
+      for (let i = 0; i <= steps; i++) {
+        const depthM = (state.dataDepthM * i) / steps;
+        const x = boxX + 20 + (boxW - 40) * (0.2 + 0.6 * Math.sin(depthM / 18));
+        const y = boxY + state.yOffset * scale + depthM * ppm * scale;
+        pts.push({ x, y });
+      }
+
+      const sigBottom = boxY + signalBottomPx(ppm) * scale;
+      const boundaryBottom = boxY + Math.min(clipHp, boxHp) - 6;
+
+      // gap fill
+      if (sigBottom < boundaryBottom - 2) {
+        ctx.fillStyle = 'rgba(255, 92, 92, 0.18)';
+        ctx.fillRect(boxX + 6, sigBottom, boxW - 12, boundaryBottom - sigBottom);
+      }
+
+      // signal
+      ctx.strokeStyle = '#3d8bfd';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+      ctx.stroke();
+
+      // labels
+      ctx.fillStyle = '#8b9cb3';
+      ctx.font = '10px ui-monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText('0', boxX - 6, boxY + 10);
+      ctx.fillText(Math.round(boxH) + ' px', boxX - 6, boxY + boxHp);
+      ctx.textAlign = 'left';
+      ctx.fillText('signál → ' + Math.round(signalBottomPx(ppm)) + ' px', boxX + 8, boxY + boxHp + 16);
+    }
+
+    function render() {
+      readFields();
+      const ppmTarget = ppmForFullFill(state.clipHeight);
+
+      drawPanel($('canvasNow'), {
+        containerHeight: state.heightNow,
+        ppm: state.ppmNow
+      });
+      drawPanel($('canvasTarget'), {
+        containerHeight: state.heightTarget,
+        ppm: ppmTarget
+      });
+
+      const gapNow = Math.max(0, Math.min(state.clipHeight, state.heightNow) - signalBottomPx(state.ppmNow));
+      const gapTarget = Math.max(0, state.clipHeight - signalBottomPx(ppmTarget));
+
+      $('calloutNow').textContent =
+        'Šířka ' + state.width + ' px. Výška boxu ' + state.heightNow + ' px, pxPerMeter=' +
+        state.ppmNow + ' → signál končí na ' + Math.round(signalBottomPx(state.ppmNow)) +
+        ' px. Prázdný pás dole: ~' + Math.round(gapNow) + ' px.';
+
+      $('calloutTarget').textContent =
+        'Šířka pořád ' + state.width + ' px (beze změny). Výška ' + state.heightTarget +
+        ' px, nový pxPerMeter=' + ppmTarget.toFixed(2) + ' → signál sahá na ' +
+        Math.round(signalBottomPx(ppmTarget)) + ' px. Zbývá ~' + Math.round(gapTarget) + ' px.';
+
+      $('metrics').textContent =
+        'chart-part: ' + state.width + ' × ' + state.heightNow + ' px → cíl ' + state.heightTarget + ' px\n' +
+        'clip / boundaries: ' + state.clipHeight + ' px (šířka clip = šířka grafu)\n' +
+        'pxPerMeter teď: ' + state.ppmNow + '  |  pro vyplnění clip: ' + ppmTarget.toFixed(2) + '\n' +
+        'yOffset: ' + state.yOffset + ' px  |  dataDepth: ' + state.dataDepthM + ' m\n' +
+        'maxY attr: ' + state.maxY + ' px  |  chartFit lock ≈ ' + (state.maxY ? state.maxY + 40 : '?') + ' px';
+    }
+
+    function loadJson() {
+      const raw = $('jsonIn').value.trim();
+      if (!raw) return;
+      let data;
+      try { data = JSON.parse(raw); } catch (e) {
+        alert('Neplatný JSON: ' + e.message);
+        return;
+      }
+      const cp = data.chartPart || {};
+      const svg = data.svg || {};
+      state.width = cp.clientWidth || cp.offsetWidth || cp.rectWidth || state.width;
+      state.heightNow = cp.clientHeight || cp.offsetHeight || cp.rectHeight || state.heightNow;
+      state.heightTarget = cp.lockedHeightPx || svg.maxYAttr || svg.clipPathHeight || state.heightTarget;
+      if (svg.maxYAttr) state.heightTarget = svg.maxYAttr + 40;
+      state.ppmNow = parseFloat(svg.pxPerMeter) || state.ppmNow;
+      state.yOffset = parseFloat(svg.yOffset) || state.yOffset;
+      state.clipHeight = svg.clipPathHeight || svg.boundaryBottomY || svg.maxYAttr || state.clipHeight;
+      state.maxY = svg.maxYAttr || state.maxY;
+      if (state.ppmNow > 0 && state.maxY > state.yOffset) {
+        state.dataDepthM = Math.round((state.maxY - state.yOffset) / state.ppmNow);
+      }
+      writeFields();
+      render();
+    }
+
+    function loadDemo() {
+      $('jsonIn').value = JSON.stringify({
+        v: 1,
+        chartPart: { clientWidth: 750, clientHeight: 530, lockedHeightPx: null },
+        svg: {
+          pxPerMeter: '3.2',
+          yOffset: '40',
+          maxYAttr: 424,
+          clipPathHeight: 900,
+          boundaryBottomY: 860
+        }
+      }, null, 2);
+      loadJson();
+    }
+
+    fields.forEach((id) => $(id).addEventListener('input', render));
+    $('heightSlider').addEventListener('input', () => {
+      $('chartHeightTarget').value = $('heightSlider').value;
+      render();
+    });
+    $('loadBtn').addEventListener('click', loadJson);
+    $('demoBtn').addEventListener('click', loadDemo);
+
+    // ?data= base64url JSON
+    try {
+      const q = new URLSearchParams(location.search).get('data');
+      if (q) {
+        $('jsonIn').value = decodeURIComponent(escape(atob(q.replace(/-/g, '+').replace(/_/g, '/'))));
+        loadJson();
+      }
+    } catch (_) {}
+
+    writeFields();
+    render();
+  </script>
+</body>
+</html>

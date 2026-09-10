@@ -276,4 +276,112 @@ window.__chartFitDone = false;
     }
 })();
 """
+
+    /**
+     * Sebere stav grafu pro [tools/chart-fit-simulator] — JSON nebo null.
+     * Volá se z menu ⋮ → „Stav grafu (simulátor)“.
+     */
+    const val SNAPSHOT_JS = """
+(function() {
+    function num(v) {
+        var n = parseFloat(v);
+        return isNaN(n) ? null : n;
+    }
+    function readZoom(node) {
+        var z = '';
+        try { z = (node && node.style.zoom) || ''; } catch (e) {}
+        if (!z && node) {
+            try { z = getComputedStyle(node).zoom || ''; } catch (e2) {}
+        }
+        if (!z || z === 'normal') return 1;
+        var n = parseFloat(String(z));
+        return (n > 0 && n <= 3) ? n : 1;
+    }
+    var el = document.querySelector('.chart-part');
+    if (!el) return null;
+    var svg = el.querySelector('svg');
+    var cs = svg ? getComputedStyle(svg) : null;
+    var maxY = 0;
+    if (svg) {
+        svg.querySelectorAll('[y]').forEach(function(n) {
+            var v = parseFloat(n.getAttribute('y'));
+            if (!isNaN(v) && v > maxY) maxY = v;
+        });
+    }
+    var clipRect = null;
+    var boundaryBottomY = null;
+    if (svg) {
+        clipRect = svg.querySelector('[id*="boundaries-clip-path"] rect') ||
+            svg.querySelector('clipPath rect');
+        svg.querySelectorAll('g.boundaries [y], g.boundaries line').forEach(function(n) {
+            var ys = [n.getAttribute('y'), n.getAttribute('y1'), n.getAttribute('y2')];
+            for (var i = 0; i < ys.length; i++) {
+                var v = num(ys[i]);
+                if (v != null && (boundaryBottomY == null || v > boundaryBottomY)) {
+                    boundaryBottomY = v;
+                }
+            }
+        });
+    }
+    var rect = el.getBoundingClientRect();
+    var svgRect = svg ? svg.getBoundingClientRect() : null;
+    var styleH = String(el.getAttribute('style') || '').match(/height\s*:\s*([^;!]+)/i);
+    var ppm = cs ? cs.getPropertyValue('--pxPerMeter').trim() : '';
+    var yOff = cs ? cs.getPropertyValue('--yOffset').trim() : '';
+    return JSON.stringify({
+        v: 1,
+        ts: Date.now(),
+        url: location.href,
+        viewport: {
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            bodyZoom: readZoom(document.body),
+            htmlZoom: readZoom(document.documentElement),
+            scrollWidth: document.documentElement.scrollWidth
+        },
+        chartPart: {
+            clientWidth: el.clientWidth,
+            clientHeight: el.clientHeight,
+            offsetWidth: el.offsetWidth,
+            offsetHeight: el.offsetHeight,
+            scrollHeight: el.scrollHeight,
+            lockedHeightPx: styleH ? num(styleH[1]) : null,
+            rectWidth: rect.width,
+            rectHeight: rect.height
+        },
+        svg: svg ? {
+            widthAttr: svg.getAttribute('width'),
+            heightAttr: svg.getAttribute('height'),
+            clientWidth: svg.clientWidth,
+            clientHeight: svg.clientHeight,
+            rectWidth: svgRect ? svgRect.width : null,
+            rectHeight: svgRect ? svgRect.height : null,
+            pxPerMeter: ppm || null,
+            yOffset: yOff || null,
+            maxYAttr: maxY > 0 ? maxY : null,
+            clipPathHeight: clipRect ? num(clipRect.getAttribute('height')) : null,
+            clipPathWidth: clipRect ? num(clipRect.getAttribute('width')) : null,
+            boundaryBottomY: boundaryBottomY,
+            chartFitDone: !!window.__chartFitDone
+        } : null
+    });
+})();
+"""
+
+    /** Zkopíruje snapshot do schránky přes [ObalkaChartFit.onSnapshot]. */
+    const val COPY_SNAPSHOT_JS = """
+(function() {
+    try {
+        var json = ($SNAPSHOT_JS);
+        if (!json) return 'no-chart';
+        if (window.ObalkaChartFit && window.ObalkaChartFit.onSnapshot) {
+            window.ObalkaChartFit.onSnapshot(json);
+            return 'ok';
+        }
+        return 'no-bridge';
+    } catch (e) {
+        return 'error:' + (e && e.message ? e.message : String(e));
+    }
+})();
+"""
 }

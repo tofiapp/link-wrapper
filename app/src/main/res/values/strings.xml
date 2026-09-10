@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">Obálka</string>
     <string name="version_label">Verze %1$s</string>
+    <string name="action_chart_snapshot">Stav grafu (simulátor)</string>
+    <string name="chart_snapshot_copied">Stav grafu zkopírován — vložte do simulátoru</string>
+    <string name="chart_snapshot_missing">Na stránce není graf (.chart-part)</string>
 </resources>
