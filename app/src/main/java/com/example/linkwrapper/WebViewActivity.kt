@@ -2200,6 +2200,7 @@ class WebViewActivity : AppCompatActivity() {
             groups = groups,
             inflater = inflater,
             foldersFirst = false,
+            hideCollapsedItems = false,
             onFolderHeader = { header, folder ->
                 header.findViewById<TextView>(R.id.groupHeaderTitle).text = folder.title
                 header.findViewById<View>(R.id.groupHeaderChevron).visibility = View.GONE
@@ -2924,6 +2925,7 @@ class WebViewActivity : AppCompatActivity() {
         groups: List<BookmarkGroup>,
         inflater: LayoutInflater,
         foldersFirst: Boolean,
+        hideCollapsedItems: Boolean = true,
         onFolderHeader: (View, TrialBookmarkFolder) -> Unit,
         onFolderClick: ((TrialBookmarkFolder) -> Unit)?,
         onFolderLongClick: ((TrialBookmarkFolder) -> Unit)?,
@@ -2956,7 +2958,7 @@ class WebViewActivity : AppCompatActivity() {
                     }
                 }
                 parent.addView(header)
-                if (folder.collapsed) return@forEach
+                if (hideCollapsedItems && folder.collapsed) return@forEach
             }
             if (group.items.isNotEmpty()) onItems(group.items)
         }
