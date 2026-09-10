@@ -1916,8 +1916,8 @@ class WebViewActivity : AppCompatActivity() {
         }
         tint(R.id.action_new_tab, accent)
         tint(R.id.action_reload, inkSoft)
-        tint(R.id.action_folders, inkSoft)
-        tint(R.id.action_home, inkSoft)
+        tint(R.id.action_folders, accent)
+        tint(R.id.action_home, accent)
         tint(R.id.action_open_url, inkSoft)
         tint(R.id.action_page_size, inkSoft)
         tint(R.id.action_link_settings, inkSoft)
@@ -1932,7 +1932,7 @@ class WebViewActivity : AppCompatActivity() {
         if (::toolbar.isInitialized) {
             toolbar.isEnabled = usable
             toolbar.overflowIcon?.mutate()?.let { icon ->
-                icon.setTint(inkSoft)
+                icon.setTint(accent)
                 icon.alpha = alpha
                 toolbar.overflowIcon = icon
             }

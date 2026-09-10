@@ -10,7 +10,8 @@
     <!-- rgb(31, 101, 159) -->
     <color name="accent">#FF1F659F</color>
     <color name="accent_wash">#FFE8F1F8</color>
+    <color name="accent_line">#331F659F</color>
     <color name="alert">#FFB3261E</color>
     <color name="alert_wash">#FFFCEEEC</color>
-    <color name="saved">#FF58C07A</color>
+    <color name="saved">#FFFF5200</color>
 </resources>

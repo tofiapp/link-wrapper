@@ -47,7 +47,7 @@
         android:contentDescription="Připnout na lištu"
         android:padding="8dp"
         android:src="@drawable/ic_wifi_off"
-        app:tint="@color/ink_soft" />
+        app:tint="@color/accent" />
 
     <ImageButton
         android:id="@+id/bookmarkRename"
@@ -57,7 +57,7 @@
         android:contentDescription="Přejmenovat"
         android:padding="8dp"
         android:src="@drawable/ic_edit"
-        app:tint="@color/ink_soft" />
+        app:tint="@color/accent" />
 
     <ImageButton
         android:id="@+id/bookmarkDelete"
