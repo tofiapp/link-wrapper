@@ -18,15 +18,19 @@ package com.example.linkwrapper
  * 5. Zoom na **body**; `PageZoom` z ⋮ je na **html** (ať Chromium
  *    hodnoty nenasobí).
  * 6. `overflow-x: hidden`, `overflow-y: auto`.
- * 7. Po zamčení výšky dostanou `html`/`body` výšku od začátku stránky
+ * 7. Po ~2,5 s se totéž srovnání na šířku spočítá znovu (graf už bývá
+ *    dokreslený) a teprve pak se zamkne výška. Staré čekání se zahodí,
+ *    když přijde nové fitnutí (otočení, změna velikosti WebView).
+ * 8. Po zamčení výšky dostanou `html`/`body` výšku od začátku stránky
  *    po konec `.chart-part` (offset + zamčená výška) plus malou rezervu.
  *    Nebere se `scrollHeight` obalu — ten na stránce nese velký prázdný
  *    spodní okraj a přidal by se k dokumentu.
  */
 internal object ChartFit {
 
-    /** Otočení: odpojit zámek, odemknout, znovu fitnout. */
+    /** Otočení / nové fitnutí: zrušit staré čekání, odpojit zámek, odemknout. */
     const val RESET_JS = """
+window.__chartFitGen = (window.__chartFitGen || 0) + 1;
 if (window.__chartFitLockObs) { window.__chartFitLockObs.disconnect(); window.__chartFitLockObs = null; }
 window.__chartFitDone = false;
 """
@@ -34,21 +38,20 @@ window.__chartFitDone = false;
     const val FIT_JS = """
 (function() {
     if (window.__chartFitDone) return;
+    window.__chartFitGen = (window.__chartFitGen || 0) + 1;
+    var gen = window.__chartFitGen;
 
     /**
-     * Šířka — neměnit. Nejdřív čistý zoom, pak scrollWidth / innerWidth,
+     * Šířka — vzorec neměnit. Nejdřív čistý zoom, pak scrollWidth / innerWidth,
      * výsledek max 1 na body. Viz komentář u ChartFit.
      */
-    function step1_zoom() {
-        var el = document.querySelector('.chart-part');
-        if (!el) return false;
-
+    function applyWidthZoom() {
         document.documentElement.style.zoom = '';
         document.body.style.zoom = '';
 
         var contentW = document.documentElement.scrollWidth;
         var winW = window.innerWidth;
-        if (contentW <= 0) return false;
+        if (contentW <= 0 || winW <= 0) return false;
 
         var zoom = winW / contentW;
         if (zoom > 1) zoom = 1;
@@ -56,33 +59,59 @@ window.__chartFitDone = false;
 
         document.documentElement.style.setProperty('overflow-y', 'auto', 'important');
         document.documentElement.style.setProperty('overflow-x', 'hidden', 'important');
+        return true;
+    }
+
+    function stillThisFit() {
+        return gen === window.__chartFitGen && !window.__chartFitDone;
+    }
+
+    function step1_zoom() {
+        var el = document.querySelector('.chart-part');
+        if (!el) return false;
+        if (!applyWidthZoom()) return false;
 
         var heldFrom = Date.now();
         function holdThenLock() {
+            if (!stillThisFit()) return;
             if (Date.now() - heldFrom < 2500) {
                 requestAnimationFrame(holdThenLock);
                 return;
             }
+            applyWidthZoom();
             requestAnimationFrame(function() {
-                requestAnimationFrame(step2_height);
+                requestAnimationFrame(function() {
+                    if (!stillThisFit()) return;
+                    step2_height(0);
+                });
             });
         }
         holdThenLock();
         return true;
     }
 
-    function step2_height() {
+    function step2_height(tries) {
+        if (!stillThisFit()) return;
         var el = document.querySelector('.chart-part');
         if (!el) return;
         var svg = el.querySelector('svg');
-        if (!svg) return;
-
         var maxY = 0;
-        svg.querySelectorAll('[y]').forEach(function(n) {
-            var v = parseFloat(n.getAttribute('y'));
-            if (!isNaN(v) && v > maxY) maxY = v;
-        });
-        if (maxY <= 0) return;
+        if (svg) {
+            svg.querySelectorAll('[y]').forEach(function(n) {
+                var v = parseFloat(n.getAttribute('y'));
+                if (!isNaN(v) && v > maxY) maxY = v;
+            });
+        }
+        if (!svg || maxY <= 0) {
+            if ((tries || 0) < 20) {
+                setTimeout(function() {
+                    if (!stillThisFit()) return;
+                    applyWidthZoom();
+                    step2_height((tries || 0) + 1);
+                }, 250);
+            }
+            return;
+        }
 
         var target = maxY + 40;
         var lockedValue = target + 'px';
@@ -232,6 +261,7 @@ window.__chartFitDone = false;
         bEl.style.setProperty('min-height', needed + 'px', 'important');
         bEl.style.setProperty('overflow-y', 'visible', 'important');
 
+        if (!stillThisFit()) return;
         window.__chartFitDone = true;
     }
 
