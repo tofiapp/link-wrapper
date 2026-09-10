@@ -126,6 +126,12 @@ internal object TrialBookmarks {
         persistFolders(context, folders)
     }
 
+    fun itemsInFolder(items: List<TrialBookmark>, folderId: String): List<TrialBookmark> =
+        items.filter { it.folderId == folderId }
+
+    fun itemsInFolder(context: Context, folderId: String): List<TrialBookmark> =
+        itemsInFolder(load(context), folderId)
+
     fun grouped(
         items: List<TrialBookmark>,
         folders: List<TrialBookmarkFolder>,

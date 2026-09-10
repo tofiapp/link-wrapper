@@ -98,6 +98,17 @@ class TrialBookmarksTest {
     }
 
     @Test
+    fun itemsInFolderReturnsOnlyMatchingBookmarks() {
+        val items = listOf(
+            TrialBookmark("a", "A", "https://a.example", "f1"),
+            TrialBookmark("b", "B", "https://b.example"),
+            TrialBookmark("c", "C", "https://c.example", "f1")
+        )
+        val inFolder = TrialBookmarks.itemsInFolder(items, "f1")
+        assertEquals(listOf("a", "c"), inFolder.map { it.id })
+    }
+
+    @Test
     fun groupedPutsUnfiledFirstThenNamedFolders() {
         val folders = listOf(
             TrialBookmarkFolder("f1", "Ranní"),
