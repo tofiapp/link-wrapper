@@ -237,6 +237,14 @@ class WebViewActivity : AppCompatActivity() {
         progressBar = findViewById(R.id.progressBar)
         webContainer = findViewById(R.id.webContainer)
         webContainer.setBackgroundColor(Color.TRANSPARENT)
+        webContainer.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (gate != Gate.BROWSER) return@addOnLayoutChangeListener
+            val w = right - left
+            val h = bottom - top
+            if (w <= 0 || h <= 0) return@addOnLayoutChangeListener
+            if (w == oldRight - oldLeft && h == oldBottom - oldTop) return@addOnLayoutChangeListener
+            scheduleChartFit()
+        }
         tabStrip = findViewById(R.id.tabStrip)
         tabScroll = findViewById(R.id.tabScroll)
         bindLoginUi()
