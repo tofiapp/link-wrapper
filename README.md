@@ -1,7 +1,6 @@
 # Link Wrapper
 
-Jednoduchá Android appka — "schválená obálka" pro otevírání odkazů, které
-firemní síť/VPN vyžaduje otevřít mimo běžný prohlížeč.
+Jednoduchá Android appka — prohlížeč grafů přes Psst Data
 
 ## Co appka umí
 
