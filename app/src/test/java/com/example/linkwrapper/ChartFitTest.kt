@@ -11,7 +11,7 @@ class ChartFitTest {
         val js = ChartFit.FIT_JS
         assertTrue(js.contains("if (window.__chartFitDone) return"))
         assertTrue(js.contains("function step1_zoom()"))
-        assertTrue(js.contains("function step2_height()"))
+        assertTrue(js.contains("function step2_height(tries)"))
         assertTrue(js.contains("function applyWidthZoom()"))
         assertTrue(js.contains("winW / contentW"))
         assertTrue(js.contains("winW <= 0"))
