@@ -1,4 +1,12 @@
 <resources>
     <string name="app_name">Obálka</string>
     <string name="version_label">Verze %1$s</string>
+    <string name="folder_open_all_tabs">Otevřít celou skupinu v kartách</string>
+    <string name="folder_pin_all">Připnout a přednačíst celou skupinu</string>
+    <string name="folder_empty">Skupina je prázdná</string>
+    <string name="folder_opened_tabs">Otevřeno %1$d z %2$d</string>
+    <string name="folder_tabs_already_open">Karty ze skupiny už jsou otevřené</string>
+    <string name="folder_pinned_tabs">Připnuto %1$d z %2$d</string>
+    <string name="folder_prefetch_started">Skupina se přednačítá (%1$d stránek)</string>
+    <string name="folder_all_pinned">Celá skupina je připnuta</string>
 </resources>

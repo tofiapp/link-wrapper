@@ -188,6 +188,7 @@ class WebViewActivity : AppCompatActivity() {
     private val authFailedViews = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
     private val chartPerfInjected = Collections.newSetFromMap(IdentityHashMap<WebView, Boolean>())
     private val prefetchViews = LinkedHashMap<String, WebView>()
+    private val prefetchQueue = ArrayDeque<String>()
     private var prefetchLoading = false
     private val prefetchRunnable = Runnable { pumpBookmarkPrefetch() }
 
@@ -559,10 +560,20 @@ class WebViewActivity : AppCompatActivity() {
             presentLogin()
             return
         }
-        if (tabs.size >= MAX_TABS) {
+        val tab = addTabForUrl(url, select = true)
+        if (tab == null && tabs.size >= MAX_TABS) {
             Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
-            return
         }
+    }
+
+    private fun addTabForUrl(url: String, select: Boolean): BrowserTab? {
+        if (url.isBlank() || url == Destinations.HOME_URL) return null
+        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
+        if (existing != null) {
+            if (select) selectTab(existing.id)
+            return existing
+        }
+        if (tabs.size >= MAX_TABS) return null
         val webView = takePrefetch(url) ?: createWebView()
         val tab = BrowserTab(
             id = nextTabId++,
@@ -572,11 +583,12 @@ class WebViewActivity : AppCompatActivity() {
         )
         tabs.add(tab)
         persistOpenTabsFromTabs()
-        selectTab(tab.id)
+        if (select) selectTab(tab.id)
         if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
             TrialIsolation.onNavigate(this, url)
             webView.loadUrl(url)
         }
+        return tab
     }
 
     private fun selectTab(tabId: Long) {
@@ -747,6 +759,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun destroyPrefetchViews() {
         prefetchLoading = false
         mainHandler.removeCallbacks(prefetchRunnable)
+        prefetchQueue.clear()
         prefetchViews.values.toList().forEach { wv -> destroyOrphanWebView(wv) }
         prefetchViews.clear()
     }
@@ -771,15 +784,32 @@ class WebViewActivity : AppCompatActivity() {
         mainHandler.postDelayed(prefetchRunnable, 400)
     }
 
+    private fun queueBookmarkPrefetch(urls: Collection<String>) {
+        val seen = mutableSetOf<String>()
+        urls.forEach { raw ->
+            val url = raw.trim()
+            if (url.isEmpty() || url == Destinations.HOME_URL) return@forEach
+            val key = url.lowercase()
+            if (!seen.add(key)) return@forEach
+            if (tabs.any { !it.isHome && samePage(it.url, url) }) return@forEach
+            if (prefetchViews.keys.any { samePage(it, url) }) return@forEach
+            if (prefetchQueue.any { samePage(it, url) }) return@forEach
+            prefetchQueue.addLast(url)
+        }
+        startBookmarkPrefetch()
+    }
+
     /** Načte uložené grafy na pozadí, ať po výpadku sítě zůstanou v RAM. */
     private fun pumpBookmarkPrefetch() {
         if (prefetchLoading) return
         if (!isConnectionOk()) return
         if (prefetchViews.size >= MAX_PREFETCH) return
-        val next = TrialBookmarks.load(this).map { it.url }.firstOrNull { url ->
-            tabs.none { !it.isHome && samePage(it.url, url) } &&
-                prefetchViews.keys.none { samePage(it, url) }
-        } ?: return
+        val next = prefetchQueue.removeFirstOrNull()
+            ?: TrialBookmarks.load(this).map { it.url }.firstOrNull { url ->
+                tabs.none { !it.isHome && samePage(it.url, url) } &&
+                    prefetchViews.keys.none { samePage(it, url) }
+            }
+            ?: return
         val wv = createWebView()
         prefetchViews[next] = wv
         prefetchLoading = true
@@ -1441,23 +1471,27 @@ class WebViewActivity : AppCompatActivity() {
         actionDialog = null
     }
 
-    private fun setTabPinned(tab: BrowserTab, pinned: Boolean) {
+    private fun setTabPinned(tab: BrowserTab, pinned: Boolean, quiet: Boolean = false) {
         if (tab.isHome) return
         if (pinned == tab.pinned) return
         if (pinned) {
             if (tabs.count { it.pinned } >= TrialPins.MAX_ITEMS) {
-                Toast.makeText(
-                    this,
-                    "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet",
-                    Toast.LENGTH_SHORT
-                ).show()
+                if (!quiet) {
+                    Toast.makeText(
+                        this,
+                        "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
                 return
             }
             tab.pinned = true
             tabs.remove(tab)
             val at = tabs.indexOfLast { it.isHome || it.pinned } + 1
             tabs.add(at.coerceAtLeast(0), tab)
-            Toast.makeText(this, "Karta zůstane otevřená", Toast.LENGTH_SHORT).show()
+            if (!quiet) {
+                Toast.makeText(this, "Karta zůstane otevřená", Toast.LENGTH_SHORT).show()
+            }
         } else {
             tab.pinned = false
         }
@@ -1603,44 +1637,48 @@ class WebViewActivity : AppCompatActivity() {
             setTabPinned(existing, !existing.pinned)
             return
         }
+        pinUrl(url)
+    }
+
+    private fun pinUrl(url: String, quiet: Boolean = false, select: Boolean = true): Boolean {
+        if (url.isBlank() || url == Destinations.HOME_URL) return false
+        val existing = tabs.filter { !it.isHome }.find { samePage(it.url, url) }
+        if (existing != null) {
+            if (!existing.pinned) setTabPinned(existing, true, quiet)
+            if (select) selectTab(existing.id)
+            return true
+        }
         if (tabs.count { it.pinned } >= TrialPins.MAX_ITEMS) {
-            Toast.makeText(
-                this,
-                "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet",
-                Toast.LENGTH_SHORT
-            ).show()
-            return
+            if (!quiet) {
+                Toast.makeText(
+                    this,
+                    "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            return false
         }
         if (needsAppLogin(url)) {
             pendingStartUrl = url
             presentLogin()
-            return
+            return false
         }
         if (tabs.size >= MAX_TABS) {
             val home = tabs.firstOrNull { it.isHome }
             if (home == null) {
-                Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
-                return
+                if (!quiet) {
+                    Toast.makeText(this, "Maximum je $MAX_TABS karet", Toast.LENGTH_SHORT).show()
+                }
+                return false
             }
             loadUrlIntoTab(home, url)
-            setTabPinned(home, true)
-            selectTab(home.id)
-            return
+            setTabPinned(home, true, quiet)
+            if (select) selectTab(home.id)
+            return true
         }
-        val webView = takePrefetch(url) ?: createWebView()
-        val tab = BrowserTab(
-            id = nextTabId++,
-            webView = webView,
-            title = tabLabel(url),
-            url = url
-        )
-        tabs.add(tab)
-        if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
-            TrialIsolation.onNavigate(this, url)
-            webView.loadUrl(url)
-        }
-        setTabPinned(tab, true)
-        selectTab(tab.id)
+        val tab = addTabForUrl(url, select = select) ?: return false
+        setTabPinned(tab, true, quiet)
+        return true
     }
 
     private fun loadUrlIntoTab(tab: BrowserTab, url: String) {
@@ -2206,6 +2244,7 @@ class WebViewActivity : AppCompatActivity() {
                 header.findViewById<View>(R.id.groupHeaderChevron).visibility = View.GONE
                 header.isClickable = false
                 header.background = null
+                bindFolderHeaderActions(header, folder)
             },
             onFolderClick = null,
             onFolderLongClick = null,
@@ -2887,6 +2926,7 @@ class WebViewActivity : AppCompatActivity() {
                 header.findViewById<TextView>(R.id.groupHeaderTitle).text = folder.title
                 val chevron = header.findViewById<ImageView>(R.id.groupHeaderChevron)
                 chevron.rotation = if (folder.collapsed) 0f else 180f
+                bindFolderHeaderActions(header, folder, popup, content)
             },
             onFolderClick = { folder ->
                 TrialBookmarks.setFolderCollapsed(this, folder.id, !folder.collapsed)
@@ -2964,12 +3004,151 @@ class WebViewActivity : AppCompatActivity() {
         }
     }
 
+    private fun folderItems(folderId: String): List<TrialBookmark> =
+        TrialBookmarks.itemsInFolder(this, folderId)
+
+    private fun bindFolderHeaderActions(
+        header: View,
+        folder: TrialBookmarkFolder,
+        popup: PopupWindow? = null,
+        popupContent: View? = null
+    ) {
+        val items = folderItems(folder.id)
+        val openAll = header.findViewById<ImageButton>(R.id.groupHeaderOpenAll)
+        val pinAll = header.findViewById<ImageButton>(R.id.groupHeaderPinAll)
+        val show = items.isNotEmpty()
+        openAll.visibility = if (show) View.VISIBLE else View.GONE
+        pinAll.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        openAll.setOnClickListener {
+            openFolderInTabs(folder)
+            popup?.dismiss()
+        }
+        pinAll.setOnClickListener {
+            pinFolderInTabs(folder)
+            populateHomeBookmarks()
+            if (popup?.isShowing == true && popupContent != null) {
+                bindTrialBookmarkMenu(popupContent, popup)
+            }
+        }
+        updateFolderPinGlyph(pinAll, folder)
+    }
+
+    private fun updateFolderPinGlyph(pin: ImageButton, folder: TrialBookmarkFolder) {
+        val items = folderItems(folder.id)
+        val allPinned = items.isNotEmpty() && items.all { isUrlPinned(it.url) }
+        pin.contentDescription = getString(
+            if (allPinned) R.string.folder_all_pinned else R.string.folder_pin_all
+        )
+        ImageViewCompat.setImageTintList(
+            pin,
+            ColorStateList.valueOf(
+                ContextCompat.getColor(this, if (allPinned) R.color.saved else R.color.ink_soft)
+            )
+        )
+    }
+
+    private fun openFolderInTabs(folder: TrialBookmarkFolder) {
+        val items = folderItems(folder.id)
+        if (items.isEmpty()) {
+            Toast.makeText(this, getString(R.string.folder_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val needsLogin = items.firstOrNull { needsAppLogin(it.url) && !Session.isActive(this) }
+        if (needsLogin != null) {
+            pendingStartUrl = needsLogin.url
+            presentLogin()
+            return
+        }
+        dismissBookmarkPopup()
+        var opened = 0
+        var alreadyOpen = 0
+        var focusId: Long? = null
+        for (item in items) {
+            val existing = tabs.filter { !it.isHome }.find { samePage(it.url, item.url) }
+            if (existing != null) {
+                alreadyOpen++
+                if (focusId == null) focusId = existing.id
+                continue
+            }
+            if (tabs.size >= MAX_TABS) break
+            val tab = addTabForUrl(item.url, select = false) ?: break
+            opened++
+            if (focusId == null) focusId = tab.id
+        }
+        if (focusId != null) {
+            enterBrowser()
+            selectTab(focusId)
+        }
+        val total = opened + alreadyOpen
+        val message = when {
+            opened == 0 && alreadyOpen > 0 ->
+                getString(R.string.folder_tabs_already_open)
+            total < items.size ->
+                getString(R.string.folder_opened_tabs, total, items.size) +
+                    " — maximum je $MAX_TABS karet"
+            opened > 0 ->
+                getString(R.string.folder_opened_tabs, opened, items.size)
+            else -> "Maximum je $MAX_TABS karet"
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun pinFolderInTabs(folder: TrialBookmarkFolder) {
+        val items = folderItems(folder.id)
+        if (items.isEmpty()) {
+            Toast.makeText(this, getString(R.string.folder_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val needsLogin = items.firstOrNull { needsAppLogin(it.url) && !Session.isActive(this) }
+        if (needsLogin != null) {
+            pendingStartUrl = needsLogin.url
+            presentLogin()
+            return
+        }
+        dismissBookmarkPopup()
+        var pinned = 0
+        for (item in items) {
+            if (isUrlPinned(item.url)) continue
+            if (!pinUrl(item.url, quiet = true, select = false)) break
+            pinned++
+        }
+        queueBookmarkPrefetch(items.map { it.url })
+        enterBrowser()
+        val alreadyPinned = items.count { isUrlPinned(it.url) }
+        val message = when {
+            pinned > 0 ->
+                getString(R.string.folder_pinned_tabs, pinned, items.size)
+            alreadyPinned == items.size ->
+                getString(R.string.folder_prefetch_started, items.size)
+            else ->
+                "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet"
+        }
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
     private fun showFolderActions(folder: TrialBookmarkFolder, content: View, popup: PopupWindow) {
         MaterialAlertDialogBuilder(this)
             .setTitle(folder.title)
-            .setItems(arrayOf("Přejmenovat", "Odebrat skupinu")) { _, which ->
+            .setItems(
+                arrayOf(
+                    "Otevřít vše v kartách",
+                    "Připnout a přednačíst vše",
+                    "Přejmenovat",
+                    "Odebrat skupinu"
+                )
+            ) { _, which ->
                 when (which) {
-                    0 -> promptFolderName("Přejmenovat skupinu", folder.title, "Hotovo") { name ->
+                    0 -> {
+                        openFolderInTabs(folder)
+                        if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                    }
+                    1 -> {
+                        pinFolderInTabs(folder)
+                        populateHomeBookmarks()
+                        if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                    }
+                    2 -> promptFolderName("Přejmenovat skupinu", folder.title, "Hotovo") { name ->
                         if (!TrialBookmarks.renameFolder(this, folder.id, name)) {
                             Toast.makeText(this, "Skupinu nelze přejmenovat", Toast.LENGTH_SHORT).show()
                             return@promptFolderName
@@ -2977,7 +3156,7 @@ class WebViewActivity : AppCompatActivity() {
                         populateHomeBookmarks()
                         if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                     }
-                    1 -> {
+                    3 -> {
                         TrialBookmarks.removeFolder(this, folder.id)
                         populateHomeBookmarks()
                         if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
