@@ -33,7 +33,7 @@
             android:letterSpacing="0.08"
             android:maxLines="1"
             android:textAllCaps="true"
-            android:textColor="@color/ink_soft"
+            android:textColor="@color/accent"
             android:textSize="13sp" />
 
         <ImageView
@@ -42,6 +42,6 @@
             android:layout_height="20dp"
             android:contentDescription="@null"
             android:src="@drawable/ic_expand_more"
-            app:tint="@color/ink_faint" />
+            app:tint="@color/accent" />
     </LinearLayout>
 </LinearLayout>
