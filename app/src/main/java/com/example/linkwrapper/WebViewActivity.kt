@@ -2195,18 +2195,21 @@ class WebViewActivity : AppCompatActivity() {
         val inflater = LayoutInflater.from(this)
         val gap = (10 * resources.displayMetrics.density).toInt()
         val groups = TrialBookmarks.grouped(items, TrialBookmarks.loadFolders(this))
-        groups.forEach { group ->
-            val folder = group.folder
-            if (folder != null) {
-                val header = inflater.inflate(R.layout.item_bookmark_group_header, homeBookmarkList, false)
+        renderBookmarkGroups(
+            parent = homeBookmarkList,
+            groups = groups,
+            inflater = inflater,
+            foldersFirst = false,
+            onFolderHeader = { header, folder ->
                 header.findViewById<TextView>(R.id.groupHeaderTitle).text = folder.title
                 header.findViewById<View>(R.id.groupHeaderChevron).visibility = View.GONE
                 header.isClickable = false
                 header.background = null
-                homeBookmarkList.addView(header)
-            }
-            addHomeBookmarkRows(homeBookmarkList, group.items, gap, inflater)
-        }
+            },
+            onFolderClick = null,
+            onFolderLongClick = null,
+            onItems = { items -> addHomeBookmarkRows(homeBookmarkList, items, gap, inflater) }
+        )
     }
 
     private fun addHomeBookmarkRows(
@@ -2874,44 +2877,88 @@ class WebViewActivity : AppCompatActivity() {
             height = if (longList) maxH else ViewGroup.LayoutParams.WRAP_CONTENT
         }
         val inflater = LayoutInflater.from(this)
-        groups.forEach { group ->
-            val folder = group.folder
-            if (folder != null) {
-                val header = inflater.inflate(R.layout.item_bookmark_group_header, list, false)
+        renderBookmarkGroups(
+            parent = list,
+            groups = groups,
+            inflater = inflater,
+            foldersFirst = true,
+            onFolderHeader = { header, folder ->
                 header.findViewById<TextView>(R.id.groupHeaderTitle).text = folder.title
                 val chevron = header.findViewById<ImageView>(R.id.groupHeaderChevron)
                 chevron.rotation = if (folder.collapsed) 0f else 180f
-                header.setOnClickListener {
-                    TrialBookmarks.setFolderCollapsed(this, folder.id, !folder.collapsed)
-                    if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+            },
+            onFolderClick = { folder ->
+                TrialBookmarks.setFolderCollapsed(this, folder.id, !folder.collapsed)
+                if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+            },
+            onFolderLongClick = { folder ->
+                showFolderActions(folder, content, popup)
+            },
+            onItems = { items ->
+                items.forEach { item ->
+                    val row = inflater.inflate(R.layout.item_trial_bookmark, list, false)
+                    row.findViewById<TextView>(R.id.bookmarkTitle).text = item.title
+                    row.findViewById<TextView>(R.id.bookmarkUrl).text =
+                        item.url.removePrefix("https://").removePrefix("http://")
+                    row.setOnClickListener {
+                        dismissBookmarkPopup()
+                        openSavedUrl(item.url)
+                    }
+                    bindBookmarkActions(
+                        pin = row.findViewById(R.id.bookmarkPin),
+                        rename = row.findViewById(R.id.bookmarkRename),
+                        delete = row.findViewById(R.id.bookmarkDelete),
+                        item = item,
+                        afterChange = {
+                            if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                        }
+                    )
+                    list.addView(row)
                 }
-                header.setOnLongClickListener {
-                    showFolderActions(folder, content, popup)
-                    true
+            }
+        )
+    }
+
+    private fun renderBookmarkGroups(
+        parent: LinearLayout,
+        groups: List<BookmarkGroup>,
+        inflater: LayoutInflater,
+        foldersFirst: Boolean,
+        onFolderHeader: (View, TrialBookmarkFolder) -> Unit,
+        onFolderClick: ((TrialBookmarkFolder) -> Unit)?,
+        onFolderLongClick: ((TrialBookmarkFolder) -> Unit)?,
+        onItems: (List<TrialBookmark>) -> Unit
+    ) {
+        val hasFoldered = groups.any { it.folder != null && it.items.isNotEmpty() }
+        val hasUnfiled = groups.any { it.folder == null && it.items.isNotEmpty() }
+        var sectionDividerShown = false
+        groups.forEach { group ->
+            val folder = group.folder
+            if (!sectionDividerShown && hasFoldered && hasUnfiled) {
+                val showDivider = if (foldersFirst) folder == null else folder != null
+                if (showDivider) {
+                    parent.addView(
+                        inflater.inflate(R.layout.item_bookmark_section_divider, parent, false)
+                    )
+                    sectionDividerShown = true
                 }
-                list.addView(header)
+            }
+            if (folder != null) {
+                val header = inflater.inflate(R.layout.item_bookmark_group_header, parent, false)
+                onFolderHeader(header, folder)
+                onFolderClick?.let { click ->
+                    header.setOnClickListener { click(folder) }
+                }
+                onFolderLongClick?.let { longClick ->
+                    header.setOnLongClickListener {
+                        longClick(folder)
+                        true
+                    }
+                }
+                parent.addView(header)
                 if (folder.collapsed) return@forEach
             }
-            group.items.forEach { item ->
-                val row = inflater.inflate(R.layout.item_trial_bookmark, list, false)
-                row.findViewById<TextView>(R.id.bookmarkTitle).text = item.title
-                row.findViewById<TextView>(R.id.bookmarkUrl).text =
-                    item.url.removePrefix("https://").removePrefix("http://")
-                row.setOnClickListener {
-                    dismissBookmarkPopup()
-                    openSavedUrl(item.url)
-                }
-                bindBookmarkActions(
-                    pin = row.findViewById(R.id.bookmarkPin),
-                    rename = row.findViewById(R.id.bookmarkRename),
-                    delete = row.findViewById(R.id.bookmarkDelete),
-                    item = item,
-                    afterChange = {
-                        if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
-                    }
-                )
-                list.addView(row)
-            }
+            if (group.items.isNotEmpty()) onItems(group.items)
         }
     }
 

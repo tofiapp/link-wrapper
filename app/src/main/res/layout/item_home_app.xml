@@ -3,7 +3,7 @@
     android:layout_width="0dp"
     android:layout_height="168dp"
     android:layout_weight="1"
-    android:background="@drawable/bg_home_tile"
+    android:background="@drawable/bg_home_tile_primary"
     android:clickable="true"
     android:focusable="true"
     android:gravity="center"
@@ -20,7 +20,7 @@
         android:gravity="center"
         android:longClickable="false"
         android:maxLines="2"
-        android:textColor="@color/accent"
+        android:textColor="@color/ink"
         android:textIsSelectable="false"
         android:textSize="22sp" />
 </LinearLayout>
