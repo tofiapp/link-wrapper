@@ -9,8 +9,7 @@ import android.content.Context
  * Zoom jen na `html` (`documentElement`). Když je i na `body`, Chromium
  * hodnoty násobí (84 % × 84 % = 70,5 %). Starý zoom na body se maže.
  *
- * PSST Data má vlastní velikost (v ⋮). Grafy (`dmId`) mají vždy 84 %.
- * Nastavení platí, dokud uživatel nesmaže údaje.
+ * PSST Data má pevně 80 %. Grafy (`dmId`) mají vždy 84 %.
  */
 internal object PageZoom {
 
@@ -18,6 +17,7 @@ internal object PageZoom {
 
     const val PORTRAIT_PERCENT = 88
     const val LANDSCAPE_PERCENT = 80
+    const val PSST_PERCENT = 80
     const val CHART_PERCENT = 84
     const val MIN_PERCENT = 60
     const val MAX_PERCENT = 140
@@ -44,7 +44,7 @@ internal object PageZoom {
     fun percentFor(context: Context, kind: Kind, landscape: Boolean): Int {
         return when (kind) {
             Kind.Chart -> CHART_PERCENT
-            Kind.Psst -> storedPercent(context, Kind.Psst) ?: percent(landscape)
+            Kind.Psst -> PSST_PERCENT
             Kind.Other -> percent(landscape)
         }
     }
