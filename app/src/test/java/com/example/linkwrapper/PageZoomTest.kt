@@ -14,6 +14,19 @@ class PageZoomTest {
     }
 
     @Test
+    fun psstIsFixedAt80() {
+        assertEquals(80, PageZoom.PSST_PERCENT)
+        assertEquals(
+            80,
+            PageZoom.percentFor(
+                org.robolectric.RuntimeEnvironment.getApplication(),
+                PageZoom.Kind.Psst,
+                landscape = false
+            )
+        )
+    }
+
+    @Test
     fun chartsAreFixedAt84() {
         assertEquals(84, PageZoom.CHART_PERCENT)
         assertEquals(
@@ -49,7 +62,7 @@ class PageZoomTest {
     fun jsUsesClampedPercent() {
         val js = PageZoom.setJs(1000)
         assertTrue(js.contains("${PageZoom.MAX_PERCENT}%"))
-        val picker = PageZoom.pickerJs(88)
+        val picker = PageZoom.pickerJs(80)
         assertTrue(picker.contains("84%"))
         assertTrue(picker.contains("dmId"))
         assertTrue(js.contains("document.documentElement.style.zoom"))

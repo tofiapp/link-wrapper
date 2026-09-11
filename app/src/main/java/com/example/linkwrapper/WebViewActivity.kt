@@ -80,7 +80,6 @@ import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.progressindicator.LinearProgressIndicator
-import com.google.android.material.slider.Slider
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.util.Collections
@@ -1838,52 +1837,6 @@ class WebViewActivity : AppCompatActivity() {
         refreshTabStrip()
     }
 
-    private fun showPageSizeDialog() {
-        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val psstStart = PageZoom.snap(
-            PageZoom.storedPercent(this, PageZoom.Kind.Psst) ?: PageZoom.percent(landscape)
-        )
-        val view = LayoutInflater.from(this).inflate(R.layout.dialog_page_size, null)
-        val psstValue = view.findViewById<TextView>(R.id.pageSizePsstValue)
-        val psstSlider = view.findViewById<Slider>(R.id.pageSizePsstSlider)
-        fun bind(
-            slider: Slider,
-            label: TextView,
-            start: Int,
-            kind: PageZoom.Kind
-        ) {
-            label.text = "$start %"
-            slider.valueFrom = PageZoom.MIN_PERCENT.toFloat()
-            slider.valueTo = PageZoom.MAX_PERCENT.toFloat()
-            slider.stepSize = PageZoom.STEP_PERCENT.toFloat()
-            slider.value = start.toFloat()
-            slider.addOnChangeListener { _, v, fromUser ->
-                val percent = PageZoom.snap(v.toInt())
-                label.text = "$percent %"
-                if (fromUser) applyPageZoomToAllTabs(kind, percent)
-            }
-        }
-        bind(psstSlider, psstValue, psstStart, PageZoom.Kind.Psst)
-        MaterialAlertDialogBuilder(this)
-            .setTitle("Velikost stránek")
-            .setView(view)
-            .setPositiveButton("Uložit") { _, _ ->
-                PageZoom.setPercent(this, PageZoom.Kind.Psst, psstSlider.value.toInt())
-                applyPageZoomToAllTabs()
-            }
-            .setNegativeButton("Zrušit") { _, _ ->
-                applyPageZoomToAllTabs()
-            }
-            .setNeutralButton("Výchozí") { _, _ ->
-                PageZoom.clear(this)
-                applyPageZoomToAllTabs()
-            }
-            .setOnCancelListener {
-                applyPageZoomToAllTabs()
-            }
-            .show()
-    }
-
     // ── Poloha ──────────────────────────────────────────────────────────
 
     private fun handleGeolocationPrompt(
@@ -2093,7 +2046,6 @@ class WebViewActivity : AppCompatActivity() {
         tint(R.id.action_folders, accent)
         tint(R.id.action_home, accent)
         tint(R.id.action_open_url, inkSoft)
-        tint(R.id.action_page_size, inkSoft)
         tint(R.id.action_link_settings, inkSoft)
         menu?.findItem(R.id.action_logout)?.let { item ->
             item.isEnabled = usable
@@ -2275,19 +2227,11 @@ class WebViewActivity : AppCompatActivity() {
         )
     }
 
-    private fun applyPageZoomToAllTabs(
-        previewKind: PageZoom.Kind? = null,
-        previewPercent: Int? = null
-    ) {
+    private fun applyPageZoomToAllTabs() {
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         tabs.forEach { tab ->
             val wv = tab.webView ?: return@forEach
-            val kind = PageZoom.kindFor(tab.url)
-            val percent = if (previewKind != null && previewPercent != null && kind == previewKind) {
-                PageZoom.snap(previewPercent)
-            } else {
-                PageZoom.percentFor(this, kind, landscape)
-            }
+            val percent = PageZoom.percentFor(this, tab.url, landscape)
             wv.evaluateJavascript(PageZoom.setJs(percent), null)
         }
     }
@@ -3772,10 +3716,6 @@ class WebViewActivity : AppCompatActivity() {
             R.id.action_new_tab -> {
                 if (verifyingLogin) failLogin(null, stayOnForm = false)
                 openNewHomeTab()
-                true
-            }
-            R.id.action_page_size -> {
-                showPageSizeDialog()
                 true
             }
             R.id.action_link_settings -> {
