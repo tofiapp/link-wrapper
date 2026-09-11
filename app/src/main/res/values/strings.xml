@@ -9,4 +9,11 @@
     <string name="folder_pinned_tabs">Připnuto %1$d z %2$d</string>
     <string name="folder_prefetch_started">Skupina se přednačítá (%1$d stránek)</string>
     <string name="folder_all_pinned">Celá skupina je připnuta</string>
+    <string name="folder_unpin_all">Odepnout celou skupinu</string>
+    <string name="folder_unpinned_tabs">Odepnuto %1$d karet</string>
+    <string name="folder_tab_stack_on">Smrštit skupinu na liště do jedné karty</string>
+    <string name="folder_tab_stack_off">Rozbalit skupinu na liště</string>
+    <string name="folder_tab_title">%1$s (%2$d)</string>
+    <string name="folder_tab_expanded">Skupina rozbalena na liště</string>
+    <string name="folder_tab_stacked">Skupina smrštěna do jedné karty</string>
 </resources>

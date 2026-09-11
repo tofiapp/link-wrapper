@@ -97,6 +97,15 @@ private class BrowserTab(
     var pinned: Boolean = false
 )
 
+private sealed class TabStripEntry {
+    data class Single(val tab: BrowserTab) : TabStripEntry()
+    data class FolderGroup(
+        val folderId: String,
+        val title: String,
+        val tabs: List<BrowserTab>
+    ) : TabStripEntry()
+}
+
 class WebViewActivity : AppCompatActivity() {
 
     companion object {
@@ -191,6 +200,7 @@ class WebViewActivity : AppCompatActivity() {
     private val prefetchQueue = ArrayDeque<String>()
     private var prefetchLoading = false
     private val prefetchRunnable = Runnable { pumpBookmarkPrefetch() }
+    private val folderTabFocus = mutableMapOf<String, Long>()
 
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
@@ -659,6 +669,7 @@ class WebViewActivity : AppCompatActivity() {
                 parkBackgroundWebView(wv, keepAlive = tab.pinned)
             }
         }
+        tabFolderId(target)?.let { folderTabFocus[it] = target.id }
         refreshTabStrip()
         if (promptLogin) {
             pendingStartUrl = target.url
@@ -858,6 +869,126 @@ class WebViewActivity : AppCompatActivity() {
         authChallengeCounts[webView]?.remove("session")
     }
 
+    private fun tabFolderId(tab: BrowserTab): String? {
+        if (tab.isHome) return null
+        return TrialBookmarks.findByUrl(this, tab.url)?.folderId
+    }
+
+    private fun buildTabStripEntries(source: List<BrowserTab>): List<TabStripEntry> {
+        val folders = TrialBookmarks.loadFolders(this).associateBy { it.id }
+        val consumedGroups = mutableSetOf<String>()
+        val entries = mutableListOf<TabStripEntry>()
+        for (tab in source) {
+            if (tab.isHome) {
+                entries.add(TabStripEntry.Single(tab))
+                continue
+            }
+            val folderId = tabFolderId(tab)
+            val folder = folderId?.let { folders[it] }
+            if (folder != null && folder.tabGrouped) {
+                if (folderId in consumedGroups) continue
+                consumedGroups.add(folderId)
+                val groupTabs = source.filter { candidate ->
+                    !candidate.isHome && tabFolderId(candidate) == folderId
+                }
+                if (groupTabs.isNotEmpty()) {
+                    entries.add(TabStripEntry.FolderGroup(folderId, folder.title, groupTabs))
+                }
+                continue
+            }
+            entries.add(TabStripEntry.Single(tab))
+        }
+        return entries
+    }
+
+    private fun selectFolderGroup(folderId: String, groupTabs: List<BrowserTab>) {
+        if (groupTabs.isEmpty()) return
+        val current = activeTab
+        val inGroup = current != null && groupTabs.any { it.id == current.id }
+        val target = if (inGroup) {
+            val idx = groupTabs.indexOfFirst { it.id == current!!.id }
+            groupTabs[(idx + 1) % groupTabs.size]
+        } else {
+            folderTabFocus[folderId]?.let { id -> groupTabs.find { it.id == id } } ?: groupTabs.first()
+        }
+        folderTabFocus[folderId] = target.id
+        selectTab(target.id)
+    }
+
+    private fun showFolderTabActions(folderId: String, folderTitle: String, groupTabs: List<BrowserTab>) {
+        if (chromeOffline) return
+        val labels = groupTabs.map { tab ->
+            val mark = if (tab.id == activeTabId) " •" else ""
+            tab.title + mark
+        }.toTypedArray()
+        MaterialAlertDialogBuilder(this)
+            .setTitle(folderTitle)
+            .setItems(labels) { _, which ->
+                val tab = groupTabs[which]
+                folderTabFocus[folderId] = tab.id
+                selectTab(tab.id)
+            }
+            .setNeutralButton("Rozbalit na liště") { _, _ ->
+                TrialBookmarks.setFolderTabGrouped(this, folderId, false)
+                refreshTabStrip()
+                populateHomeBookmarks()
+            }
+            .setNegativeButton("Zrušit", null)
+            .show()
+    }
+
+    private fun bindTabStripItem(
+        inflater: LayoutInflater,
+        tab: BrowserTab,
+        selected: Boolean,
+        showClose: Boolean,
+        onClick: () -> Unit,
+        onLongClick: () -> Unit
+    ): View {
+        val item = inflater.inflate(R.layout.item_browser_tab, tabStrip, false)
+        val root = item.findViewById<View>(R.id.tabRoot)
+        val content = item.findViewById<View>(R.id.tabContent)
+        val title = item.findViewById<TextView>(R.id.tabTitle)
+        val pin = item.findViewById<ImageView>(R.id.tabPin)
+        val close = item.findViewById<ImageButton>(R.id.tabClose)
+        val savedMark = item.findViewById<View>(R.id.tabSavedMark)
+
+        title.text = tab.title
+        title.setTextColor(
+            ContextCompat.getColor(this, if (selected) R.color.accent else R.color.ink_soft)
+        )
+        pin.visibility = if (tab.pinned) View.VISIBLE else View.GONE
+        pin.imageTintList = android.content.res.ColorStateList.valueOf(
+            ContextCompat.getColor(this, R.color.saved)
+        )
+        savedMark.visibility =
+            if (!tab.isHome && TrialBookmarks.isSaved(this, tab.url)) View.VISIBLE else View.GONE
+        root.setBackgroundResource(
+            if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
+        )
+        root.clipToOutline = true
+        root.invalidateOutline()
+        root.setOnClickListener { onClick() }
+        root.setOnLongClickListener {
+            onLongClick()
+            true
+        }
+        close.visibility = if (showClose) View.VISIBLE else View.GONE
+        val padEnd = ((if (showClose) 4 else 14) * resources.displayMetrics.density).toInt()
+        content.setPaddingRelative(
+            content.paddingStart,
+            content.paddingTop,
+            padEnd,
+            content.paddingBottom
+        )
+        if (showClose) {
+            close.setOnClickListener { closeTab(tab.id) }
+        } else {
+            close.setOnClickListener(null)
+        }
+        return item
+    }
+
     private fun refreshTabStrip() {
         tabStrip.removeAllViews()
         val inflater = LayoutInflater.from(this)
@@ -866,64 +997,69 @@ class WebViewActivity : AppCompatActivity() {
             compareBy<BrowserTab> { TrialPins.stripGroup(it.isHome, it.pinned) }
                 .thenBy { tabs.indexOf(it) }
         )
+        val entries = buildTabStripEntries(shown)
         var titlesSynced = false
-        for (tab in shown) {
-            val item = inflater.inflate(R.layout.item_browser_tab, tabStrip, false)
-            val root = item.findViewById<View>(R.id.tabRoot)
-            val content = item.findViewById<View>(R.id.tabContent)
-            val title = item.findViewById<TextView>(R.id.tabTitle)
-            val pin = item.findViewById<ImageView>(R.id.tabPin)
-            val close = item.findViewById<ImageButton>(R.id.tabClose)
-            val savedMark = item.findViewById<View>(R.id.tabSavedMark)
-            val selected = tab.id == activeTabId
-            val savedTitle = TrialBookmarks.findByUrl(this, tab.url)?.title?.trim().orEmpty()
-            if (!tab.isHome && savedTitle.isNotEmpty() && tab.title != savedTitle) {
-                tab.title = savedTitle
-                titlesSynced = true
+        var activeEntryIndex = -1
+        entries.forEachIndexed { index, entry ->
+            when (entry) {
+                is TabStripEntry.Single -> {
+                    val tab = entry.tab
+                    if (tab.id == activeTabId) activeEntryIndex = index
+                    val savedTitle = TrialBookmarks.findByUrl(this, tab.url)?.title?.trim().orEmpty()
+                    if (!tab.isHome && savedTitle.isNotEmpty() && tab.title != savedTitle) {
+                        tab.title = savedTitle
+                        titlesSynced = true
+                    }
+                    val showClose = tabs.size > 1 && !tab.pinned
+                    val item = bindTabStripItem(
+                        inflater = inflater,
+                        tab = tab,
+                        selected = tab.id == activeTabId,
+                        showClose = showClose,
+                        onClick = { selectTab(tab.id) },
+                        onLongClick = {
+                            if (!chromeOffline) showTabActions(tab)
+                        }
+                    )
+                    tabStrip.addView(item)
+                }
+                is TabStripEntry.FolderGroup -> {
+                    if (entry.tabs.any { it.id == activeTabId }) activeEntryIndex = index
+                    entry.tabs.forEach { tab ->
+                        val savedTitle = TrialBookmarks.findByUrl(this, tab.url)?.title?.trim().orEmpty()
+                        if (savedTitle.isNotEmpty() && tab.title != savedTitle) {
+                            tab.title = savedTitle
+                            titlesSynced = true
+                        }
+                    }
+                    val groupTab = BrowserTab(
+                        id = entry.tabs.first().id,
+                        webView = null,
+                        title = getString(R.string.folder_tab_title, entry.title, entry.tabs.size),
+                        url = entry.tabs.first().url,
+                        pinned = entry.tabs.any { it.pinned }
+                    )
+                    val selected = entry.tabs.any { it.id == activeTabId }
+                    val item = bindTabStripItem(
+                        inflater = inflater,
+                        tab = groupTab,
+                        selected = selected,
+                        showClose = false,
+                        onClick = { selectFolderGroup(entry.folderId, entry.tabs) },
+                        onLongClick = {
+                            if (!chromeOffline) {
+                                showFolderTabActions(entry.folderId, entry.title, entry.tabs)
+                            }
+                        }
+                    )
+                    tabStrip.addView(item)
+                }
             }
-
-            title.text = tab.title
-            title.setTextColor(
-                ContextCompat.getColor(this, if (selected) R.color.accent else R.color.ink_soft)
-            )
-            pin.visibility = if (tab.pinned) View.VISIBLE else View.GONE
-            pin.imageTintList = android.content.res.ColorStateList.valueOf(
-                ContextCompat.getColor(this, R.color.saved)
-            )
-            savedMark.visibility =
-                if (!tab.isHome && TrialBookmarks.isSaved(this, tab.url)) View.VISIBLE else View.GONE
-            root.setBackgroundResource(
-                if (selected) R.drawable.bg_tab_selected else R.drawable.bg_tab
-            )
-            root.clipToOutline = true
-            root.invalidateOutline()
-            root.setOnClickListener { selectTab(tab.id) }
-            root.setOnLongClickListener {
-                if (chromeOffline) return@setOnLongClickListener true
-                showTabActions(tab)
-                true
-            }
-            val showClose = tabs.size > 1 && !tab.pinned
-            close.visibility = if (showClose) View.VISIBLE else View.GONE
-            val padEnd = ((if (showClose) 4 else 14) * resources.displayMetrics.density).toInt()
-            content.setPaddingRelative(
-                content.paddingStart,
-                content.paddingTop,
-                padEnd,
-                content.paddingBottom
-            )
-            if (showClose) {
-                close.setOnClickListener { closeTab(tab.id) }
-            } else {
-                close.setOnClickListener(null)
-            }
-            tabStrip.addView(item)
         }
         if (titlesSynced) persistOpenTabsFromTabs()
         tabScroll.post {
-            val idx = shown.indexOfFirst { it.id == activeTabId }
-            if (idx >= 0 && idx < tabStrip.childCount) {
-                val child = tabStrip.getChildAt(idx)
+            if (activeEntryIndex >= 0 && activeEntryIndex < tabStrip.childCount) {
+                val child = tabStrip.getChildAt(activeEntryIndex)
                 tabScroll.smoothScrollTo((child.left - 24).coerceAtLeast(0), 0)
             }
         }
@@ -3016,9 +3152,11 @@ class WebViewActivity : AppCompatActivity() {
         val items = folderItems(folder.id)
         val openAll = header.findViewById<ImageButton>(R.id.groupHeaderOpenAll)
         val pinAll = header.findViewById<ImageButton>(R.id.groupHeaderPinAll)
+        val tabStack = header.findViewById<ImageButton>(R.id.groupHeaderTabStack)
         val show = items.isNotEmpty()
         openAll.visibility = if (show) View.VISIBLE else View.GONE
         pinAll.visibility = if (show) View.VISIBLE else View.GONE
+        tabStack.visibility = if (show) View.VISIBLE else View.GONE
         if (!show) return
         openAll.setOnClickListener {
             openFolderInTabs(folder)
@@ -3031,14 +3169,21 @@ class WebViewActivity : AppCompatActivity() {
                 bindTrialBookmarkMenu(popupContent, popup)
             }
         }
+        tabStack.setOnClickListener {
+            toggleFolderTabGrouped(folder)
+            if (popup?.isShowing == true && popupContent != null) {
+                bindTrialBookmarkMenu(popupContent, popup)
+            }
+        }
         updateFolderPinGlyph(pinAll, folder)
+        updateFolderStackGlyph(tabStack, folder)
     }
 
     private fun updateFolderPinGlyph(pin: ImageButton, folder: TrialBookmarkFolder) {
         val items = folderItems(folder.id)
         val allPinned = items.isNotEmpty() && items.all { isUrlPinned(it.url) }
         pin.contentDescription = getString(
-            if (allPinned) R.string.folder_all_pinned else R.string.folder_pin_all
+            if (allPinned) R.string.folder_unpin_all else R.string.folder_pin_all
         )
         ImageViewCompat.setImageTintList(
             pin,
@@ -3046,6 +3191,33 @@ class WebViewActivity : AppCompatActivity() {
                 ContextCompat.getColor(this, if (allPinned) R.color.saved else R.color.ink_soft)
             )
         )
+    }
+
+    private fun updateFolderStackGlyph(stack: ImageButton, folder: TrialBookmarkFolder) {
+        stack.contentDescription = getString(
+            if (folder.tabGrouped) R.string.folder_tab_stack_off else R.string.folder_tab_stack_on
+        )
+        ImageViewCompat.setImageTintList(
+            stack,
+            ColorStateList.valueOf(
+                ContextCompat.getColor(
+                    this,
+                    if (folder.tabGrouped) R.color.saved else R.color.ink_soft
+                )
+            )
+        )
+    }
+
+    private fun toggleFolderTabGrouped(folder: TrialBookmarkFolder) {
+        val grouped = !folder.tabGrouped
+        TrialBookmarks.setFolderTabGrouped(this, folder.id, grouped)
+        refreshTabStrip()
+        populateHomeBookmarks()
+        Toast.makeText(
+            this,
+            getString(if (grouped) R.string.folder_tab_stacked else R.string.folder_tab_expanded),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun openFolderInTabs(folder: TrialBookmarkFolder) {
@@ -3100,6 +3272,11 @@ class WebViewActivity : AppCompatActivity() {
             Toast.makeText(this, getString(R.string.folder_empty), Toast.LENGTH_SHORT).show()
             return
         }
+        val allPinned = items.all { isUrlPinned(it.url) }
+        if (allPinned) {
+            unpinFolderInTabs(items)
+            return
+        }
         val needsLogin = items.firstOrNull { needsAppLogin(it.url) && !Session.isActive(this) }
         if (needsLogin != null) {
             pendingStartUrl = needsLogin.url
@@ -3115,16 +3292,32 @@ class WebViewActivity : AppCompatActivity() {
         }
         queueBookmarkPrefetch(items.map { it.url })
         enterBrowser()
-        val alreadyPinned = items.count { isUrlPinned(it.url) }
+        refreshTabStrip()
+        populateHomeBookmarks()
         val message = when {
-            pinned > 0 ->
-                getString(R.string.folder_pinned_tabs, pinned, items.size)
-            alreadyPinned == items.size ->
-                getString(R.string.folder_prefetch_started, items.size)
-            else ->
-                "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet"
+            pinned > 0 -> getString(R.string.folder_pinned_tabs, pinned, items.size)
+            else -> "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet"
         }
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private fun unpinFolderInTabs(items: List<TrialBookmark>) {
+        dismissBookmarkPopup()
+        var unpinned = 0
+        for (item in items) {
+            val tab = tabs.filter { !it.isHome }.find { samePage(it.url, item.url) }
+            if (tab != null && tab.pinned) {
+                setTabPinned(tab, false, quiet = true)
+                unpinned++
+            }
+        }
+        refreshTabStrip()
+        populateHomeBookmarks()
+        Toast.makeText(
+            this,
+            getString(R.string.folder_unpinned_tabs, unpinned),
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     private fun showFolderActions(folder: TrialBookmarkFolder, content: View, popup: PopupWindow) {
@@ -3133,7 +3326,12 @@ class WebViewActivity : AppCompatActivity() {
             .setItems(
                 arrayOf(
                     "Otevřít vše v kartách",
-                    "Připnout a přednačíst vše",
+                    if (folderItems(folder.id).all { isUrlPinned(it.url) }) {
+                        "Odepnout vše"
+                    } else {
+                        "Připnout a přednačíst vše"
+                    },
+                    if (folder.tabGrouped) "Rozbalit na liště" else "Smrštit na liště do jedné karty",
                     "Přejmenovat",
                     "Odebrat skupinu"
                 )
@@ -3148,7 +3346,11 @@ class WebViewActivity : AppCompatActivity() {
                         populateHomeBookmarks()
                         if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                     }
-                    2 -> promptFolderName("Přejmenovat skupinu", folder.title, "Hotovo") { name ->
+                    2 -> {
+                        toggleFolderTabGrouped(folder)
+                        if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
+                    }
+                    3 -> promptFolderName("Přejmenovat skupinu", folder.title, "Hotovo") { name ->
                         if (!TrialBookmarks.renameFolder(this, folder.id, name)) {
                             Toast.makeText(this, "Skupinu nelze přejmenovat", Toast.LENGTH_SHORT).show()
                             return@promptFolderName
@@ -3156,7 +3358,7 @@ class WebViewActivity : AppCompatActivity() {
                         populateHomeBookmarks()
                         if (popup.isShowing) bindTrialBookmarkMenu(content, popup)
                     }
-                    3 -> {
+                    4 -> {
                         TrialBookmarks.removeFolder(this, folder.id)
                         populateHomeBookmarks()
                         if (popup.isShowing) bindTrialBookmarkMenu(content, popup)

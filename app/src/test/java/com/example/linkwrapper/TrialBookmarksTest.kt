@@ -91,6 +91,22 @@ class TrialBookmarksTest {
     }
 
     @Test
+    fun folderRoundTripKeepsTabGrouped() {
+        val folders = listOf(
+            TrialBookmarkFolder("f1", "Ranní", collapsed = false, tabGrouped = true),
+            TrialBookmarkFolder("f2", "Večer", collapsed = true, tabGrouped = false)
+        )
+        val restored = TrialBookmarks.decodeFolders(TrialBookmarks.encodeFolders(folders))
+        assertEquals(folders, restored)
+    }
+
+    @Test
+    fun legacyFolderLineDefaultsTabGroupedFalse() {
+        val restored = TrialBookmarks.decodeFolders("f1\tRanní\t1")
+        assertEquals(listOf(TrialBookmarkFolder("f1", "Ranní", collapsed = true)), restored)
+    }
+
+    @Test
     fun folderTitleMayContainTabs() {
         val folders = listOf(TrialBookmarkFolder("f", "Skupina\tA", collapsed = false))
         val restored = TrialBookmarks.decodeFolders(TrialBookmarks.encodeFolders(folders))

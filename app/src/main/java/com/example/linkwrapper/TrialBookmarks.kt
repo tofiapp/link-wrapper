@@ -16,7 +16,9 @@ data class TrialBookmark(
 data class TrialBookmarkFolder(
     val id: String,
     val title: String,
-    val collapsed: Boolean = false
+    val collapsed: Boolean = false,
+    /** Skupina na liště karet jako jedna záložka. */
+    val tabGrouped: Boolean = false
 )
 
 data class BookmarkGroup(
@@ -126,6 +128,14 @@ internal object TrialBookmarks {
         persistFolders(context, folders)
     }
 
+    fun setFolderTabGrouped(context: Context, id: String, tabGrouped: Boolean) {
+        val folders = loadFolders(context).toMutableList()
+        val i = folders.indexOfFirst { it.id == id }
+        if (i < 0) return
+        folders[i] = folders[i].copy(tabGrouped = tabGrouped)
+        persistFolders(context, folders)
+    }
+
     fun itemsInFolder(items: List<TrialBookmark>, folderId: String): List<TrialBookmark> =
         items.filter { it.folderId == folderId }
 
@@ -181,7 +191,8 @@ internal object TrialBookmarks {
             listOf(
                 folder.id,
                 enc(folder.title),
-                if (folder.collapsed) "1" else "0"
+                if (folder.collapsed) "1" else "0",
+                if (folder.tabGrouped) "1" else "0"
             ).joinToString("\t")
         }
 
@@ -194,7 +205,8 @@ internal object TrialBookmarks {
             val title = dec(parts[1]).trim()
             if (id.isEmpty() || title.isEmpty()) return@mapNotNull null
             val collapsed = parts.getOrNull(2)?.trim() == "1"
-            TrialBookmarkFolder(id, title, collapsed)
+            val tabGrouped = parts.getOrNull(3)?.trim() == "1"
+            TrialBookmarkFolder(id, title, collapsed, tabGrouped)
         }.toList()
     }
 
