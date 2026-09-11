@@ -198,6 +198,7 @@ class WebViewActivity : AppCompatActivity() {
     private val prefetchViews = LinkedHashMap<String, WebView>()
     private val prefetchQueue = ArrayDeque<String>()
     private var prefetchLoading = false
+    private var prefetchActiveView: WebView? = null
     private val prefetchRunnable = Runnable { pumpBookmarkPrefetch() }
     private val folderTabFocus = mutableMapOf<String, Long>()
 
@@ -763,11 +764,18 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun takePrefetch(url: String): WebView? {
         val key = prefetchViews.keys.firstOrNull { samePage(it, url) } ?: return null
-        return prefetchViews.remove(key)
+        val wv = prefetchViews.remove(key) ?: return null
+        if (prefetchActiveView === wv) {
+            prefetchLoading = false
+            prefetchActiveView = null
+            mainHandler.post { pumpBookmarkPrefetch() }
+        }
+        return wv
     }
 
     private fun destroyPrefetchViews() {
         prefetchLoading = false
+        prefetchActiveView = null
         mainHandler.removeCallbacks(prefetchRunnable)
         prefetchQueue.clear()
         prefetchViews.values.toList().forEach { wv -> destroyOrphanWebView(wv) }
@@ -809,6 +817,23 @@ class WebViewActivity : AppCompatActivity() {
         startBookmarkPrefetch()
     }
 
+    /** Znovu načte připnuté karty skupiny; prefetch jen pro URL bez otevřené karty. */
+    private fun warmPinnedFolderTabs(urls: Collection<String>) {
+        if (!Session.isActive(this)) return
+        val targets = urls.map { it.trim() }.filter { it.isNotEmpty() && it != Destinations.HOME_URL }
+        tabs.filter { tab ->
+            !tab.isHome && tab.pinned && targets.any { samePage(tab.url, it) }
+        }.forEach { tab ->
+            val wv = tab.webView ?: return@forEach
+            val current = wv.url
+            if (current.isNullOrBlank() || current == "about:blank") {
+                TrialIsolation.onNavigate(this, tab.url)
+                wv.loadUrl(tab.url)
+            }
+        }
+        queueBookmarkPrefetch(targets)
+    }
+
     /** Načte uložené grafy na pozadí, ať po výpadku sítě zůstanou v RAM. */
     private fun pumpBookmarkPrefetch() {
         if (prefetchLoading) return
@@ -823,6 +848,7 @@ class WebViewActivity : AppCompatActivity() {
         val wv = createWebView()
         prefetchViews[next] = wv
         prefetchLoading = true
+        prefetchActiveView = wv
         wv.visibility = View.INVISIBLE
         webContainer.addView(
             wv,
@@ -835,8 +861,9 @@ class WebViewActivity : AppCompatActivity() {
         TrialIsolation.onNavigate(this, next)
         wv.loadUrl(next)
         mainHandler.postDelayed({
-            if (prefetchViews[next] === wv && prefetchLoading) {
+            if (prefetchActiveView === wv && prefetchLoading) {
                 prefetchLoading = false
+                prefetchActiveView = null
                 try { wv.onPause() } catch (_: Exception) {}
                 pumpBookmarkPrefetch()
             }
@@ -844,8 +871,10 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun onPrefetchFinished(view: WebView) {
-        if (prefetchViews.values.none { it === view }) return
+        val inPrefetch = prefetchViews.values.any { it === view }
+        if (!inPrefetch && prefetchActiveView !== view) return
         prefetchLoading = false
+        if (prefetchActiveView === view) prefetchActiveView = null
         view.postDelayed({
             if (prefetchViews.values.none { it === view }) return@postDelayed
             try {
@@ -1318,6 +1347,9 @@ class WebViewActivity : AppCompatActivity() {
                     injectChartFit(view)
                     injectPsstDataLayout(view, url)
                     onPrefetchFinished(view)
+                    if (view === activeWebView && (gate == Gate.BROWSER || verifyingLogin)) {
+                        progressBar.visibility = View.GONE
+                    }
                 }
                 updateTabMeta(view ?: return, url)
             }
@@ -3234,7 +3266,7 @@ class WebViewActivity : AppCompatActivity() {
             if (!pinUrl(item.url, quiet = true, select = false)) break
             pinned++
         }
-        queueBookmarkPrefetch(items.map { it.url })
+        warmPinnedFolderTabs(items.map { it.url })
         enterBrowser()
         refreshTabStrip()
         populateHomeBookmarks()
