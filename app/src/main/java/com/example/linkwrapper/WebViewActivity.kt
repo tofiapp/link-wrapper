@@ -205,6 +205,8 @@ class WebViewActivity : AppCompatActivity() {
     private val folderTabFocus = mutableMapOf<String, Long>()
     /** Skupiny smrštěné na liště, které uživatel dočasně rozbalil. */
     private val expandedTabGroups = mutableSetOf<String>()
+    /** Karty, které se nepodařilo dokončit — po obnovení sítě znovu načíst. */
+    private val tabsPendingReload = mutableSetOf<Long>()
 
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
@@ -302,6 +304,11 @@ class WebViewActivity : AppCompatActivity() {
         (activeWebView ?: tabs.firstNotNullOfOrNull { it.webView })?.resumeTimers()
         activeWebView?.onResume()
         syncGeoUpdates()
+        if (!chromeOffline && isConnectionOk() &&
+            tabs.any { !it.isHome && tabNeedsReconnectReload(it) }
+        ) {
+            reloadTabsAfterReconnect()
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -1372,8 +1379,10 @@ class WebViewActivity : AppCompatActivity() {
                 request: WebResourceRequest?,
                 error: WebResourceError?
             ) {
-                if (view !== activeWebView) return
                 if (request?.isForMainFrame != true) return
+                val webView = view ?: return
+                tabs.find { it.webView === webView }?.let { tabsPendingReload.add(it.id) }
+                if (view !== activeWebView) return
                 if (verifyingLogin) {
                     failLogin("Stránku se nepodařilo načíst. Zkontrolujte VPN a zkuste to znovu.")
                     return
@@ -1411,6 +1420,7 @@ class WebViewActivity : AppCompatActivity() {
                 }
                 if (view != null) authFailedViews.remove(view)
                 if (view != null) {
+                    tabs.find { it.webView === view }?.let { tabsPendingReload.remove(it.id) }
                     view.setBackgroundColor(Color.TRANSPARENT)
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
                     if (!shouldDeferChartFit(view)) {
@@ -1801,16 +1811,60 @@ class WebViewActivity : AppCompatActivity() {
     }
 
     private fun loadUnloadedTabsAfterLogin() {
-        tabs.filter { !it.isHome }.forEach { tab ->
-            var wv = tab.webView
-            if (wv == null) {
-                wv = takePrefetch(tab.url) ?: createWebView()
-                tab.webView = wv
-            }
-            if (tab.pinned && !wv.url.isNullOrBlank() && wv.url != "about:blank") return@forEach
-            TrialIsolation.onNavigate(this, tab.url)
-            wv.loadUrl(tab.url)
+        tabs.filter { !it.isHome }.forEach { ensureTabLoaded(it, reviveIfActive = true) }
+    }
+
+    private fun tabNeedsReconnectReload(tab: BrowserTab): Boolean {
+        if (tab.isHome) return false
+        if (tab.id in tabsPendingReload) return true
+        val wv = tab.webView ?: return true
+        val current = wv.url
+        return current.isNullOrBlank() || current == "about:blank"
+    }
+
+    private fun ensureTabLoaded(tab: BrowserTab, reviveIfActive: Boolean = false) {
+        if (tab.isHome) return
+        var wv = tab.webView
+        if (wv == null) {
+            wv = takePrefetch(tab.url) ?: createWebView()
+            tab.webView = wv
         }
+        val current = wv.url
+        if (!current.isNullOrBlank() && current != "about:blank" && tab.id !in tabsPendingReload) return
+        TrialIsolation.onNavigate(this, tab.url)
+        wv.loadUrl(tab.url)
+        tabsPendingReload.remove(tab.id)
+        if (reviveIfActive && tab.id == activeTabId && gate == Gate.BROWSER &&
+            (wv.parent == null || wv.visibility != View.VISIBLE)
+        ) {
+            reviveBrowserWebView(wv, tab.url)
+        }
+    }
+
+    private fun markInterruptedTabLoads() {
+        tabs.filter { !it.isHome }.forEach { tab ->
+            val wv = tab.webView
+            if (wv == null) {
+                tabsPendingReload.add(tab.id)
+                return@forEach
+            }
+            val current = wv.url
+            if (current.isNullOrBlank() || current == "about:blank") {
+                tabsPendingReload.add(tab.id)
+                return@forEach
+            }
+            if (wv.progress in 1..99) {
+                tabsPendingReload.add(tab.id)
+            }
+        }
+    }
+
+    private fun reloadTabsAfterReconnect() {
+        if (!isConnectionOk()) return
+        tabs.filter { !it.isHome && tabNeedsReconnectReload(it) }.forEach {
+            ensureTabLoaded(it, reviveIfActive = true)
+        }
+        startBookmarkPrefetch()
     }
 
     private fun isLoadedPinnedView(webView: WebView): Boolean {
@@ -2113,6 +2167,7 @@ class WebViewActivity : AppCompatActivity() {
     private fun applyOfflineChrome() {
         val offline = !isConnectionOk()
         val changed = chromeOffline != offline
+        if (offline && changed) markInterruptedTabLoads()
         chromeOffline = offline
         if (offline) {
             val current = activeTab
@@ -2129,6 +2184,7 @@ class WebViewActivity : AppCompatActivity() {
             }
         }
         if (changed) {
+            if (!offline) reloadTabsAfterReconnect()
             refreshTabStrip()
             invalidateOptionsMenu()
             if (::toolbar.isInitialized) applyChromeMenu(toolbar.menu)
