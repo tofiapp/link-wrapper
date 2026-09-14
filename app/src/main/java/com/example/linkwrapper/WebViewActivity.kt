@@ -103,6 +103,8 @@ private sealed class TabStripEntry {
         val title: String,
         val tabs: List<BrowserTab>
     ) : TabStripEntry()
+    /** Tlačítko pro sbalení dočasně rozbalené skupiny na liště. */
+    data class FolderCollapse(val folderId: String) : TabStripEntry()
 }
 
 class WebViewActivity : AppCompatActivity() {
@@ -201,6 +203,8 @@ class WebViewActivity : AppCompatActivity() {
     private var prefetchActiveView: WebView? = null
     private val prefetchRunnable = Runnable { pumpBookmarkPrefetch() }
     private val folderTabFocus = mutableMapOf<String, Long>()
+    /** Skupiny smrštěné na liště, které uživatel dočasně rozbalil. */
+    private val expandedTabGroups = mutableSetOf<String>()
 
     private var pendingGeoOrigin: String? = null
     private var pendingGeoCallback: GeolocationPermissions.Callback? = null
@@ -941,7 +945,11 @@ class WebViewActivity : AppCompatActivity() {
                 val groupTabs = source.filter { candidate ->
                     !candidate.isHome && tabFolderId(candidate) == folderId
                 }
-                if (groupTabs.isNotEmpty()) {
+                if (groupTabs.isEmpty()) continue
+                if (folderId in expandedTabGroups) {
+                    groupTabs.forEach { entries.add(TabStripEntry.Single(it)) }
+                    entries.add(TabStripEntry.FolderCollapse(folderId))
+                } else {
                     entries.add(TabStripEntry.FolderGroup(folderId, folder.title, groupTabs))
                 }
                 continue
@@ -951,18 +959,19 @@ class WebViewActivity : AppCompatActivity() {
         return entries
     }
 
-    private fun selectFolderGroup(folderId: String, groupTabs: List<BrowserTab>) {
+    private fun expandFolderGroup(folderId: String, groupTabs: List<BrowserTab>) {
         if (groupTabs.isEmpty()) return
-        val current = activeTab
-        val inGroup = current != null && groupTabs.any { it.id == current.id }
-        val target = if (inGroup) {
-            val idx = groupTabs.indexOfFirst { it.id == current!!.id }
-            groupTabs[(idx + 1) % groupTabs.size]
-        } else {
-            folderTabFocus[folderId]?.let { id -> groupTabs.find { it.id == id } } ?: groupTabs.first()
-        }
+        expandedTabGroups.add(folderId)
+        val target = folderTabFocus[folderId]?.let { id -> groupTabs.find { it.id == id } }
+            ?: groupTabs.find { it.id == activeTabId }
+            ?: groupTabs.first()
         folderTabFocus[folderId] = target.id
         selectTab(target.id)
+    }
+
+    private fun collapseFolderGroup(folderId: String) {
+        expandedTabGroups.remove(folderId)
+        refreshTabStrip()
     }
 
     private fun showFolderTabActions(folderId: String, folderTitle: String, groupTabs: List<BrowserTab>) {
@@ -979,6 +988,7 @@ class WebViewActivity : AppCompatActivity() {
                 selectTab(tab.id)
             }
             .setNeutralButton("Rozbalit na liště") { _, _ ->
+                expandedTabGroups.remove(folderId)
                 TrialBookmarks.setFolderTabGrouped(this, folderId, false)
                 refreshTabStrip()
                 populateHomeBookmarks()
@@ -1039,6 +1049,39 @@ class WebViewActivity : AppCompatActivity() {
         return item
     }
 
+    private fun bindTabStripCollapse(inflater: LayoutInflater, folderId: String): View {
+        val item = inflater.inflate(R.layout.item_browser_tab, tabStrip, false)
+        val root = item.findViewById<View>(R.id.tabRoot)
+        val content = item.findViewById<View>(R.id.tabContent)
+        val title = item.findViewById<TextView>(R.id.tabTitle)
+        val pin = item.findViewById<ImageView>(R.id.tabPin)
+        val close = item.findViewById<ImageButton>(R.id.tabClose)
+        val savedMark = item.findViewById<View>(R.id.tabSavedMark)
+
+        title.visibility = View.GONE
+        pin.visibility = View.GONE
+        savedMark.visibility = View.GONE
+        close.visibility = View.VISIBLE
+        close.setImageResource(R.drawable.ic_expand_less)
+        close.contentDescription = getString(R.string.folder_tab_stack_on)
+        close.imageTintList = android.content.res.ColorStateList.valueOf(
+            ContextCompat.getColor(this, R.color.ink_soft)
+        )
+        root.setBackgroundResource(R.drawable.bg_tab)
+        root.clipToOutline = true
+        root.invalidateOutline()
+        val collapse = View.OnClickListener { collapseFolderGroup(folderId) }
+        root.setOnClickListener(collapse)
+        close.setOnClickListener(collapse)
+        content.setPaddingRelative(
+            ((6 * resources.displayMetrics.density).toInt()),
+            content.paddingTop,
+            ((4 * resources.displayMetrics.density).toInt()),
+            content.paddingBottom
+        )
+        return item
+    }
+
     private fun refreshTabStrip() {
         tabStrip.removeAllViews()
         val inflater = LayoutInflater.from(this)
@@ -1095,13 +1138,17 @@ class WebViewActivity : AppCompatActivity() {
                         tab = groupTab,
                         selected = selected,
                         showClose = false,
-                        onClick = { selectFolderGroup(entry.folderId, entry.tabs) },
+                        onClick = { expandFolderGroup(entry.folderId, entry.tabs) },
                         onLongClick = {
                             if (!chromeOffline) {
                                 showFolderTabActions(entry.folderId, entry.title, entry.tabs)
                             }
                         }
                     )
+                    tabStrip.addView(item)
+                }
+                is TabStripEntry.FolderCollapse -> {
+                    val item = bindTabStripCollapse(inflater, entry.folderId)
                     tabStrip.addView(item)
                 }
             }
@@ -3220,6 +3267,7 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun toggleFolderTabGrouped(folder: TrialBookmarkFolder) {
         val grouped = !folder.tabGrouped
+        if (grouped) expandedTabGroups.remove(folder.id)
         TrialBookmarks.setFolderTabGrouped(this, folder.id, grouped)
         refreshTabStrip()
         populateHomeBookmarks()
