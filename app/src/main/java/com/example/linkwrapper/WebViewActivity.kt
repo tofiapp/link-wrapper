@@ -834,6 +834,13 @@ class WebViewActivity : AppCompatActivity() {
         queueBookmarkPrefetch(targets)
     }
 
+    private fun cancelPrefetchForUrl(url: String) {
+        prefetchQueue.removeAll { samePage(it, url) }
+        val key = prefetchViews.keys.firstOrNull { samePage(it, url) } ?: return
+        val wv = prefetchViews.remove(key)
+        if (wv != null) destroyOrphanWebView(wv)
+    }
+
     /** Načte uložené grafy na pozadí, ať po výpadku sítě zůstanou v RAM. */
     private fun pumpBookmarkPrefetch() {
         if (prefetchLoading) return
@@ -1661,9 +1668,17 @@ class WebViewActivity : AppCompatActivity() {
             }
         } else {
             tab.pinned = false
+            cancelPrefetchForUrl(tab.url)
         }
         persistOpenTabsFromTabs()
         refreshTabStrip()
+        syncOpenTabWebViews()
+    }
+
+    /** Po změně připnutí znovu aplikuje parkování / prioritu rendereru podle tab.pinned. */
+    private fun syncOpenTabWebViews() {
+        if (activeTabId < 0) return
+        selectTab(activeTabId)
     }
 
     private fun persistOpenTabsFromTabs() {
