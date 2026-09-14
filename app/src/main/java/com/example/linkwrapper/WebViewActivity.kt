@@ -287,10 +287,10 @@ class WebViewActivity : AppCompatActivity() {
         val tab = activeTab
         val wv = tab?.webView
         if (tab != null && !tab.isHome && wv != null && gate == Gate.BROWSER &&
-            (needsPinnedWebViewReveal || wv.parent == null)
+            (needsPinnedWebViewReveal || wv.parent == null || wv.visibility != View.VISIBLE)
         ) {
             needsPinnedWebViewReveal = false
-            revealActiveBrowserWebView(wv)
+            reviveBrowserWebView(wv, tab.url)
             syncGeoUpdates()
             return
         }
@@ -594,7 +594,7 @@ class WebViewActivity : AppCompatActivity() {
         tabs.add(tab)
         persistOpenTabsFromTabs()
         if (select) selectTab(tab.id)
-        if (webView.url.isNullOrBlank() || webView.url == "about:blank") {
+        if (select && (webView.url.isNullOrBlank() || webView.url == "about:blank")) {
             TrialIsolation.onNavigate(this, url)
             webView.loadUrl(url)
         }
@@ -653,18 +653,12 @@ class WebViewActivity : AppCompatActivity() {
             val wv = tab.webView ?: return@forEach
             val selected = tab.id == tabId
             if (selected) {
-                if (wv.parent == null) {
-                    webContainer.addView(
-                        wv,
-                        FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT
-                        )
-                    )
+                if (wv.parent == null || wv.visibility != View.VISIBLE) {
+                    reviveBrowserWebView(wv, tab.url)
+                } else {
+                    wv.onResume()
+                    wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
                 }
-                wv.visibility = View.VISIBLE
-                wv.onResume()
-                wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             } else {
                 parkBackgroundWebView(wv, keepAlive = tab.pinned)
             }
@@ -691,7 +685,7 @@ class WebViewActivity : AppCompatActivity() {
      * Po minimalizaci Chromium nechá odpojený (nebo i připojený) povrch bílý.
      * Stejný tah jako přepnutí karty pryč a zpět: znovu vložit do kontejneru.
      */
-    private fun revealActiveBrowserWebView(wv: WebView) {
+    private fun reviveBrowserWebView(wv: WebView, url: String? = null) {
         (wv.parent as? ViewGroup)?.removeView(wv)
         webContainer.addView(
             wv,
@@ -705,8 +699,9 @@ class WebViewActivity : AppCompatActivity() {
         wv.resumeTimers()
         wv.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         wv.invalidate()
+        injectChartFit(wv, unlock = true)
+        injectPsstDataLayout(wv, url ?: tabs.find { it.webView === wv }?.url)
         scheduleChartFit()
-        injectPsstDataLayout(wv)
         try {
             wv.evaluateJavascript(
                 "try{window.dispatchEvent(new Event('resize'))}catch(e){}",
@@ -714,6 +709,11 @@ class WebViewActivity : AppCompatActivity() {
             )
         } catch (_: Exception) {
         }
+    }
+
+    private fun shouldDeferChartFit(view: WebView): Boolean {
+        if (prefetchViews.values.any { it === view }) return true
+        return view.visibility != View.VISIBLE && view.parent === webContainer
     }
 
     private fun closeTab(tabId: Long) {
@@ -824,14 +824,29 @@ class WebViewActivity : AppCompatActivity() {
         tabs.filter { tab ->
             !tab.isHome && tab.pinned && targets.any { samePage(tab.url, it) }
         }.forEach { tab ->
-            val wv = tab.webView ?: return@forEach
-            val current = wv.url
-            if (current.isNullOrBlank() || current == "about:blank") {
-                TrialIsolation.onNavigate(this, tab.url)
-                wv.loadUrl(tab.url)
-            }
+            warmDetachedTab(tab)
         }
         queueBookmarkPrefetch(targets)
+    }
+
+    /** Načte kartu připojenou (neviditelně), aby ChartFit neběžel v odpojeném WebView. */
+    private fun warmDetachedTab(tab: BrowserTab) {
+        val wv = tab.webView ?: return
+        val current = wv.url
+        if (!current.isNullOrBlank() && current != "about:blank") return
+        if (wv.parent == null) {
+            wv.visibility = View.INVISIBLE
+            webContainer.addView(
+                wv,
+                0,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            )
+        }
+        TrialIsolation.onNavigate(this, tab.url)
+        wv.loadUrl(tab.url)
     }
 
     private fun cancelPrefetchForUrl(url: String) {
@@ -1351,8 +1366,10 @@ class WebViewActivity : AppCompatActivity() {
                 if (view != null) {
                     view.setBackgroundColor(Color.TRANSPARENT)
                     view.evaluateJavascript(PageZoom.setJs(pageZoomPercentFor(url)), null)
-                    injectChartFit(view)
-                    injectPsstDataLayout(view, url)
+                    if (!shouldDeferChartFit(view)) {
+                        injectChartFit(view)
+                        injectPsstDataLayout(view, url)
+                    }
                     onPrefetchFinished(view)
                     if (view === activeWebView && (gate == Gate.BROWSER || verifyingLogin)) {
                         progressBar.visibility = View.GONE
@@ -2073,23 +2090,25 @@ class WebViewActivity : AppCompatActivity() {
 
     private fun applyChromeMenu(menu: Menu?) {
         val usable = !chromeOffline
+        val reloadEnabled = usable ||
+            (chromeOffline && gate == Gate.BROWSER && activeTab?.pinned == true)
         val accent = ContextCompat.getColor(this, if (usable) R.color.accent else R.color.ink_faint)
         val inkSoft = ContextCompat.getColor(this, if (usable) R.color.ink_soft else R.color.ink_faint)
         val alert = ContextCompat.getColor(this, R.color.alert)
         val alpha = if (usable) 255 else 90
 
-        fun tint(id: Int, color: Int) {
+        fun tint(id: Int, color: Int, enabled: Boolean = usable) {
             menu?.findItem(id)?.let { item ->
-                item.isEnabled = usable
+                item.isEnabled = enabled
                 item.icon?.mutate()?.let { icon ->
                     icon.setTint(color)
-                    icon.alpha = alpha
+                    icon.alpha = if (enabled) 255 else alpha
                     item.icon = icon
                 }
             }
         }
         tint(R.id.action_new_tab, accent)
-        tint(R.id.action_reload, inkSoft)
+        tint(R.id.action_reload, inkSoft, reloadEnabled)
         tint(R.id.action_folders, accent)
         tint(R.id.action_home, accent)
         tint(R.id.action_open_url, inkSoft)
@@ -3285,6 +3304,11 @@ class WebViewActivity : AppCompatActivity() {
         enterBrowser()
         refreshTabStrip()
         populateHomeBookmarks()
+        Toast.makeText(
+            this,
+            getString(R.string.folder_prefetch_started, items.size),
+            Toast.LENGTH_SHORT
+        ).show()
         val message = when {
             pinned > 0 -> getString(R.string.folder_pinned_tabs, pinned, items.size)
             else -> "Maximum je ${TrialPins.MAX_ITEMS} připnutých karet"
@@ -3730,6 +3754,20 @@ class WebViewActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         hideKeyboard()
+        if (item.itemId == R.id.action_reload) {
+            if (verifyingLogin || gate == Gate.LOGIN) return true
+            if (gate != Gate.BROWSER) return true
+            dialogShown = false
+            val wv = activeWebView
+            if (chromeOffline) {
+                if (activeTab?.pinned == true && wv != null) {
+                    reviveBrowserWebView(wv, activeTab?.url)
+                }
+                return true
+            }
+            wv?.reload()
+            return true
+        }
         if (chromeOffline) return true
         if (item.itemId == R.id.action_logout) {
             confirmLogout()
@@ -3743,13 +3781,6 @@ class WebViewActivity : AppCompatActivity() {
         if (item.itemId == R.id.action_folders) {
             if (verifyingLogin) return true
             showTrialBookmarkMenu()
-            return true
-        }
-        if (item.itemId == R.id.action_reload) {
-            if (verifyingLogin || gate == Gate.LOGIN) return true
-            if (gate != Gate.BROWSER) return true
-            dialogShown = false
-            activeWebView?.reload()
             return true
         }
         if (gate == Gate.LOGIN && item.itemId != R.id.action_link_settings) {
