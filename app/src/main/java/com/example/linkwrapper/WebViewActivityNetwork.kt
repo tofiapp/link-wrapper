@@ -154,6 +154,7 @@ internal fun WebViewActivity.applyOfflineChrome() {
             refreshTabStrip()
             invalidateOptionsMenu()
             if (toolbarReady) applyChromeMenu(toolbar.menu)
+            if (gate == Gate.HOME) populateHomeApps()
         }
     }
 

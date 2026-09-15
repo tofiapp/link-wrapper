@@ -13,12 +13,6 @@ internal class BrowserTab(
 
 internal sealed class TabStripEntry {
     data class Single(val tab: BrowserTab) : TabStripEntry()
-    data class FolderGroup(
-        val folderId: String,
-        val title: String,
-        val tabs: List<BrowserTab>
-    ) : TabStripEntry()
-    data class FolderCollapse(val folderId: String) : TabStripEntry()
 }
 
 internal enum class Gate { BROWSER, HOME, LOGIN }
