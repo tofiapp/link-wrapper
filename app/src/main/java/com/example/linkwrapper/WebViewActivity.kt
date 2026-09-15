@@ -174,9 +174,6 @@ class WebViewActivity : AppCompatActivity() {
     internal var prefetchLoading = false
     internal var prefetchActiveView: WebView? = null
     internal val prefetchRunnable = Runnable { pumpBookmarkPrefetch() }
-    internal val folderTabFocus = mutableMapOf<String, Long>()
-    /** Skupiny smrštěné na liště, které uživatel dočasně rozbalil. */
-    internal val expandedTabGroups = mutableSetOf<String>()
     /** Karty, které se nepodařilo dokončit — po obnovení sítě znovu načíst. */
     internal val tabsPendingReload = mutableSetOf<Long>()
 

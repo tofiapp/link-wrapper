@@ -140,6 +140,17 @@ internal fun WebViewActivity.needsAppLogin(url: String): Boolean {
         return Destinations.forUrl(url)?.requiresAppLogin == true
     }
 
+/** Domovská obrazovka nesmí otevírat web bez VPN/sítě — jinak končí chybou načtení. */
+internal fun WebViewActivity.ensureHomeNavigationAllowed(): Boolean {
+    if (isConnectionOk()) return true
+    Toast.makeText(
+        this,
+        "Offline režim — bez připnuté karty nelze otevírat stránky",
+        Toast.LENGTH_SHORT
+    ).show()
+    return false
+}
+
 internal fun WebViewActivity.presentLogin() {
         gate = Gate.LOGIN
         progressBar.visibility = View.GONE

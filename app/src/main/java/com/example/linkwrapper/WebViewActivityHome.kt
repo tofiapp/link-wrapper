@@ -122,7 +122,13 @@ internal fun WebViewActivity.populateHomeApps() {
                 }
             }
             item.layoutParams = lp
-            item.setOnClickListener { openDestination(app) }
+            val offline = chromeOffline
+            item.alpha = if (offline) 0.45f else 1f
+            item.isEnabled = !offline
+            item.setOnClickListener {
+                if (!ensureHomeNavigationAllowed()) return@setOnClickListener
+                openDestination(app)
+            }
             homeAppList.addView(item)
         }
         populateHomeBookmarks()
@@ -151,7 +157,6 @@ internal fun WebViewActivity.populateHomeBookmarks() {
                 header.findViewById<View>(R.id.groupHeaderChevron).visibility = View.GONE
                 header.isClickable = false
                 header.background = null
-                bindFolderHeaderActions(header, folder)
             },
             onFolderClick = null,
             onFolderLongClick = null,
@@ -184,7 +189,13 @@ internal fun WebViewActivity.addHomeBookmarkRows(
                 )
                 if (index > 0) lp.marginStart = gap
                 card.layoutParams = lp
-                card.setOnClickListener { openSavedUrl(bookmark.url) }
+                val offline = chromeOffline
+                card.alpha = if (offline) 0.45f else 1f
+                card.isEnabled = !offline
+                card.setOnClickListener {
+                    if (!ensureHomeNavigationAllowed()) return@setOnClickListener
+                    openSavedUrl(bookmark.url)
+                }
                 card.findViewById<View>(R.id.homeBookmarkMore).setOnClickListener { more ->
                     showHomeBookmarkMenu(more, bookmark)
                 }
@@ -207,6 +218,7 @@ internal fun WebViewActivity.hideHomeOverlay() {
     }
 
 internal fun WebViewActivity.openDestination(app: Destinations.AppLink) {
+        if (!ensureHomeNavigationAllowed()) return
         val existing = tabs.filter { !it.isHome }.find { samePage(it.url, app.url) }
         if (existing != null) {
             enterBrowser()
